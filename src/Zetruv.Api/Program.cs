@@ -91,6 +91,7 @@ builder.Services.AddScoped<CatalogService>();
 builder.Services.AddScoped<CatalogSeeder>();
 builder.Services.AddScoped<ArticleService>();
 builder.Services.AddScoped<OrderService>();
+builder.Services.AddScoped<CheckoutService>();
 builder.Services.AddScoped<SiteService>();
 builder.Services.AddScoped<SiteSeeder>();
 builder.Services.AddScoped<HomepageService>();
