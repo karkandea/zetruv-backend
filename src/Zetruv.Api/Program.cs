@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Zetruv.Api.Features.Auth;
+using Zetruv.Api.Features.Catalog;
 using Zetruv.Api.Features.Home;
 using Zetruv.Api.Persistence;
 
@@ -79,6 +80,8 @@ builder.Services.AddCors(options =>
 
 builder.Services.AddScoped<JwtTokenService>();
 builder.Services.AddScoped<AdminSeeder>();
+builder.Services.AddScoped<CatalogService>();
+builder.Services.AddScoped<CatalogSeeder>();
 builder.Services.AddScoped<HomepageService>();
 builder.Services.AddScoped<HomepageSeeder>();
 
@@ -111,6 +114,10 @@ await using (var scope = app.Services.CreateAsyncScope())
 
     await scope.ServiceProvider
         .GetRequiredService<AdminSeeder>()
+        .SeedAsync();
+
+    await scope.ServiceProvider
+        .GetRequiredService<CatalogSeeder>()
         .SeedAsync();
 
     await scope.ServiceProvider
