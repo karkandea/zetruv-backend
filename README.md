@@ -23,23 +23,37 @@ Third-party services stay behind integration boundaries. Examples planned for la
 
 Those providers do not own the Zetruv product schema.
 
-## Homepage + catalog slice
+## Implemented slices
 
-The current slice includes:
+Homepage / catalog:
 
-- Dynamic hero/banner content
-- Hero scheduling (`startsAt`, `endsAt`), ordering, and active state
+- Dynamic hero/banner content with scheduling and ordering
 - Homepage section configuration
-- Admin-owned categories and games
-- Products with variants and images
+- Admin-owned categories, games, products, variants, and images
 - Product kinds: `TopUpGame`, `TopUpLogin`, `GameVoucher`, `Joki`, `Merchandise`, `GameAccount`
 - Variant price, compare-at price, optional stock, and optional physical weight
-- Product-level `requiresGameAccountValidation` flag for the future validation integration
-- Popular games and featured products
-- Scheduled Flash Sale promotions with per-variant sale prices
-- Homepage data sourced from the real catalog for service categories, Flash Sale, Popular Games, Joki, Game Accounts, and Merchandise
+- Product-level `requiresGameAccountValidation` flag
+- Popular games, featured products, and scheduled Flash Sale promotions
+- Homepage service categories, Flash Sale, Popular Games, Joki, Game Accounts, and Merchandise use real catalog data
 
-`recently_purchased` will be populated from the future Order/Transaction domain, and `articles` will be populated from the Article domain. They are intentionally not duplicated as static homepage JSON.
+Articles:
+
+- Article categories
+- Article CRUD with draft/published state
+- Scheduled `publishedAt`
+- Thumbnail, excerpt, author, content, featured flag, and unique slug
+- Public article list with category/search/pagination
+- Homepage `LatestArticles` uses published article data
+
+Site / footer:
+
+- Dynamic logo, brand description, copyright text
+- Dynamic floating contact-team CTA
+- Footer links grouped as `Page`, `Support`, or `Legality`
+- Social links
+- Payment methods and icon URLs
+
+`recently_purchased` will be populated from the future Order/Transaction domain.
 
 ## Public API
 
@@ -50,8 +64,10 @@ The current slice includes:
 - `GET /api/v1/catalog/products`
 - `GET /api/v1/catalog/products/{slug}`
 - `GET /api/v1/catalog/flash-sale`
-
-Product listing supports filters for category, game, product kind, search text, page, and page size.
+- `GET /api/v1/articles/categories`
+- `GET /api/v1/articles`
+- `GET /api/v1/articles/{slug}`
+- `GET /api/v1/site/footer`
 
 ## Admin / CMS API
 
@@ -61,14 +77,12 @@ Authentication:
 
 Homepage:
 
-- `GET /api/v1/admin/homepage/heroes`
-- `POST /api/v1/admin/homepage/heroes`
-- `PUT /api/v1/admin/homepage/heroes/{id}`
-- `DELETE /api/v1/admin/homepage/heroes/{id}`
+- `GET|POST /api/v1/admin/homepage/heroes`
+- `PUT|DELETE /api/v1/admin/homepage/heroes/{id}`
 - `GET /api/v1/admin/homepage/sections`
 - `PUT /api/v1/admin/homepage/sections/{key}`
 
-Catalog:
+Catalog / promotion:
 
 - `GET|POST /api/v1/cms/catalog/categories`
 - `PUT|DELETE /api/v1/cms/catalog/categories/{id}`
@@ -83,6 +97,23 @@ Catalog:
 - `GET|POST /api/v1/cms/promotions`
 - `PUT|DELETE /api/v1/cms/promotions/{id}`
 
+Articles:
+
+- `GET|POST /api/v1/cms/articles/categories`
+- `PUT|DELETE /api/v1/cms/articles/categories/{id}`
+- `GET|POST /api/v1/cms/articles`
+- `GET|PUT|DELETE /api/v1/cms/articles/{id}`
+
+Site / footer:
+
+- `GET|PUT /api/v1/cms/site/settings`
+- `GET|POST /api/v1/cms/site/footer-links`
+- `PUT|DELETE /api/v1/cms/site/footer-links/{id}`
+- `GET|POST /api/v1/cms/site/social-links`
+- `PUT|DELETE /api/v1/cms/site/social-links/{id}`
+- `GET|POST /api/v1/cms/site/payment-methods`
+- `PUT|DELETE /api/v1/cms/site/payment-methods/{id}`
+
 CMS routes require a Bearer token returned by the admin login endpoint.
 
 ## Local run with Docker
@@ -96,7 +127,7 @@ docker compose up --build
 
 API: `http://localhost:8080`
 
-The app applies EF Core migrations on startup and seeds the default homepage/catalog category configuration when the database is empty.
+The app applies EF Core migrations on startup and seeds base homepage/catalog/site configuration when the database is empty.
 
 ## Environment variables
 
