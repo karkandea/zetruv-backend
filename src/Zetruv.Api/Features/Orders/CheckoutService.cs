@@ -9,7 +9,8 @@ public sealed class CheckoutService(ZetruvDbContext db)
         CreateCheckoutOrderRequest request,
         CancellationToken cancellationToken = default)
     {
-        if ((request.Items?.Count ?? 0) == 0)
+        var items = request.Items;
+        if (items is null || items.Count == 0)
         {
             return CreateCheckoutOrderResult.Failure("At least one checkout item is required.");
         }
@@ -21,7 +22,7 @@ public sealed class CheckoutService(ZetruvDbContext db)
                 "Customer email or phone is required.");
         }
 
-        var groupedItems = request.Items
+        var groupedItems = items
             .GroupBy(x => x.ProductVariantId)
             .Select(x => new
             {
