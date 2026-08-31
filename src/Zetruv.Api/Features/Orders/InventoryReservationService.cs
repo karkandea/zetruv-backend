@@ -19,15 +19,16 @@ public sealed class InventoryReservationService(ZetruvDbContext db)
     {
         await ReleaseExpiredAsync(cancellationToken);
 
-        var existing = await db.InventoryReservations
-            .Where(x => x.OrderId == order.Id && x.Status == InventoryReservationStatus.Active)
+        var reservations = await db.InventoryReservations
+            .Where(x => x.OrderId == order.Id)
             .ToListAsync(cancellationToken);
 
-        if (existing.Count > 0)
+        if (reservations.Any(x => x.Status == InventoryReservationStatus.Active))
         {
             return InventoryReservationResult.Success();
         }
 
+        var reservationsByVariant = reservations.ToDictionary(x => x.ProductVariantId);
         var lines = order.Items
             .Where(x => x.ProductVariantId.HasValue)
             .GroupBy(x => x.ProductVariantId!.Value)
@@ -84,16 +85,26 @@ public sealed class InventoryReservationService(ZetruvDbContext db)
                 return InventoryReservationResult.Failure("Stock changed and is no longer sufficient.");
             }
 
-            db.InventoryReservations.Add(new InventoryReservation
+            if (reservationsByVariant.TryGetValue(line.ProductVariantId, out var existing))
             {
-                OrderId = order.Id,
-                ProductVariantId = line.ProductVariantId,
-                Quantity = line.Quantity,
-                Status = InventoryReservationStatus.Active,
-                ExpiresAt = now.Add(DefaultTtl),
-                CreatedAt = now,
-                UpdatedAt = now
-            });
+                existing.Quantity = line.Quantity;
+                existing.Status = InventoryReservationStatus.Active;
+                existing.ExpiresAt = now.Add(DefaultTtl);
+                existing.UpdatedAt = now;
+            }
+            else
+            {
+                db.InventoryReservations.Add(new InventoryReservation
+                {
+                    OrderId = order.Id,
+                    ProductVariantId = line.ProductVariantId,
+                    Quantity = line.Quantity,
+                    Status = InventoryReservationStatus.Active,
+                    ExpiresAt = now.Add(DefaultTtl),
+                    CreatedAt = now,
+                    UpdatedAt = now
+                });
+            }
         }
 
         await db.SaveChangesAsync(cancellationToken);
