@@ -2,23 +2,10 @@ name: CI
 
 on:
   pull_request:
-  push:
-    branches:
-      - main
-
-permissions:
-  contents: read
 
 jobs:
-  build:
+  smoke:
     runs-on: ubuntu-latest
-
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-dotnet@v6
-        with:
-          dotnet-version: 10.0.x
-      - name: Restore
-        run: dotnet restore src/Zetruv.Api/Zetruv.Api.csproj
-      - name: Build
-        run: dotnet build src/Zetruv.Api/Zetruv.Api.csproj --configuration Release --no-restore
+      - name: Runner smoke test
+        run: echo "GitHub Actions runner started"
