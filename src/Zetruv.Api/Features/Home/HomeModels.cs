@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using Zetruv.Api.Features.Articles;
 using Zetruv.Api.Features.Catalog;
 
 namespace Zetruv.Api.Features.Home;
@@ -62,7 +63,8 @@ public sealed record HomepageResponse(
     IReadOnlyList<GameResponse> PopularGames,
     IReadOnlyList<ProductListItemResponse> Joki,
     IReadOnlyList<ProductListItemResponse> GameAccounts,
-    IReadOnlyList<ProductListItemResponse> Merchandise);
+    IReadOnlyList<ProductListItemResponse> Merchandise,
+    IReadOnlyList<ArticleListItemResponse> LatestArticles);
 
 public sealed record UpsertHeroRequest(
     [property: Required, MaxLength(160)] string Title,

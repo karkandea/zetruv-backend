@@ -4,9 +4,11 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Zetruv.Api.Features.Articles;
 using Zetruv.Api.Features.Auth;
 using Zetruv.Api.Features.Catalog;
 using Zetruv.Api.Features.Home;
+using Zetruv.Api.Features.Site;
 using Zetruv.Api.Persistence;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -86,6 +88,9 @@ builder.Services.AddScoped<JwtTokenService>();
 builder.Services.AddScoped<AdminSeeder>();
 builder.Services.AddScoped<CatalogService>();
 builder.Services.AddScoped<CatalogSeeder>();
+builder.Services.AddScoped<ArticleService>();
+builder.Services.AddScoped<SiteService>();
+builder.Services.AddScoped<SiteSeeder>();
 builder.Services.AddScoped<HomepageService>();
 builder.Services.AddScoped<HomepageSeeder>();
 
@@ -126,6 +131,10 @@ await using (var scope = app.Services.CreateAsyncScope())
 
     await scope.ServiceProvider
         .GetRequiredService<HomepageSeeder>()
+        .SeedAsync();
+
+    await scope.ServiceProvider
+        .GetRequiredService<SiteSeeder>()
         .SeedAsync();
 }
 
