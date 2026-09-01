@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using Zetruv.Api.Features.Catalog;
+using Zetruv.Api.Features.GameAccounts;
 
 namespace Zetruv.Api.Features.Orders;
 
@@ -76,6 +77,7 @@ public sealed class OrderItem
     public int Quantity { get; set; }
     public decimal LineTotal { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+    public GameAccountValidation? GameAccountValidation { get; set; }
 }
 
 public sealed class PaymentTransaction
