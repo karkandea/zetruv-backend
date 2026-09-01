@@ -72,7 +72,7 @@ public sealed class ShippingService(
         }
 
         var variantById = variants.ToDictionary(x => x.Id);
-        var totalWeightGrams = 0;
+        long totalWeightGrams = 0;
 
         foreach (var item in groupedItems)
         {
@@ -102,9 +102,11 @@ public sealed class ShippingService(
                     $"Insufficient stock for {variant.ProductName}.");
             }
 
-            checked
+            totalWeightGrams += (long)variant.WeightGrams.Value * item.Quantity;
+            if (totalWeightGrams > int.MaxValue)
             {
-                totalWeightGrams += variant.WeightGrams.Value * item.Quantity;
+                return CreateShippingQuotesResult.Failure(
+                    "Shipping weight exceeds the supported limit.");
             }
         }
 
@@ -124,7 +126,7 @@ public sealed class ShippingService(
 
         var providerRates = await provider.QuoteAsync(
             new ShippingProviderQuoteRequest(
-                totalWeightGrams,
+                (int)totalWeightGrams,
                 address.City,
                 address.Province,
                 address.PostalCode),
@@ -158,7 +160,7 @@ public sealed class ShippingService(
                 ServiceName = rate.ServiceName.Trim(),
                 Amount = rate.Amount,
                 Currency = "IDR",
-                TotalWeightGrams = totalWeightGrams,
+                TotalWeightGrams = (int)totalWeightGrams,
                 EtaMinDays = rate.EtaMinDays,
                 EtaMaxDays = rate.EtaMaxDays,
                 RecipientName = address.RecipientName,
@@ -181,7 +183,7 @@ public sealed class ShippingService(
                 "Shipping provider returned no valid rates.");
         }
 
-        db.ShippingQuotes.AddRange(quotes);
+        db.Set<ShippingQuote>().AddRange(quotes);
         await db.SaveChangesAsync(cancellationToken);
 
         return CreateShippingQuotesResult.Success(
@@ -208,11 +210,12 @@ public sealed class ShippingService(
     {
         var fingerprint = CreateCartFingerprint(merchandiseItems);
 
-        return await db.ShippingQuotes
+        return await db.Set<ShippingQuote>()
             .AsNoTracking()
             .Where(x =>
                 x.Id == quoteId &&
                 x.OrderId == null &&
+                x.ConsumedAt == null &&
                 x.ExpiresAt > now &&
                 x.CartFingerprint == fingerprint)
             .Select(x => new CheckoutShippingQuote(
@@ -243,10 +246,11 @@ public sealed class ShippingService(
         DateTimeOffset now,
         CancellationToken cancellationToken = default)
     {
-        var affected = await db.ShippingQuotes
+        var affected = await db.Set<ShippingQuote>()
             .Where(x =>
                 x.Id == quoteId &&
                 x.OrderId == null &&
+                x.ConsumedAt == null &&
                 x.ExpiresAt > now)
             .ExecuteUpdateAsync(setters => setters
                 .SetProperty(x => x.OrderId, orderId)
