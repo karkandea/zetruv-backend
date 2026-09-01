@@ -28,6 +28,7 @@ services:
       Cors__AllowedOrigins__1: ${CMS_ORIGIN:-http://localhost:5174}
       Payments__Provider: ${PAYMENTS_PROVIDER:-mock}
       Payments__Mock__WebhookSecret: ${PAYMENTS_MOCK_WEBHOOK_SECRET}
+      GameAccountValidation__Provider: ${GAME_ACCOUNT_VALIDATION_PROVIDER:-mock}
     depends_on:
       postgres:
         condition: service_healthy
