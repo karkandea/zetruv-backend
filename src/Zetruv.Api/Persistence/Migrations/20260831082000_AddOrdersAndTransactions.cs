@@ -37,6 +37,21 @@ public partial class AddOrdersAndTransactions : Migration
             },
             constraints: table => table.PrimaryKey("PK_orders", x => x.Id));
 
+        migrationBuilder.Sql("""
+DO $$
+BEGIN
+    IF to_regclass('public.inventory_reservations') IS NOT NULL
+       AND NOT EXISTS (
+           SELECT 1
+           FROM pg_constraint
+           WHERE conname = 'FK_inventory_reservations_orders_OrderId') THEN
+        ALTER TABLE inventory_reservations
+        ADD CONSTRAINT "FK_inventory_reservations_orders_OrderId"
+        FOREIGN KEY ("OrderId") REFERENCES orders ("Id") ON DELETE CASCADE;
+    END IF;
+END $$;
+""");
+
         migrationBuilder.CreateTable(
             name: "order_items",
             columns: table => new
@@ -153,6 +168,17 @@ public partial class AddOrdersAndTransactions : Migration
     {
         migrationBuilder.DropTable(name: "payment_transactions");
         migrationBuilder.DropTable(name: "order_items");
+
+        migrationBuilder.Sql("""
+DO $$
+BEGIN
+    IF to_regclass('public.inventory_reservations') IS NOT NULL THEN
+        ALTER TABLE inventory_reservations
+        DROP CONSTRAINT IF EXISTS "FK_inventory_reservations_orders_OrderId";
+    END IF;
+END $$;
+""");
+
         migrationBuilder.DropTable(name: "orders");
     }
 }
