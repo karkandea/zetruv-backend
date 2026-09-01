@@ -29,12 +29,6 @@ public partial class AddInventoryReservations : Migration
             {
                 table.PrimaryKey("PK_inventory_reservations", x => x.Id);
                 table.ForeignKey(
-                    name: "FK_inventory_reservations_orders_OrderId",
-                    column: x => x.OrderId,
-                    principalTable: "orders",
-                    principalColumn: "Id",
-                    onDelete: ReferentialAction.Cascade);
-                table.ForeignKey(
                     name: "FK_inventory_reservations_product_variants_ProductVariantId",
                     column: x => x.ProductVariantId,
                     principalTable: "product_variants",
