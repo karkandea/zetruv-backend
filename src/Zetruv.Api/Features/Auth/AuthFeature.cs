@@ -130,6 +130,7 @@ namespace Zetruv.Api.Features.Auth
         string Role);
 
     [ApiController]
+    [Route("api/v1/cms/auth")]
     [Route("api/v1/admin/auth")]
     public sealed class AdminAuthController(
         ZetruvDbContext db,
