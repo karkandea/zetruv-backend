@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Zetruv.Api.Features.Shipping;
 using Zetruv.Api.Persistence;
 
 namespace Zetruv.Api.Features.Orders;
@@ -118,6 +119,29 @@ public sealed class OrderService(ZetruvDbContext db)
                 x.CompletedAt,
                 x.CreatedAt,
                 x.UpdatedAt,
+                x.Shipment == null
+                    ? null
+                    : new ShipmentAdminResponse(
+                        x.Shipment.Status,
+                        x.Shipment.Provider,
+                        x.Shipment.ServiceCode,
+                        x.Shipment.ServiceName,
+                        x.Shipment.TrackingNumber,
+                        x.Shipment.Cost,
+                        x.Shipment.Currency,
+                        x.Shipment.TotalWeightGrams,
+                        x.Shipment.EtaMinDays,
+                        x.Shipment.EtaMaxDays,
+                        x.Shipment.RecipientName,
+                        x.Shipment.Phone,
+                        x.Shipment.AddressLine1,
+                        x.Shipment.AddressLine2,
+                        x.Shipment.District,
+                        x.Shipment.City,
+                        x.Shipment.Province,
+                        x.Shipment.PostalCode,
+                        x.Shipment.ShippedAt,
+                        x.Shipment.DeliveredAt),
                 x.Items
                     .OrderBy(i => i.CreatedAt)
                     .Select(i => new OrderItemResponse(
