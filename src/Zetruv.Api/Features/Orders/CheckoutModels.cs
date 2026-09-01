@@ -12,7 +12,8 @@ public sealed record CreateCheckoutOrderRequest(
     [property: MaxLength(120)] string? CustomerName,
     [property: EmailAddress, MaxLength(320)] string? CustomerEmail,
     [property: MaxLength(50)] string? CustomerPhone,
-    [property: Required, MinLength(1)] IReadOnlyList<CheckoutItemRequest> Items);
+    [property: Required, MinLength(1)] IReadOnlyList<CheckoutItemRequest> Items,
+    Guid? ShippingQuoteId = null);
 
 public sealed record CheckoutOrderItemResponse(
     Guid ProductVariantId,
