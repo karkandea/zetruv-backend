@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -10,18 +11,37 @@ using Zetruv.Api.Persistence;
 
 namespace Zetruv.Api.Features.GameAccounts;
 
+[Table("game_account_validations")]
+[Index(nameof(ProductId))]
+[Index(nameof(OrderItemId), IsUnique = true)]
+[Index(nameof(ExpiresAt))]
+[Index(nameof(Provider), nameof(ProviderReference))]
 public sealed class GameAccountValidation
 {
     public Guid Id { get; set; } = Guid.NewGuid();
+
     public Guid ProductId { get; set; }
     public Product Product { get; set; } = null!;
+
+    [ForeignKey(nameof(OrderItem))]
     public Guid? OrderItemId { get; set; }
     public OrderItem? OrderItem { get; set; }
+
+    [MaxLength(80)]
     public string Provider { get; set; } = string.Empty;
+
+    [MaxLength(180)]
     public string? ProviderReference { get; set; }
+
+    [MaxLength(160)]
     public string? AccountDisplayName { get; set; }
+
+    [Column(TypeName = "jsonb")]
     public string InputJson { get; set; } = "{}";
+
+    [MaxLength(64)]
     public string InputFingerprint { get; set; } = string.Empty;
+
     public DateTimeOffset ValidatedAt { get; set; }
     public DateTimeOffset ExpiresAt { get; set; }
     public DateTimeOffset? ConsumedAt { get; set; }
@@ -260,7 +280,7 @@ public sealed class GameAccountValidationService(
             CreatedAt = now
         };
 
-        db.GameAccountValidations.Add(validation);
+        db.Set<GameAccountValidation>().Add(validation);
         await db.SaveChangesAsync(cancellationToken);
 
         return GameAccountValidationResult.Success(
