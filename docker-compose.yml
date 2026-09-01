@@ -29,6 +29,7 @@ services:
       Payments__Provider: ${PAYMENTS_PROVIDER:-mock}
       Payments__Mock__WebhookSecret: ${PAYMENTS_MOCK_WEBHOOK_SECRET}
       GameAccountValidation__Provider: ${GAME_ACCOUNT_VALIDATION_PROVIDER:-mock}
+      Shipping__Provider: ${SHIPPING_PROVIDER:-mock}
     depends_on:
       postgres:
         condition: service_healthy
