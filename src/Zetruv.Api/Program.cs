@@ -13,6 +13,7 @@ using Zetruv.Api.Features.GameAccounts;
 using Zetruv.Api.Features.Home;
 using Zetruv.Api.Features.Orders;
 using Zetruv.Api.Features.Payments;
+using Zetruv.Api.Features.Shipping;
 using Zetruv.Api.Features.Site;
 using Zetruv.Api.Persistence;
 
@@ -33,6 +34,17 @@ builder.Services.AddRateLimiter(options =>
             factory: _ => new FixedWindowRateLimiterOptions
             {
                 PermitLimit = 10,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+                AutoReplenishment = true
+            }));
+
+    options.AddPolicy("shipping-quote", httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 30,
                 Window = TimeSpan.FromMinutes(1),
                 QueueLimit = 0,
                 AutoReplenishment = true
@@ -115,6 +127,9 @@ builder.Services.AddHostedService<InventoryReservationCleanupService>();
 builder.Services.AddScoped<IGameAccountValidator, MockGameAccountValidator>();
 builder.Services.AddScoped<GameAccountValidatorResolver>();
 builder.Services.AddScoped<GameAccountValidationService>();
+builder.Services.AddScoped<IShippingProvider, MockShippingProvider>();
+builder.Services.AddScoped<ShippingProviderResolver>();
+builder.Services.AddScoped<ShippingService>();
 builder.Services.AddScoped<IPaymentGateway, MockPaymentGateway>();
 builder.Services.AddScoped<PaymentGatewayResolver>();
 builder.Services.AddScoped<PaymentService>();
