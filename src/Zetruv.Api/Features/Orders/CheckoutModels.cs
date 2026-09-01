@@ -5,7 +5,8 @@ namespace Zetruv.Api.Features.Orders;
 
 public sealed record CheckoutItemRequest(
     Guid ProductVariantId,
-    [property: Range(1, 99)] int Quantity);
+    [property: Range(1, 99)] int Quantity,
+    Guid? GameAccountValidationId = null);
 
 public sealed record CreateCheckoutOrderRequest(
     [property: MaxLength(120)] string? CustomerName,
