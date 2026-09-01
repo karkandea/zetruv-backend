@@ -56,6 +56,7 @@ public sealed class Order
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
     public ICollection<OrderItem> Items { get; set; } = [];
     public ICollection<PaymentTransaction> Transactions { get; set; } = [];
+    public ShippingQuote? ShippingQuote { get; set; }
     public Shipment? Shipment { get; set; }
 }
 
