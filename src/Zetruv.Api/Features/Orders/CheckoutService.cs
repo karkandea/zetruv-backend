@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Zetruv.Api.Features.GameAccounts;
 using Zetruv.Api.Persistence;
 
 namespace Zetruv.Api.Features.Orders;
@@ -23,10 +24,11 @@ public sealed class CheckoutService(ZetruvDbContext db)
         }
 
         var groupedItems = items
-            .GroupBy(x => x.ProductVariantId)
+            .GroupBy(x => new { x.ProductVariantId, x.GameAccountValidationId })
             .Select(x => new
             {
-                ProductVariantId = x.Key,
+                x.Key.ProductVariantId,
+                x.Key.GameAccountValidationId,
                 Quantity = x.Sum(i => i.Quantity)
             })
             .ToList();
@@ -34,11 +36,23 @@ public sealed class CheckoutService(ZetruvDbContext db)
         if (groupedItems.Count > 50 || groupedItems.Any(x => x.Quantity is < 1 or > 99))
         {
             return CreateCheckoutOrderResult.Failure(
-                "Checkout supports up to 50 distinct variants and 99 units per variant.");
+                "Checkout supports up to 50 distinct lines and 99 units per line.");
+        }
+
+        var duplicateValidation = groupedItems
+            .Where(x => x.GameAccountValidationId.HasValue)
+            .GroupBy(x => x.GameAccountValidationId!.Value)
+            .Any(x => x.Count() > 1);
+
+        if (duplicateValidation)
+        {
+            return CreateCheckoutOrderResult.Failure(
+                "A game account validation can only be used for one checkout line.");
         }
 
         var variantIds = groupedItems
             .Select(x => x.ProductVariantId)
+            .Distinct()
             .ToArray();
 
         var variants = await db.ProductVariants
@@ -57,6 +71,7 @@ public sealed class CheckoutService(ZetruvDbContext db)
                 ProductSlug = x.Product.Slug,
                 ProductKind = x.Product.Kind,
                 ProductThumbnailUrl = x.Product.ThumbnailUrl,
+                ProductRequiresGameAccountValidation = x.Product.RequiresGameAccountValidation,
                 ProductIsActive = x.Product.IsActive,
                 CategoryIsActive = x.Product.Category.IsActive,
                 GameName = x.Product.Game == null ? null : x.Product.Game.Name,
@@ -87,9 +102,67 @@ public sealed class CheckoutService(ZetruvDbContext db)
                 return CreateCheckoutOrderResult.Failure(
                     $"Insufficient stock for {variant.ProductName} / {variant.Name}.");
             }
+
+            if (variant.ProductRequiresGameAccountValidation &&
+                !item.GameAccountValidationId.HasValue)
+            {
+                return CreateCheckoutOrderResult.Failure(
+                    $"{variant.ProductName} requires game account validation before checkout.");
+            }
+
+            if (!variant.ProductRequiresGameAccountValidation &&
+                item.GameAccountValidationId.HasValue)
+            {
+                return CreateCheckoutOrderResult.Failure(
+                    $"{variant.ProductName} does not accept a game account validation.");
+            }
         }
 
         var now = DateTimeOffset.UtcNow;
+        var validationIds = groupedItems
+            .Where(x => x.GameAccountValidationId.HasValue)
+            .Select(x => x.GameAccountValidationId!.Value)
+            .ToArray();
+
+        var validations = validationIds.Length == 0
+            ? []
+            : await db.GameAccountValidations
+                .AsNoTracking()
+                .Where(x => validationIds.Contains(x.Id))
+                .Select(x => new
+                {
+                    x.Id,
+                    x.ProductId,
+                    x.OrderItemId,
+                    x.ExpiresAt
+                })
+                .ToListAsync(cancellationToken);
+
+        if (validations.Count != validationIds.Length)
+        {
+            return CreateCheckoutOrderResult.Failure(
+                "One or more game account validations do not exist.");
+        }
+
+        var validationById = validations.ToDictionary(x => x.Id);
+        foreach (var item in groupedItems.Where(x => x.GameAccountValidationId.HasValue))
+        {
+            var variant = variantById[item.ProductVariantId];
+            var validation = validationById[item.GameAccountValidationId!.Value];
+
+            if (validation.ProductId != variant.ProductId)
+            {
+                return CreateCheckoutOrderResult.Failure(
+                    "Game account validation does not match the selected product.");
+            }
+
+            if (validation.OrderItemId.HasValue || validation.ExpiresAt <= now)
+            {
+                return CreateCheckoutOrderResult.Failure(
+                    "Game account validation expired or was already used. Please validate again.");
+            }
+        }
+
         var salePrices = await db.PromotionItems
             .AsNoTracking()
             .Where(x =>
@@ -113,6 +186,7 @@ public sealed class CheckoutService(ZetruvDbContext db)
         decimal discountAmount = 0;
         var orderItems = new List<OrderItem>(groupedItems.Count);
         var responseItems = new List<CheckoutOrderItemResponse>(groupedItems.Count);
+        var validationClaims = new List<(Guid ValidationId, Guid OrderItemId)>();
 
         foreach (var item in groupedItems)
         {
@@ -131,7 +205,7 @@ public sealed class CheckoutService(ZetruvDbContext db)
             subtotal += regularLineTotal;
             discountAmount += regularLineTotal - lineTotal;
 
-            orderItems.Add(new OrderItem
+            var orderItem = new OrderItem
             {
                 ProductId = variant.ProductId,
                 ProductVariantId = variant.Id,
@@ -146,7 +220,14 @@ public sealed class CheckoutService(ZetruvDbContext db)
                 Quantity = item.Quantity,
                 LineTotal = lineTotal,
                 CreatedAt = now
-            });
+            };
+
+            orderItems.Add(orderItem);
+
+            if (item.GameAccountValidationId.HasValue)
+            {
+                validationClaims.Add((item.GameAccountValidationId.Value, orderItem.Id));
+            }
 
             responseItems.Add(new CheckoutOrderItemResponse(
                 variant.Id,
@@ -182,8 +263,32 @@ public sealed class CheckoutService(ZetruvDbContext db)
             Items = orderItems
         };
 
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+
         db.Orders.Add(order);
         await db.SaveChangesAsync(cancellationToken);
+
+        foreach (var claim in validationClaims)
+        {
+            var affected = await db.GameAccountValidations
+                .Where(x =>
+                    x.Id == claim.ValidationId &&
+                    x.OrderItemId == null &&
+                    x.ExpiresAt > now)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(x => x.OrderItemId, claim.OrderItemId)
+                    .SetProperty(x => x.ConsumedAt, now),
+                    cancellationToken);
+
+            if (affected != 1)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                return CreateCheckoutOrderResult.Failure(
+                    "Game account validation expired or was already used. Please validate again.");
+            }
+        }
+
+        await transaction.CommitAsync(cancellationToken);
 
         return CreateCheckoutOrderResult.Success(
             new CreateCheckoutOrderResponse(
