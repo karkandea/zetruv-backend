@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Zetruv.Api.Features.Catalog;
+using Zetruv.Api.Features.Shipping;
 using Zetruv.Api.Persistence;
 
 namespace Zetruv.Api.Features.Orders;
@@ -36,6 +37,7 @@ public sealed record TrackOrderResponse(
     DateTimeOffset CreatedAt,
     DateTimeOffset? PaidAt,
     DateTimeOffset? CompletedAt,
+    ShipmentTrackingResponse? Shipment,
     IReadOnlyList<TrackOrderItemResponse> Items);
 
 public sealed class OrderTrackingService(ZetruvDbContext db)
@@ -74,6 +76,18 @@ public sealed class OrderTrackingService(ZetruvDbContext db)
                 x.CreatedAt,
                 x.PaidAt,
                 x.CompletedAt,
+                x.Shipment == null
+                    ? null
+                    : new ShipmentTrackingResponse(
+                        x.Shipment.Status,
+                        x.Shipment.Provider,
+                        x.Shipment.ServiceCode,
+                        x.Shipment.ServiceName,
+                        x.Shipment.TrackingNumber,
+                        x.Shipment.EtaMinDays,
+                        x.Shipment.EtaMaxDays,
+                        x.Shipment.ShippedAt,
+                        x.Shipment.DeliveredAt),
                 x.Items
                     .OrderBy(i => i.CreatedAt)
                     .Select(i => new TrackOrderItemResponse(
