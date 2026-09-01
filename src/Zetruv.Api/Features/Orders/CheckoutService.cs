@@ -1,10 +1,14 @@
 using Microsoft.EntityFrameworkCore;
+using Zetruv.Api.Features.Catalog;
 using Zetruv.Api.Features.GameAccounts;
+using Zetruv.Api.Features.Shipping;
 using Zetruv.Api.Persistence;
 
 namespace Zetruv.Api.Features.Orders;
 
-public sealed class CheckoutService(ZetruvDbContext db)
+public sealed class CheckoutService(
+    ZetruvDbContext db,
+    ShippingService shippingService)
 {
     public async Task<CreateCheckoutOrderResult> CreateOrderAsync(
         CreateCheckoutOrderRequest request,
@@ -161,6 +165,44 @@ public sealed class CheckoutService(ZetruvDbContext db)
             }
         }
 
+        var merchandiseItems = groupedItems
+            .Where(x => variantById[x.ProductVariantId].ProductKind == ProductKind.Merchandise)
+            .Select(x => new ShippingQuoteItemRequest(x.ProductVariantId, x.Quantity))
+            .ToList();
+
+        CheckoutShippingQuote? shippingQuote = null;
+        if (merchandiseItems.Count > 0)
+        {
+            if (!request.ShippingQuoteId.HasValue)
+            {
+                return CreateCheckoutOrderResult.Failure(
+                    "A valid shipping quote is required for merchandise checkout.");
+            }
+
+            shippingQuote = await shippingService.GetCheckoutQuoteAsync(
+                request.ShippingQuoteId.Value,
+                merchandiseItems,
+                now,
+                cancellationToken);
+
+            if (shippingQuote is null)
+            {
+                return CreateCheckoutOrderResult.Failure(
+                    "Shipping quote expired, was already used, or does not match the merchandise items.");
+            }
+
+            if (!string.Equals(shippingQuote.Currency, "IDR", StringComparison.OrdinalIgnoreCase))
+            {
+                return CreateCheckoutOrderResult.Failure(
+                    "Shipping quote currency is not supported by this checkout.");
+            }
+        }
+        else if (request.ShippingQuoteId.HasValue)
+        {
+            return CreateCheckoutOrderResult.Failure(
+                "Shipping quote is only accepted when checkout contains merchandise.");
+        }
+
         var salePrices = await db.PromotionItems
             .AsNoTracking()
             .Where(x =>
@@ -240,7 +282,7 @@ public sealed class CheckoutService(ZetruvDbContext db)
                 lineTotal));
         }
 
-        const decimal shippingAmount = 0;
+        var shippingAmount = shippingQuote?.Amount ?? 0m;
         var grandTotal = subtotal - discountAmount + shippingAmount;
 
         var order = new Order
@@ -258,13 +300,54 @@ public sealed class CheckoutService(ZetruvDbContext db)
             Currency = "IDR",
             CreatedAt = now,
             UpdatedAt = now,
-            Items = orderItems
+            Items = orderItems,
+            Shipment = shippingQuote is null
+                ? null
+                : new Shipment
+                {
+                    Status = ShipmentStatus.Pending,
+                    Provider = shippingQuote.Provider,
+                    ProviderReference = shippingQuote.ProviderReference,
+                    ServiceCode = shippingQuote.ServiceCode,
+                    ServiceName = shippingQuote.ServiceName,
+                    Cost = shippingQuote.Amount,
+                    Currency = shippingQuote.Currency,
+                    TotalWeightGrams = shippingQuote.TotalWeightGrams,
+                    EtaMinDays = shippingQuote.EtaMinDays,
+                    EtaMaxDays = shippingQuote.EtaMaxDays,
+                    RecipientName = shippingQuote.RecipientName,
+                    Phone = shippingQuote.Phone,
+                    AddressLine1 = shippingQuote.AddressLine1,
+                    AddressLine2 = shippingQuote.AddressLine2,
+                    District = shippingQuote.District,
+                    City = shippingQuote.City,
+                    Province = shippingQuote.Province,
+                    PostalCode = shippingQuote.PostalCode,
+                    CreatedAt = now,
+                    UpdatedAt = now
+                }
         };
 
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
 
         db.Orders.Add(order);
         await db.SaveChangesAsync(cancellationToken);
+
+        if (shippingQuote is not null)
+        {
+            var claimed = await shippingService.ClaimQuoteAsync(
+                shippingQuote.Id,
+                order.Id,
+                now,
+                cancellationToken);
+
+            if (!claimed)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                return CreateCheckoutOrderResult.Failure(
+                    "Shipping quote expired or was already used. Please request a new quote.");
+            }
+        }
 
         foreach (var claim in validationClaims)
         {
