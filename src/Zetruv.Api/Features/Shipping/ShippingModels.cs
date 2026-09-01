@@ -1,4 +1,6 @@
 using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
+using Microsoft.EntityFrameworkCore;
 using Zetruv.Api.Features.Orders;
 
 namespace Zetruv.Api.Features.Shipping;
@@ -12,58 +14,136 @@ public enum ShipmentStatus
     Cancelled
 }
 
+[Table("shipping_quotes")]
+[Index(nameof(OrderId), IsUnique = true)]
+[Index(nameof(ExpiresAt))]
+[Index(nameof(CartFingerprint))]
+[Index(nameof(Provider), nameof(ProviderReference))]
 public sealed class ShippingQuote
 {
     public Guid Id { get; set; } = Guid.NewGuid();
+
+    [ForeignKey(nameof(Order))]
     public Guid? OrderId { get; set; }
     public Order? Order { get; set; }
+
+    [MaxLength(80)]
     public string Provider { get; set; } = string.Empty;
+
+    [MaxLength(180)]
     public string? ProviderReference { get; set; }
+
+    [MaxLength(80)]
     public string ServiceCode { get; set; } = string.Empty;
+
+    [MaxLength(120)]
     public string ServiceName { get; set; } = string.Empty;
+
+    [Precision(18, 2)]
     public decimal Amount { get; set; }
+
+    [MaxLength(3)]
     public string Currency { get; set; } = "IDR";
+
     public int TotalWeightGrams { get; set; }
     public int? EtaMinDays { get; set; }
     public int? EtaMaxDays { get; set; }
+
+    [MaxLength(120)]
     public string RecipientName { get; set; } = string.Empty;
+
+    [MaxLength(50)]
     public string Phone { get; set; } = string.Empty;
+
+    [MaxLength(250)]
     public string AddressLine1 { get; set; } = string.Empty;
+
+    [MaxLength(250)]
     public string? AddressLine2 { get; set; }
+
+    [MaxLength(120)]
     public string District { get; set; } = string.Empty;
+
+    [MaxLength(120)]
     public string City { get; set; } = string.Empty;
+
+    [MaxLength(120)]
     public string Province { get; set; } = string.Empty;
+
+    [MaxLength(10)]
     public string PostalCode { get; set; } = string.Empty;
+
+    [MaxLength(64)]
     public string CartFingerprint { get; set; } = string.Empty;
+
     public DateTimeOffset ExpiresAt { get; set; }
     public DateTimeOffset? ConsumedAt { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 }
 
+[Table("shipments")]
+[Index(nameof(OrderId), IsUnique = true)]
+[Index(nameof(Status), nameof(UpdatedAt))]
+[Index(nameof(Provider), nameof(TrackingNumber))]
 public sealed class Shipment
 {
     public Guid Id { get; set; } = Guid.NewGuid();
+
+    [ForeignKey(nameof(Order))]
     public Guid OrderId { get; set; }
     public Order Order { get; set; } = null!;
+
     public ShipmentStatus Status { get; set; } = ShipmentStatus.Pending;
+
+    [MaxLength(80)]
     public string Provider { get; set; } = string.Empty;
+
+    [MaxLength(180)]
     public string? ProviderReference { get; set; }
+
+    [MaxLength(80)]
     public string ServiceCode { get; set; } = string.Empty;
+
+    [MaxLength(120)]
     public string ServiceName { get; set; } = string.Empty;
+
+    [MaxLength(180)]
     public string? TrackingNumber { get; set; }
+
+    [Precision(18, 2)]
     public decimal Cost { get; set; }
+
+    [MaxLength(3)]
     public string Currency { get; set; } = "IDR";
+
     public int TotalWeightGrams { get; set; }
     public int? EtaMinDays { get; set; }
     public int? EtaMaxDays { get; set; }
+
+    [MaxLength(120)]
     public string RecipientName { get; set; } = string.Empty;
+
+    [MaxLength(50)]
     public string Phone { get; set; } = string.Empty;
+
+    [MaxLength(250)]
     public string AddressLine1 { get; set; } = string.Empty;
+
+    [MaxLength(250)]
     public string? AddressLine2 { get; set; }
+
+    [MaxLength(120)]
     public string District { get; set; } = string.Empty;
+
+    [MaxLength(120)]
     public string City { get; set; } = string.Empty;
+
+    [MaxLength(120)]
     public string Province { get; set; } = string.Empty;
+
+    [MaxLength(10)]
     public string PostalCode { get; set; } = string.Empty;
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? ShippedAt { get; set; }
