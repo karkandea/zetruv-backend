@@ -124,19 +124,17 @@ public sealed class CheckoutService(ZetruvDbContext db)
             .Select(x => x.GameAccountValidationId!.Value)
             .ToArray();
 
-        var validations = validationIds.Length == 0
-            ? []
-            : await db.Set<GameAccountValidation>()
-                .AsNoTracking()
-                .Where(x => validationIds.Contains(x.Id))
-                .Select(x => new
-                {
-                    x.Id,
-                    x.ProductId,
-                    x.OrderItemId,
-                    x.ExpiresAt
-                })
-                .ToListAsync(cancellationToken);
+        var validations = await db.Set<GameAccountValidation>()
+            .AsNoTracking()
+            .Where(x => validationIds.Contains(x.Id))
+            .Select(x => new
+            {
+                x.Id,
+                x.ProductId,
+                x.OrderItemId,
+                x.ExpiresAt
+            })
+            .ToListAsync(cancellationToken);
 
         if (validations.Count != validationIds.Length)
         {
