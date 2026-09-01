@@ -126,7 +126,7 @@ public sealed class CheckoutService(ZetruvDbContext db)
 
         var validations = validationIds.Length == 0
             ? []
-            : await db.GameAccountValidations
+            : await db.Set<GameAccountValidation>()
                 .AsNoTracking()
                 .Where(x => validationIds.Contains(x.Id))
                 .Select(x => new
@@ -270,7 +270,7 @@ public sealed class CheckoutService(ZetruvDbContext db)
 
         foreach (var claim in validationClaims)
         {
-            var affected = await db.GameAccountValidations
+            var affected = await db.Set<GameAccountValidation>()
                 .Where(x =>
                     x.Id == claim.ValidationId &&
                     x.OrderItemId == null &&
