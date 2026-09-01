@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Zetruv.Api.Features.Catalog;
 using Zetruv.Api.Persistence;
@@ -98,6 +99,7 @@ public sealed class OrderTrackingService(ZetruvDbContext db)
 public sealed class OrderTrackingController(OrderTrackingService trackingService) : ControllerBase
 {
     [HttpPost("lookup")]
+    [EnableRateLimiting("order-lookup")]
     public async Task<ActionResult<TrackOrderResponse>> Lookup(
         TrackOrderRequest request,
         CancellationToken cancellationToken)
