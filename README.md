@@ -10,22 +10,17 @@ Backend API for Zetruv.
 - JWT authentication for the React CMS
 - Docker / Docker Compose
 
-The codebase is a modular monolith. Features are grouped by domain so catalog, orders, payments, joki, game accounts, merchandise, articles, users, integrations, and leaderboard can evolve independently without creating deployment complexity too early.
+The codebase is a modular monolith. Features are grouped by domain so catalog, orders, payments, game-account validation, joki, merchandise, articles, integrations, and future fulfillment providers can evolve independently without creating deployment complexity too early.
 
 ## Product ownership
 
 Zetruv owns and manages its catalog. Products, prices, variants, images, stock, and merchandising flags are entered by Zetruv admins through the CMS API.
 
-Third-party services stay behind integration boundaries. Examples planned for later slices:
-
-- Shipping/rates/tracking for physical merchandise (for example RajaOngkir)
-- Game-account validation for products that require user ID / zone / username verification
-
-Those providers do not own the Zetruv product schema.
+Third-party services stay behind provider boundaries. Payment, game-account validation, and later shipping/fulfillment providers do not own the Zetruv product or order schema.
 
 ## Implemented slices
 
-Homepage / catalog:
+### Homepage / catalog
 
 - Dynamic hero/banner content with scheduling and ordering
 - Homepage section configuration
@@ -33,55 +28,43 @@ Homepage / catalog:
 - Product kinds: `TopUpGame`, `TopUpLogin`, `GameVoucher`, `Joki`, `Merchandise`, `GameAccount`
 - Variant price, compare-at price, optional stock, and optional physical weight
 - Product-level `requiresGameAccountValidation` flag
-- Popular games, featured products, and scheduled Flash Sale promotions
-- Homepage service categories, Flash Sale, Popular Games, Joki, Game Accounts, and Merchandise use real catalog data
+- Popular games, featured products, scheduled Flash Sale promotions
+- Homepage service categories, Flash Sale, Popular Games, Joki, Game Accounts, Merchandise, latest articles, and recent purchases use persisted data
 
-Orders / transactions:
+### Orders / checkout
 
-- Order and immutable order-item snapshots for historical purchase data
-- Order status: `Pending`, `Processing`, `Completed`, `Cancelled`
-- Payment status: `Pending`, `Paid`, `Failed`, `Refunded`
-- Payment transaction records separated from provider implementation
-- Admin order list/detail and status management
-- Homepage `RecentlyPurchased` is populated only from completed + paid orders
-- Public recent-purchase data intentionally excludes customer identity/contact details
-
-Checkout:
-
-- Guest checkout creates a pending order from product variant IDs and quantities
+- Guest checkout creates pending orders from product variants and quantities
 - Product name, slug, SKU, game, image, kind, and charged price are snapshotted into `OrderItem`
-- Price is always resolved server-side; the frontend never submits a trusted amount
-- Active Flash Sale pricing is applied automatically and reflected in `discountAmount`
-- Inactive products/categories/games/variants and insufficient stock are rejected
-- Checkout currently requires at least customer email or phone
-- Shipping is currently `0` until the shipping-provider slice is implemented
-- Stock is validated but not reserved/decremented yet
+- Prices and active Flash Sale discounts are always resolved server-side
+- Inactive catalog data and insufficient stock are rejected
+- Checkout requires at least customer email or phone
+- Public order lookup powers the `Cek Pesanan` flow using order number plus matching email/phone
+- Order lookup does not echo customer contact data and is rate-limited
 
-Payments:
+### Payments / inventory
 
-- Payment provider integration is behind `IPaymentGateway`
-- `POST /api/v1/checkout/orders/{orderId}/payment` initiates payment using the configured provider
-- Payment amount always comes from the persisted order; the frontend cannot override it
-- Each initiation creates a pending `PaymentTransaction` and stores the provider/reference on the order
-- A `mock` gateway is available for development/staging flow testing
-- Real provider callbacks/webhooks and reconciliation are intentionally deferred until a production provider is selected
+- Payment integration is behind `IPaymentGateway`
+- Payment initiation always uses the persisted order total
+- Verified webhook/reconciliation flow supports pending, paid, failed, and refunded states
+- Bounded stock is reserved when payment starts, consumed when payment succeeds, and released when payment fails/cancels/expires
+- Nullable stock remains unlimited/non-stock-tracked
+- Expired reservations are cleaned up in the background
+- A `mock` payment gateway is available for development/staging
 
-Articles:
+### Game-account validation
 
-- Article categories
-- Article CRUD with draft/published state
-- Scheduled `publishedAt`
-- Thumbnail, excerpt, author, content, featured flag, and unique slug
-- Public article list with category/search/pagination
-- Homepage `LatestArticles` uses published article data
+- Validation integration is behind `IGameAccountValidator`
+- `POST /api/v1/game-account/validate` accepts provider-agnostic account fields for products that require validation
+- Successful validations are short-lived and single-use per checkout line
+- Checkout rejects missing, expired, already-used, or wrong-product validation IDs
+- Validation input is persisted for later fulfillment, while password/OTP/token/secret-like fields are explicitly rejected
+- A `mock` validator is available for development/staging; the production vendor adapter remains separate
 
-Site / footer:
+### Articles / site
 
-- Dynamic logo, brand description, copyright text
-- Dynamic floating contact-team CTA
-- Footer links grouped as `Page`, `Support`, or `Legality`
-- Social links
-- Payment methods and icon URLs
+- Article categories and article CRUD with draft/published scheduling
+- Public article list/detail and homepage latest articles
+- Dynamic site logo, brand description, contact CTA, footer links, social links, and payment methods
 
 ## Public API
 
@@ -92,29 +75,34 @@ Site / footer:
 - `GET /api/v1/catalog/products`
 - `GET /api/v1/catalog/products/{slug}`
 - `GET /api/v1/catalog/flash-sale`
+- `POST /api/v1/game-account/validate`
 - `POST /api/v1/checkout/orders`
 - `POST /api/v1/checkout/orders/{orderId}/payment`
+- `POST /api/v1/payments/webhooks/{provider}`
+- `POST /api/v1/orders/lookup`
 - `GET /api/v1/articles/categories`
 - `GET /api/v1/articles`
 - `GET /api/v1/articles/{slug}`
 - `GET /api/v1/site/footer`
 
-Checkout order creation accepts customer contact data plus variant IDs and quantities. All totals are recalculated from the current server-side catalog and active Flash Sale data.
+For a checkout item whose product has `requiresGameAccountValidation=true`, call the validation endpoint first and pass the returned `validationId` as that checkout line's `gameAccountValidationId`.
 
-## Admin / CMS API
+## CMS API
+
+Canonical CMS prefix: `/api/v1/cms`.
 
 Authentication:
 
-- `POST /api/v1/admin/auth/login`
+- `POST /api/v1/cms/auth/login`
 
 Homepage:
 
-- `GET|POST /api/v1/admin/homepage/heroes`
-- `PUT|DELETE /api/v1/admin/homepage/heroes/{id}`
-- `GET /api/v1/admin/homepage/sections`
-- `PUT /api/v1/admin/homepage/sections/{key}`
+- `GET|POST /api/v1/cms/homepage/heroes`
+- `PUT|DELETE /api/v1/cms/homepage/heroes/{id}`
+- `GET /api/v1/cms/homepage/sections`
+- `PUT /api/v1/cms/homepage/sections/{key}`
 
-Catalog / promotion:
+Catalog / promotions:
 
 - `GET|POST /api/v1/cms/catalog/categories`
 - `PUT|DELETE /api/v1/cms/catalog/categories/{id}`
@@ -129,22 +117,19 @@ Catalog / promotion:
 - `GET|POST /api/v1/cms/promotions`
 - `PUT|DELETE /api/v1/cms/promotions/{id}`
 
-Orders / transactions:
+Orders:
 
 - `GET /api/v1/cms/orders`
 - `GET /api/v1/cms/orders/{id}`
 - `PUT /api/v1/cms/orders/{id}/status`
 - `PUT /api/v1/cms/orders/{id}/payment-status`
 
-Articles:
+Articles / site:
 
 - `GET|POST /api/v1/cms/articles/categories`
 - `PUT|DELETE /api/v1/cms/articles/categories/{id}`
 - `GET|POST /api/v1/cms/articles`
 - `GET|PUT|DELETE /api/v1/cms/articles/{id}`
-
-Site / footer:
-
 - `GET|PUT /api/v1/cms/site/settings`
 - `GET|POST /api/v1/cms/site/footer-links`
 - `PUT|DELETE /api/v1/cms/site/footer-links/{id}`
@@ -153,7 +138,7 @@ Site / footer:
 - `GET|POST /api/v1/cms/site/payment-methods`
 - `PUT|DELETE /api/v1/cms/site/payment-methods/{id}`
 
-CMS routes require a Bearer token returned by the admin login endpoint.
+The legacy `/api/v1/admin/auth/...` and `/api/v1/admin/homepage/...` routes remain temporary compatibility aliases. CMS routes require the Bearer token returned by the CMS login endpoint.
 
 ## Local run with Docker
 
@@ -178,6 +163,7 @@ At minimum for staging/production:
 - `CmsAdmin__Password`
 - `Cors__AllowedOrigins__0` (public frontend)
 - `Cors__AllowedOrigins__1` (CMS frontend)
-- `Payments__Provider` (`mock` for development/staging until a real provider adapter is configured)
+- `Payments__Provider`
+- `GameAccountValidation__Provider`
 
-Do not commit real credentials.
+`mock` is intended only for development/staging provider configuration. Do not commit real credentials or production provider secrets.
