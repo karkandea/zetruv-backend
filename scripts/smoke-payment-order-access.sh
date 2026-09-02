@@ -74,7 +74,18 @@ echo 'PASS: missing, invalid, and cross-order tokens are rejected'
 echo '=== AUTHORIZED PAYMENT ==='
 CODE=$(curl -sS -o /tmp/payment-access-response.json -w '%{http_code}' -X POST "http://127.0.0.1:$API/api/v1/checkout/orders/$FIRST_ID/payment" -H "X-Order-Access-Token: $FIRST_TOKEN")
 cat /tmp/payment-access-response.json | python3 -m json.tool
-[[ "$CODE" == "200" ]]
+if [[ "$CODE" != "200" ]]; then
+  echo "FAIL: authorized payment returned HTTP $CODE"
+  echo '=== API LOG (TAIL) ==='
+  tail -n 160 /tmp/zetruv-payment-access.log || true
+  echo '=== DB STATE: ORDER ==='
+  docker exec "$C" psql -x -U zetruv -d "$DB" -c "SELECT \"Id\",\"OrderNumber\",\"Status\",\"PaymentStatus\",\"GrandTotal\",\"PaymentProvider\",\"PaymentReference\",\"UpdatedAt\" FROM orders WHERE \"Id\"='$FIRST_ID';" || true
+  echo '=== DB STATE: INVENTORY RESERVATION ==='
+  docker exec "$C" psql -x -U zetruv -d "$DB" -c "SELECT ir.\"Id\",ir.\"OrderId\",ir.\"ProductVariantId\",ir.\"Quantity\",ir.\"Status\",ir.\"ExpiresAt\",pv.\"StockQuantity\" FROM inventory_reservations ir JOIN product_variants pv ON pv.\"Id\"=ir.\"ProductVariantId\" WHERE ir.\"OrderId\"='$FIRST_ID';" || true
+  echo '=== DB STATE: PAYMENT TRANSACTIONS ==='
+  docker exec "$C" psql -x -U zetruv -d "$DB" -c "SELECT \"Id\",\"OrderId\",\"Provider\",\"ProviderReference\",\"Type\",\"Status\",\"Amount\",\"Currency\",\"CreatedAt\" FROM payment_transactions WHERE \"OrderId\"='$FIRST_ID';" || true
+  exit 1
+fi
 python3 - <<'PY'
 import json
 with open('/tmp/payment-access-response.json') as f:
