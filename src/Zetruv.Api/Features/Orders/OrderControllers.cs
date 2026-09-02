@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Zetruv.Api.Features.Auth;
+using Zetruv.Api.Features.Shipping;
 using Zetruv.Api.Persistence;
 
 namespace Zetruv.Api.Features.Orders;
@@ -12,7 +13,8 @@ namespace Zetruv.Api.Features.Orders;
 public sealed class CmsOrdersController(
     ZetruvDbContext db,
     OrderService orderService,
-    InventoryReservationService inventoryReservations) : ControllerBase
+    InventoryReservationService inventoryReservations,
+    ShipmentFulfillmentService shipmentFulfillment) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<OrderPageResponse>> GetOrders(
@@ -68,6 +70,7 @@ public sealed class CmsOrdersController(
         if (request.Status == OrderStatus.Cancelled)
         {
             await inventoryReservations.ReleaseAsync(id, cancellationToken);
+            await shipmentFulfillment.CancelUnshippedAsync(id, cancellationToken);
         }
 
         return NoContent();
