@@ -46,6 +46,17 @@ Orders / transactions:
 - Homepage `RecentlyPurchased` is populated only from completed + paid orders
 - Public recent-purchase data intentionally excludes customer identity/contact details
 
+Checkout:
+
+- Guest checkout creates a pending order from product variant IDs and quantities
+- Product name, slug, SKU, game, image, kind, and charged price are snapshotted into `OrderItem`
+- Price is always resolved server-side; the frontend never submits a trusted amount
+- Active Flash Sale pricing is applied automatically and reflected in `discountAmount`
+- Inactive products/categories/games/variants and insufficient stock are rejected
+- Checkout currently requires at least customer email or phone
+- Shipping is currently `0` until the shipping-provider slice is implemented
+- Stock is validated but not reserved/decremented yet; inventory reservation belongs with the payment/fulfillment slice
+
 Articles:
 
 - Article categories
@@ -72,10 +83,13 @@ Site / footer:
 - `GET /api/v1/catalog/products`
 - `GET /api/v1/catalog/products/{slug}`
 - `GET /api/v1/catalog/flash-sale`
+- `POST /api/v1/checkout/orders`
 - `GET /api/v1/articles/categories`
 - `GET /api/v1/articles`
 - `GET /api/v1/articles/{slug}`
 - `GET /api/v1/site/footer`
+
+`POST /api/v1/checkout/orders` accepts customer contact data plus variant IDs and quantities. All totals are recalculated from the current server-side catalog and active Flash Sale data.
 
 ## Admin / CMS API
 
