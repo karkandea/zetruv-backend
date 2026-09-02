@@ -152,21 +152,21 @@ public sealed class Shipment
 
 public sealed record ShippingQuoteItemRequest(
     Guid ProductVariantId,
-    [property: Range(1, 99)] int Quantity);
+    [Range(1, 99)] int Quantity);
 
 public sealed record ShippingAddressRequest(
-    [property: Required, MaxLength(120)] string RecipientName,
-    [property: Required, MaxLength(50)] string Phone,
-    [property: Required, MaxLength(250)] string AddressLine1,
-    [property: MaxLength(250)] string? AddressLine2,
-    [property: Required, MaxLength(120)] string District,
-    [property: Required, MaxLength(120)] string City,
-    [property: Required, MaxLength(120)] string Province,
-    [property: Required, RegularExpression("^[0-9]{5}$")] string PostalCode);
+    [Required, MaxLength(120)] string RecipientName,
+    [Required, MaxLength(50)] string Phone,
+    [Required, MaxLength(250)] string AddressLine1,
+    [MaxLength(250)] string? AddressLine2,
+    [Required, MaxLength(120)] string District,
+    [Required, MaxLength(120)] string City,
+    [Required, MaxLength(120)] string Province,
+    [Required, RegularExpression("^[0-9]{5}$")] string PostalCode);
 
 public sealed record CreateShippingQuotesRequest(
-    [property: Required] ShippingAddressRequest Address,
-    [property: Required, MinLength(1)] IReadOnlyList<ShippingQuoteItemRequest> Items);
+    [Required] ShippingAddressRequest Address,
+    [Required, MinLength(1)] IReadOnlyList<ShippingQuoteItemRequest> Items);
 
 public sealed record ShippingRateResponse(
     Guid QuoteId,
