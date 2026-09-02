@@ -4,7 +4,9 @@ namespace Zetruv.Api.Features.Orders;
 
 [ApiController]
 [Route("api/v1/checkout")]
-public sealed class CheckoutController(CheckoutService checkoutService) : ControllerBase
+public sealed class CheckoutController(
+    CheckoutService checkoutService,
+    OrderAccessTokenService orderAccessTokens) : ControllerBase
 {
     [HttpPost("orders")]
     public async Task<ActionResult<CreateCheckoutOrderResponse>> CreateOrder(
@@ -17,6 +19,13 @@ public sealed class CheckoutController(CheckoutService checkoutService) : Contro
             return BadRequest(new { message = result.Error });
         }
 
-        return StatusCode(StatusCodes.Status201Created, result.Order);
+        var grant = orderAccessTokens.Issue(result.Order.Id);
+        var response = result.Order with
+        {
+            OrderAccessToken = grant.Token,
+            OrderAccessTokenExpiresAt = grant.ExpiresAt
+        };
+
+        return StatusCode(StatusCodes.Status201Created, response);
     }
 }

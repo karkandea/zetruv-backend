@@ -38,7 +38,9 @@ public sealed record CreateCheckoutOrderResponse(
     decimal GrandTotal,
     string Currency,
     IReadOnlyList<CheckoutOrderItemResponse> Items,
-    DateTimeOffset CreatedAt);
+    DateTimeOffset CreatedAt,
+    string? OrderAccessToken = null,
+    DateTimeOffset? OrderAccessTokenExpiresAt = null);
 
 public sealed record CreateCheckoutOrderResult(
     CreateCheckoutOrderResponse? Order,
