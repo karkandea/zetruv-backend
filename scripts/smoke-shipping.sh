@@ -136,11 +136,13 @@ request_json() {
     -d "$payload")
 
   if [[ "$status" -lt 200 || "$status" -ge 300 ]]; then
-    echo "ERROR: $label returned HTTP $status"
-    cat "$output"
-    echo
-    echo "=== API LOG TAIL ==="
-    tail -n 120 "$LOG"
+    {
+      echo "ERROR: $label returned HTTP $status"
+      cat "$output"
+      echo
+      echo "=== API LOG TAIL ==="
+      tail -n 120 "$LOG"
+    } >&2
     rm -f "$output"
     return 1
   fi
