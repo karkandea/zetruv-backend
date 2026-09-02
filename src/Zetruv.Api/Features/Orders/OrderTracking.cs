@@ -9,9 +9,9 @@ using Zetruv.Api.Persistence;
 namespace Zetruv.Api.Features.Orders;
 
 public sealed record TrackOrderRequest(
-    [property: Required, MaxLength(40)] string OrderNumber,
-    [property: EmailAddress, MaxLength(320)] string? CustomerEmail,
-    [property: MaxLength(50)] string? CustomerPhone);
+    [Required, MaxLength(40)] string OrderNumber,
+    [EmailAddress, MaxLength(320)] string? CustomerEmail,
+    [MaxLength(50)] string? CustomerPhone);
 
 public sealed record TrackOrderItemResponse(
     string ProductName,
