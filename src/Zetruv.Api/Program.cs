@@ -93,6 +93,8 @@ builder.Services.AddScoped<CatalogSeeder>();
 builder.Services.AddScoped<ArticleService>();
 builder.Services.AddScoped<OrderService>();
 builder.Services.AddScoped<CheckoutService>();
+builder.Services.AddScoped<InventoryReservationService>();
+builder.Services.AddHostedService<InventoryReservationCleanupService>();
 builder.Services.AddScoped<IPaymentGateway, MockPaymentGateway>();
 builder.Services.AddScoped<PaymentGatewayResolver>();
 builder.Services.AddScoped<PaymentService>();

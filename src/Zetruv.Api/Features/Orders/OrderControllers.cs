@@ -11,7 +11,8 @@ namespace Zetruv.Api.Features.Orders;
 [Route("api/v1/cms/orders")]
 public sealed class CmsOrdersController(
     ZetruvDbContext db,
-    OrderService orderService) : ControllerBase
+    OrderService orderService,
+    InventoryReservationService inventoryReservations) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<OrderPageResponse>> GetOrders(
@@ -63,6 +64,12 @@ public sealed class CmsOrdersController(
         }
 
         await db.SaveChangesAsync(cancellationToken);
+
+        if (request.Status == OrderStatus.Cancelled)
+        {
+            await inventoryReservations.ReleaseAsync(id, cancellationToken);
+        }
+
         return NoContent();
     }
 
@@ -84,6 +91,10 @@ public sealed class CmsOrdersController(
         if (request.Status == PaymentStatus.Paid)
         {
             order.PaidAt ??= DateTimeOffset.UtcNow;
+            if (order.Status == OrderStatus.Pending)
+            {
+                order.Status = OrderStatus.Processing;
+            }
         }
         else if (request.Status is PaymentStatus.Pending or PaymentStatus.Failed)
         {
@@ -91,6 +102,16 @@ public sealed class CmsOrdersController(
         }
 
         await db.SaveChangesAsync(cancellationToken);
+
+        if (request.Status == PaymentStatus.Paid)
+        {
+            await inventoryReservations.ConsumeAsync(id, cancellationToken);
+        }
+        else if (request.Status == PaymentStatus.Failed)
+        {
+            await inventoryReservations.ReleaseAsync(id, cancellationToken);
+        }
+
         return NoContent();
     }
 }

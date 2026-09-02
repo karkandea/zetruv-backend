@@ -26,6 +26,7 @@ public sealed class ZetruvDbContext(
     public DbSet<Order> Orders => Set<Order>();
     public DbSet<OrderItem> OrderItems => Set<OrderItem>();
     public DbSet<PaymentTransaction> PaymentTransactions => Set<PaymentTransaction>();
+    public DbSet<InventoryReservation> InventoryReservations => Set<InventoryReservation>();
     public DbSet<SiteSetting> SiteSettings => Set<SiteSetting>();
     public DbSet<SiteFooterLink> SiteFooterLinks => Set<SiteFooterLink>();
     public DbSet<SiteSocialLink> SiteSocialLinks => Set<SiteSocialLink>();
@@ -273,6 +274,23 @@ public sealed class ZetruvDbContext(
                 .WithMany(x => x.Transactions)
                 .HasForeignKey(x => x.OrderId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<InventoryReservation>(entity =>
+        {
+            entity.ToTable("inventory_reservations");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(30).IsRequired();
+            entity.HasIndex(x => new { x.OrderId, x.ProductVariantId }).IsUnique();
+            entity.HasIndex(x => new { x.Status, x.ExpiresAt });
+            entity.HasOne(x => x.Order)
+                .WithMany()
+                .HasForeignKey(x => x.OrderId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<ProductVariant>()
+                .WithMany()
+                .HasForeignKey(x => x.ProductVariantId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<SiteSetting>(entity =>

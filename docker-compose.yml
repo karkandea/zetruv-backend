@@ -26,6 +26,8 @@ services:
       CmsAdmin__Password: ${CMS_ADMIN_PASSWORD}
       Cors__AllowedOrigins__0: ${FRONTEND_ORIGIN:-http://localhost:5173}
       Cors__AllowedOrigins__1: ${CMS_ORIGIN:-http://localhost:5174}
+      Payments__Provider: ${PAYMENTS_PROVIDER:-mock}
+      Payments__Mock__WebhookSecret: ${PAYMENTS_MOCK_WEBHOOK_SECRET}
     depends_on:
       postgres:
         condition: service_healthy
