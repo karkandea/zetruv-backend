@@ -167,6 +167,7 @@ builder.Services.AddScoped<CatalogService>();
 builder.Services.AddScoped<CatalogSeeder>();
 builder.Services.AddScoped<ArticleService>();
 builder.Services.AddScoped<OrderService>();
+builder.Services.AddScoped<OrderAccessTokenService>();
 builder.Services.AddScoped<OrderTrackingService>();
 builder.Services.AddScoped<CheckoutService>();
 builder.Services.AddScoped<InventoryReservationService>();
