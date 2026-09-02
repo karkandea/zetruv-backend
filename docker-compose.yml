@@ -1,6 +1,7 @@
 services:
   postgres:
     image: postgres:17-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-zetruv}
       POSTGRES_USER: ${POSTGRES_USER:-zetruv}
@@ -17,9 +18,11 @@ services:
     build:
       context: .
       dockerfile: src/Zetruv.Api/Dockerfile
+    restart: unless-stopped
     environment:
-      ASPNETCORE_ENVIRONMENT: Staging
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Staging}
       ASPNETCORE_URLS: http://+:8080
+      ASPNETCORE_FORWARDEDHEADERS_ENABLED: ${FORWARDED_HEADERS_ENABLED:-false}
       ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=${POSTGRES_DB:-zetruv};Username=${POSTGRES_USER:-zetruv};Password=${POSTGRES_PASSWORD:-zetruv}
       Jwt__Key: ${JWT_KEY}
       CmsAdmin__Email: ${CMS_ADMIN_EMAIL}
@@ -30,11 +33,12 @@ services:
       Payments__Mock__WebhookSecret: ${PAYMENTS_MOCK_WEBHOOK_SECRET}
       GameAccountValidation__Provider: ${GAME_ACCOUNT_VALIDATION_PROVIDER:-mock}
       Shipping__Provider: ${SHIPPING_PROVIDER:-mock}
+      OrderAccess__TokenLifetimeMinutes: ${ORDER_ACCESS_TOKEN_LIFETIME_MINUTES:-1440}
     depends_on:
       postgres:
         condition: service_healthy
     ports:
-      - "8080:8080"
+      - "127.0.0.1:${API_PORT:-8080}:8080"
 
 volumes:
   postgres_data:
