@@ -123,6 +123,8 @@ VALUES
 );
 SQL
 
+TOKEN=""
+
 request_json() {
   local method="$1"
   local label="$2"
@@ -131,12 +133,24 @@ request_json() {
   local expected="${5:-2}"
   local output
   local status
+  local -a curl_args
 
   output=$(mktemp)
-  status=$(curl -sS -o "$output" -w '%{http_code}' -X "$method" "$url" \
-    -H 'Content-Type: application/json' \
-    ${TOKEN:+-H "Authorization: Bearer $TOKEN"} \
-    -d "$payload")
+  curl_args=(
+    -sS
+    -o "$output"
+    -w '%{http_code}'
+    -X "$method"
+    "$url"
+    -H 'Content-Type: application/json'
+    -d "$payload"
+  )
+
+  if [[ -n "${TOKEN:-}" ]]; then
+    curl_args+=( -H "Authorization: Bearer $TOKEN" )
+  fi
+
+  status=$(curl "${curl_args[@]}")
 
   if [[ "${status:0:1}" != "$expected" ]]; then
     echo "ERROR: $label returned HTTP $status" >&2
@@ -152,7 +166,6 @@ request_json() {
   rm -f "$output"
 }
 
-TOKEN=""
 LOGIN_JSON=$(request_json POST "admin login" "$BASE/api/v1/cms/auth/login" '{"email":"smoke-admin@zetruv.test","password":"SmokeAdmin123!"}')
 TOKEN=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["accessToken"])' <<< "$LOGIN_JSON")
 
@@ -210,7 +223,7 @@ assert delivered["shippedAt"] is not None
 assert delivered["deliveredAt"] is not None
 assert "cannot transition" in invalid["message"].lower()
 
-print("PASS: CMS shipment fulfillment transitions + order cancellation sync")
+print("PASS: CMS shipment fulfillment transitions")
 PY
 
 CANCELLED_STATUS=$(docker exec "$CONTAINER" psql -U zetruv -d "$DB" -Atc \
@@ -222,3 +235,4 @@ if [[ "$CANCELLED_STATUS" != "4" ]]; then
 fi
 
 echo "PASS: unshipped shipment cancelled with order"
+echo "PASS: CMS shipment fulfillment transitions + order cancellation sync"
