@@ -8,6 +8,7 @@ using Zetruv.Api.Features.Articles;
 using Zetruv.Api.Features.Auth;
 using Zetruv.Api.Features.Catalog;
 using Zetruv.Api.Features.Home;
+using Zetruv.Api.Features.Orders;
 using Zetruv.Api.Features.Site;
 using Zetruv.Api.Persistence;
 
@@ -89,6 +90,7 @@ builder.Services.AddScoped<AdminSeeder>();
 builder.Services.AddScoped<CatalogService>();
 builder.Services.AddScoped<CatalogSeeder>();
 builder.Services.AddScoped<ArticleService>();
+builder.Services.AddScoped<OrderService>();
 builder.Services.AddScoped<SiteService>();
 builder.Services.AddScoped<SiteSeeder>();
 builder.Services.AddScoped<HomepageService>();

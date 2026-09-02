@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using Zetruv.Api.Features.Articles;
 using Zetruv.Api.Features.Catalog;
+using Zetruv.Api.Features.Orders;
 
 namespace Zetruv.Api.Features.Home;
 
@@ -61,6 +62,7 @@ public sealed record HomepageResponse(
     IReadOnlyList<CategoryResponse> ServiceCategories,
     FlashSaleResponse? FlashSale,
     IReadOnlyList<GameResponse> PopularGames,
+    IReadOnlyList<RecentPurchaseResponse> RecentlyPurchased,
     IReadOnlyList<ProductListItemResponse> Joki,
     IReadOnlyList<ProductListItemResponse> GameAccounts,
     IReadOnlyList<ProductListItemResponse> Merchandise,

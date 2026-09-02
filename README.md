@@ -36,6 +36,16 @@ Homepage / catalog:
 - Popular games, featured products, and scheduled Flash Sale promotions
 - Homepage service categories, Flash Sale, Popular Games, Joki, Game Accounts, and Merchandise use real catalog data
 
+Orders / transactions:
+
+- Order and immutable order-item snapshots for historical purchase data
+- Order status: `Pending`, `Processing`, `Completed`, `Cancelled`
+- Payment status: `Pending`, `Paid`, `Failed`, `Refunded`
+- Payment transaction records separated from provider implementation
+- Admin order list/detail and status management
+- Homepage `RecentlyPurchased` is populated only from completed + paid orders
+- Public recent-purchase data intentionally excludes customer identity/contact details
+
 Articles:
 
 - Article categories
@@ -52,8 +62,6 @@ Site / footer:
 - Footer links grouped as `Page`, `Support`, or `Legality`
 - Social links
 - Payment methods and icon URLs
-
-`recently_purchased` will be populated from the future Order/Transaction domain.
 
 ## Public API
 
@@ -96,6 +104,13 @@ Catalog / promotion:
 - `PUT|DELETE /api/v1/cms/catalog/products/{productId}/images/{imageId}`
 - `GET|POST /api/v1/cms/promotions`
 - `PUT|DELETE /api/v1/cms/promotions/{id}`
+
+Orders / transactions:
+
+- `GET /api/v1/cms/orders`
+- `GET /api/v1/cms/orders/{id}`
+- `PUT /api/v1/cms/orders/{id}/status`
+- `PUT /api/v1/cms/orders/{id}/payment-status`
 
 Articles:
 

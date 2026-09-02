@@ -233,6 +233,76 @@ partial class ZetruvDbContextModelSnapshot : ModelSnapshot
             b.ToTable("home_sections");
         });
 
+        modelBuilder.Entity("Zetruv.Api.Features.Orders.Order", b =>
+        {
+            b.Property<Guid>("Id").HasColumnType("uuid");
+            b.Property<DateTimeOffset?>("CompletedAt").HasColumnType("timestamp with time zone");
+            b.Property<DateTimeOffset>("CreatedAt").HasColumnType("timestamp with time zone");
+            b.Property<string>("Currency").IsRequired().HasMaxLength(3).HasColumnType("character varying(3)");
+            b.Property<string>("CustomerEmail").HasMaxLength(320).HasColumnType("character varying(320)");
+            b.Property<string>("CustomerName").HasMaxLength(160).HasColumnType("character varying(160)");
+            b.Property<string>("CustomerPhone").HasMaxLength(50).HasColumnType("character varying(50)");
+            b.Property<decimal>("DiscountAmount").HasPrecision(18, 2).HasColumnType("numeric(18,2)");
+            b.Property<decimal>("GrandTotal").HasPrecision(18, 2).HasColumnType("numeric(18,2)");
+            b.Property<string>("OrderNumber").IsRequired().HasMaxLength(40).HasColumnType("character varying(40)");
+            b.Property<DateTimeOffset?>("PaidAt").HasColumnType("timestamp with time zone");
+            b.Property<string>("PaymentProvider").HasMaxLength(80).HasColumnType("character varying(80)");
+            b.Property<string>("PaymentReference").HasMaxLength(180).HasColumnType("character varying(180)");
+            b.Property<string>("PaymentStatus").IsRequired().HasMaxLength(30).HasColumnType("character varying(30)");
+            b.Property<decimal>("ShippingAmount").HasPrecision(18, 2).HasColumnType("numeric(18,2)");
+            b.Property<string>("Status").IsRequired().HasMaxLength(30).HasColumnType("character varying(30)");
+            b.Property<decimal>("Subtotal").HasPrecision(18, 2).HasColumnType("numeric(18,2)");
+            b.Property<DateTimeOffset>("UpdatedAt").HasColumnType("timestamp with time zone");
+            b.HasKey("Id");
+            b.HasIndex("OrderNumber").IsUnique();
+            b.HasIndex("PaymentReference");
+            b.HasIndex("Status", "PaymentStatus", "CreatedAt");
+            b.ToTable("orders");
+        });
+
+        modelBuilder.Entity("Zetruv.Api.Features.Orders.OrderItem", b =>
+        {
+            b.Property<Guid>("Id").HasColumnType("uuid");
+            b.Property<DateTimeOffset>("CreatedAt").HasColumnType("timestamp with time zone");
+            b.Property<string>("GameName").HasMaxLength(120).HasColumnType("character varying(120)");
+            b.Property<decimal>("LineTotal").HasPrecision(18, 2).HasColumnType("numeric(18,2)");
+            b.Property<Guid>("OrderId").HasColumnType("uuid");
+            b.Property<Guid?>("ProductId").HasColumnType("uuid");
+            b.Property<string>("ProductKind").IsRequired().HasMaxLength(30).HasColumnType("character varying(30)");
+            b.Property<string>("ProductName").IsRequired().HasMaxLength(180).HasColumnType("character varying(180)");
+            b.Property<string>("ProductSlug").IsRequired().HasMaxLength(220).HasColumnType("character varying(220)");
+            b.Property<Guid?>("ProductVariantId").HasColumnType("uuid");
+            b.Property<int>("Quantity").HasColumnType("integer");
+            b.Property<string>("Sku").HasMaxLength(100).HasColumnType("character varying(100)");
+            b.Property<string>("ThumbnailUrl").HasMaxLength(1000).HasColumnType("character varying(1000)");
+            b.Property<decimal>("UnitPrice").HasPrecision(18, 2).HasColumnType("numeric(18,2)");
+            b.Property<string>("VariantName").HasMaxLength(180).HasColumnType("character varying(180)");
+            b.HasKey("Id");
+            b.HasIndex("OrderId", "CreatedAt");
+            b.HasIndex("ProductId");
+            b.HasIndex("ProductVariantId");
+            b.ToTable("order_items");
+        });
+
+        modelBuilder.Entity("Zetruv.Api.Features.Orders.PaymentTransaction", b =>
+        {
+            b.Property<Guid>("Id").HasColumnType("uuid");
+            b.Property<decimal>("Amount").HasPrecision(18, 2).HasColumnType("numeric(18,2)");
+            b.Property<DateTimeOffset>("CreatedAt").HasColumnType("timestamp with time zone");
+            b.Property<string>("Currency").IsRequired().HasMaxLength(3).HasColumnType("character varying(3)");
+            b.Property<Guid>("OrderId").HasColumnType("uuid");
+            b.Property<DateTimeOffset?>("ProcessedAt").HasColumnType("timestamp with time zone");
+            b.Property<string>("Provider").IsRequired().HasMaxLength(80).HasColumnType("character varying(80)");
+            b.Property<string>("ProviderReference").HasMaxLength(180).HasColumnType("character varying(180)");
+            b.Property<string>("Status").IsRequired().HasMaxLength(30).HasColumnType("character varying(30)");
+            b.Property<string>("Type").IsRequired().HasMaxLength(30).HasColumnType("character varying(30)");
+            b.Property<DateTimeOffset>("UpdatedAt").HasColumnType("timestamp with time zone");
+            b.HasKey("Id");
+            b.HasIndex("OrderId", "CreatedAt");
+            b.HasIndex("Provider", "ProviderReference");
+            b.ToTable("payment_transactions");
+        });
+
         modelBuilder.Entity("Zetruv.Api.Features.Site.SiteFooterLink", b =>
         {
             b.Property<Guid>("Id").HasColumnType("uuid");
@@ -354,6 +424,36 @@ partial class ZetruvDbContextModelSnapshot : ModelSnapshot
             b.Navigation("Promotion");
         });
 
+        modelBuilder.Entity("Zetruv.Api.Features.Orders.OrderItem", b =>
+        {
+            b.HasOne("Zetruv.Api.Features.Orders.Order", "Order")
+                .WithMany("Items")
+                .HasForeignKey("OrderId")
+                .OnDelete(DeleteBehavior.Cascade)
+                .IsRequired();
+            b.HasOne("Zetruv.Api.Features.Catalog.Product", "Product")
+                .WithMany()
+                .HasForeignKey("ProductId")
+                .OnDelete(DeleteBehavior.SetNull);
+            b.HasOne("Zetruv.Api.Features.Catalog.ProductVariant", "ProductVariant")
+                .WithMany()
+                .HasForeignKey("ProductVariantId")
+                .OnDelete(DeleteBehavior.SetNull);
+            b.Navigation("Order");
+            b.Navigation("Product");
+            b.Navigation("ProductVariant");
+        });
+
+        modelBuilder.Entity("Zetruv.Api.Features.Orders.PaymentTransaction", b =>
+        {
+            b.HasOne("Zetruv.Api.Features.Orders.Order", "Order")
+                .WithMany("Transactions")
+                .HasForeignKey("OrderId")
+                .OnDelete(DeleteBehavior.Cascade)
+                .IsRequired();
+            b.Navigation("Order");
+        });
+
         modelBuilder.Entity("Zetruv.Api.Features.Articles.ArticleCategory", b =>
         {
             b.Navigation("Articles");
@@ -374,6 +474,11 @@ partial class ZetruvDbContextModelSnapshot : ModelSnapshot
         modelBuilder.Entity("Zetruv.Api.Features.Catalog.Promotion", b =>
         {
             b.Navigation("Items");
+        });
+        modelBuilder.Entity("Zetruv.Api.Features.Orders.Order", b =>
+        {
+            b.Navigation("Items");
+            b.Navigation("Transactions");
         });
 #pragma warning restore 612, 618
     }

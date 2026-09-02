@@ -3,6 +3,7 @@ using Zetruv.Api.Features.Articles;
 using Zetruv.Api.Features.Auth;
 using Zetruv.Api.Features.Catalog;
 using Zetruv.Api.Features.Home;
+using Zetruv.Api.Features.Orders;
 using Zetruv.Api.Features.Site;
 
 namespace Zetruv.Api.Persistence;
@@ -22,6 +23,9 @@ public sealed class ZetruvDbContext(
     public DbSet<PromotionItem> PromotionItems => Set<PromotionItem>();
     public DbSet<ArticleCategory> ArticleCategories => Set<ArticleCategory>();
     public DbSet<Article> Articles => Set<Article>();
+    public DbSet<Order> Orders => Set<Order>();
+    public DbSet<OrderItem> OrderItems => Set<OrderItem>();
+    public DbSet<PaymentTransaction> PaymentTransactions => Set<PaymentTransaction>();
     public DbSet<SiteSetting> SiteSettings => Set<SiteSetting>();
     public DbSet<SiteFooterLink> SiteFooterLinks => Set<SiteFooterLink>();
     public DbSet<SiteSocialLink> SiteSocialLinks => Set<SiteSocialLink>();
@@ -199,6 +203,76 @@ public sealed class ZetruvDbContext(
                 .WithMany(x => x.Articles)
                 .HasForeignKey(x => x.CategoryId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<Order>(entity =>
+        {
+            entity.ToTable("orders");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.OrderNumber).HasMaxLength(40).IsRequired();
+            entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(30).IsRequired();
+            entity.Property(x => x.PaymentStatus).HasConversion<string>().HasMaxLength(30).IsRequired();
+            entity.Property(x => x.CustomerName).HasMaxLength(160);
+            entity.Property(x => x.CustomerEmail).HasMaxLength(320);
+            entity.Property(x => x.CustomerPhone).HasMaxLength(50);
+            entity.Property(x => x.Subtotal).HasPrecision(18, 2);
+            entity.Property(x => x.DiscountAmount).HasPrecision(18, 2);
+            entity.Property(x => x.ShippingAmount).HasPrecision(18, 2);
+            entity.Property(x => x.GrandTotal).HasPrecision(18, 2);
+            entity.Property(x => x.Currency).HasMaxLength(3).IsRequired();
+            entity.Property(x => x.PaymentProvider).HasMaxLength(80);
+            entity.Property(x => x.PaymentReference).HasMaxLength(180);
+            entity.HasIndex(x => x.OrderNumber).IsUnique();
+            entity.HasIndex(x => new { x.Status, x.PaymentStatus, x.CreatedAt });
+            entity.HasIndex(x => x.PaymentReference);
+        });
+
+        modelBuilder.Entity<OrderItem>(entity =>
+        {
+            entity.ToTable("order_items");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.ProductName).HasMaxLength(180).IsRequired();
+            entity.Property(x => x.ProductSlug).HasMaxLength(220).IsRequired();
+            entity.Property(x => x.ProductKind).HasConversion<string>().HasMaxLength(30).IsRequired();
+            entity.Property(x => x.VariantName).HasMaxLength(180);
+            entity.Property(x => x.Sku).HasMaxLength(100);
+            entity.Property(x => x.ThumbnailUrl).HasMaxLength(1000);
+            entity.Property(x => x.GameName).HasMaxLength(120);
+            entity.Property(x => x.UnitPrice).HasPrecision(18, 2);
+            entity.Property(x => x.LineTotal).HasPrecision(18, 2);
+            entity.HasIndex(x => new { x.OrderId, x.CreatedAt });
+            entity.HasIndex(x => x.ProductId);
+            entity.HasIndex(x => x.ProductVariantId);
+            entity.HasOne(x => x.Order)
+                .WithMany(x => x.Items)
+                .HasForeignKey(x => x.OrderId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(x => x.Product)
+                .WithMany()
+                .HasForeignKey(x => x.ProductId)
+                .OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(x => x.ProductVariant)
+                .WithMany()
+                .HasForeignKey(x => x.ProductVariantId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<PaymentTransaction>(entity =>
+        {
+            entity.ToTable("payment_transactions");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Provider).HasMaxLength(80).IsRequired();
+            entity.Property(x => x.ProviderReference).HasMaxLength(180);
+            entity.Property(x => x.Type).HasConversion<string>().HasMaxLength(30).IsRequired();
+            entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(30).IsRequired();
+            entity.Property(x => x.Amount).HasPrecision(18, 2);
+            entity.Property(x => x.Currency).HasMaxLength(3).IsRequired();
+            entity.HasIndex(x => new { x.OrderId, x.CreatedAt });
+            entity.HasIndex(x => new { x.Provider, x.ProviderReference });
+            entity.HasOne(x => x.Order)
+                .WithMany(x => x.Transactions)
+                .HasForeignKey(x => x.OrderId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<SiteSetting>(entity =>

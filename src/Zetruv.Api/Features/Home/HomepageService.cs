@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Zetruv.Api.Features.Articles;
 using Zetruv.Api.Features.Catalog;
+using Zetruv.Api.Features.Orders;
 using Zetruv.Api.Persistence;
 
 namespace Zetruv.Api.Features.Home;
@@ -8,7 +9,8 @@ namespace Zetruv.Api.Features.Home;
 public sealed class HomepageService(
     ZetruvDbContext db,
     CatalogService catalogService,
-    ArticleService articleService)
+    ArticleService articleService,
+    OrderService orderService)
 {
     public async Task<HomepageResponse> GetAsync(
         CancellationToken cancellationToken = default)
@@ -60,6 +62,9 @@ public sealed class HomepageService(
             popularOnly: true,
             Limit(limits, "popular_games", 10),
             cancellationToken);
+        var recentlyPurchased = await orderService.GetRecentPurchasesAsync(
+            Limit(limits, "recently_purchased", 5),
+            cancellationToken);
         var joki = await catalogService.GetProductsForHomepageAsync(
             ProductKind.Joki,
             Limit(limits, "joki", 10),
@@ -82,6 +87,7 @@ public sealed class HomepageService(
             serviceCategories,
             flashSale,
             popularGames,
+            recentlyPurchased,
             joki,
             gameAccounts,
             merchandise,
