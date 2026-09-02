@@ -43,7 +43,8 @@ public sealed record ReconcilePaymentResult(
     ReconcilePaymentResponse? Payment,
     string? Error,
     bool IsConfigurationError = false,
-    bool IsNotFound = false)
+    bool IsNotFound = false,
+    bool IsConflict = false)
 {
     public static ReconcilePaymentResult Success(ReconcilePaymentResponse payment) =>
         new(payment, null);
@@ -51,8 +52,9 @@ public sealed record ReconcilePaymentResult(
     public static ReconcilePaymentResult Failure(
         string error,
         bool isConfigurationError = false,
-        bool isNotFound = false) =>
-        new(null, error, isConfigurationError, isNotFound);
+        bool isNotFound = false,
+        bool isConflict = false) =>
+        new(null, error, isConfigurationError, isNotFound, isConflict);
 }
 
 public sealed class PaymentService(
@@ -129,7 +131,7 @@ public sealed class PaymentService(
         }
 
         var now = DateTimeOffset.UtcNow;
-        var transaction = new PaymentTransaction
+        var paymentTransaction = new PaymentTransaction
         {
             OrderId = order.Id,
             Provider = gateway.Name,
@@ -146,7 +148,7 @@ public sealed class PaymentService(
         order.PaymentReference = gatewayResult.ProviderReference;
         order.PaymentStatus = PaymentStatus.Pending;
         order.UpdatedAt = now;
-        order.Transactions.Add(transaction);
+        order.Transactions.Add(paymentTransaction);
 
         await db.SaveChangesAsync(cancellationToken);
 
@@ -187,25 +189,26 @@ public sealed class PaymentService(
         }
 
         var notification = parsed.Notification;
-        var transaction = await db.PaymentTransactions
+        var paymentTransaction = await db.PaymentTransactions
             .Include(x => x.Order)
+                .ThenInclude(x => x.Items)
             .SingleOrDefaultAsync(x =>
                 x.Provider == gateway.Name &&
                 x.ProviderReference == notification.ProviderReference &&
                 x.Type == PaymentTransactionType.Payment,
                 cancellationToken);
 
-        if (transaction is null)
+        if (paymentTransaction is null)
         {
             return ReconcilePaymentResult.Failure(
                 "Payment transaction was not found.",
                 isNotFound: true);
         }
 
-        var order = transaction.Order;
-        if (transaction.Amount != notification.Amount ||
+        var order = paymentTransaction.Order;
+        if (paymentTransaction.Amount != notification.Amount ||
             !string.Equals(
-                transaction.Currency,
+                paymentTransaction.Currency,
                 notification.Currency,
                 StringComparison.OrdinalIgnoreCase))
         {
@@ -227,26 +230,49 @@ public sealed class PaymentService(
                         "A refunded order cannot transition back to paid.");
                 }
 
-                transaction.Status = PaymentTransactionStatus.Succeeded;
-                transaction.ProcessedAt ??= now;
-                transaction.UpdatedAt = now;
-                order.PaymentStatus = PaymentStatus.Paid;
-                order.PaidAt ??= now;
-                if (order.Status == OrderStatus.Pending)
+                if (order.Status == OrderStatus.Cancelled)
                 {
-                    order.Status = OrderStatus.Processing;
+                    return ReconcilePaymentResult.Failure(
+                        "A cancelled order cannot transition to paid.",
+                        isConflict: true);
                 }
-                order.UpdatedAt = now;
-                await db.SaveChangesAsync(cancellationToken);
-                await inventoryReservations.ConsumeAsync(order.Id, cancellationToken);
+
+                await using (var dbTransaction = await db.Database.BeginTransactionAsync(cancellationToken))
+                {
+                    var inventory = await inventoryReservations.EnsureConsumedForPaidAsync(
+                        order,
+                        cancellationToken);
+
+                    if (!inventory.IsSuccess)
+                    {
+                        await dbTransaction.RollbackAsync(cancellationToken);
+                        return ReconcilePaymentResult.Failure(
+                            inventory.Error ?? "Inventory could not be secured for the paid order.",
+                            isConflict: true);
+                    }
+
+                    paymentTransaction.Status = PaymentTransactionStatus.Succeeded;
+                    paymentTransaction.ProcessedAt ??= now;
+                    paymentTransaction.UpdatedAt = now;
+                    order.PaymentStatus = PaymentStatus.Paid;
+                    order.PaidAt ??= now;
+                    if (order.Status == OrderStatus.Pending)
+                    {
+                        order.Status = OrderStatus.Processing;
+                    }
+                    order.UpdatedAt = now;
+
+                    await db.SaveChangesAsync(cancellationToken);
+                    await dbTransaction.CommitAsync(cancellationToken);
+                }
                 break;
 
             case PaymentWebhookStatus.Failed:
-                if (transaction.Status != PaymentTransactionStatus.Succeeded)
+                if (paymentTransaction.Status != PaymentTransactionStatus.Succeeded)
                 {
-                    transaction.Status = PaymentTransactionStatus.Failed;
-                    transaction.ProcessedAt ??= now;
-                    transaction.UpdatedAt = now;
+                    paymentTransaction.Status = PaymentTransactionStatus.Failed;
+                    paymentTransaction.ProcessedAt ??= now;
+                    paymentTransaction.UpdatedAt = now;
                 }
 
                 var hasSucceededPayment = await db.PaymentTransactions
@@ -259,7 +285,7 @@ public sealed class PaymentService(
                 var hasOtherPendingPayment = await db.PaymentTransactions
                     .AnyAsync(x =>
                         x.OrderId == order.Id &&
-                        x.Id != transaction.Id &&
+                        x.Id != paymentTransaction.Id &&
                         x.Type == PaymentTransactionType.Payment &&
                         x.Status == PaymentTransactionStatus.Pending,
                         cancellationToken);
