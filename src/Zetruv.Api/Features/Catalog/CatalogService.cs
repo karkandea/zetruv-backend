@@ -101,9 +101,11 @@ public sealed class CatalogService(ZetruvDbContext db)
             ? 0
             : (int)Math.Ceiling(totalItems / (double)pageSize);
 
-        var items = await ProjectProductList(query)
+        var orderedQuery = query
             .OrderByDescending(x => x.IsFeatured)
-            .ThenBy(x => x.Name)
+            .ThenBy(x => x.Name);
+
+        var items = await ProjectProductList(orderedQuery)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync(cancellationToken);
@@ -118,11 +120,11 @@ public sealed class CatalogService(ZetruvDbContext db)
     {
         var query = db.Products
             .AsNoTracking()
-            .Where(x => x.IsActive && x.Category.IsActive && x.Kind == kind);
+            .Where(x => x.IsActive && x.Category.IsActive && x.Kind == kind)
+            .OrderByDescending(x => x.IsFeatured)
+            .ThenBy(x => x.Name);
 
         return await ProjectProductList(query)
-            .OrderByDescending(x => x.IsFeatured)
-            .ThenBy(x => x.Name)
             .Take(Math.Clamp(limit, 1, 50))
             .ToListAsync(cancellationToken);
     }
