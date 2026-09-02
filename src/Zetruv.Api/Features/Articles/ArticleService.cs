@@ -45,10 +45,11 @@ public sealed class ArticleService(ZetruvDbContext db)
         }
 
         var totalItems = await articles.CountAsync(cancellationToken);
-        var items = await ProjectList(articles)
+        var pageQuery = articles
             .OrderByDescending(x => x.PublishedAt)
             .Skip((page - 1) * pageSize)
-            .Take(pageSize)
+            .Take(pageSize);
+        var items = await ProjectList(pageQuery)
             .ToListAsync(cancellationToken);
 
         var totalPages = totalItems == 0
@@ -92,11 +93,13 @@ public sealed class ArticleService(ZetruvDbContext db)
         var now = DateTimeOffset.UtcNow;
         limit = Math.Clamp(limit, 1, 20);
 
-        return await ProjectList(db.Articles
-                .AsNoTracking()
-                .Where(x => x.IsPublished && x.PublishedAt != null && x.PublishedAt <= now))
+        var latestArticles = db.Articles
+            .AsNoTracking()
+            .Where(x => x.IsPublished && x.PublishedAt != null && x.PublishedAt <= now)
             .OrderByDescending(x => x.PublishedAt)
-            .Take(limit)
+            .Take(limit);
+
+        return await ProjectList(latestArticles)
             .ToListAsync(cancellationToken);
     }
 
