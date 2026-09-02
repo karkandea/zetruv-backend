@@ -1,7 +1,9 @@
 using System.Text;
 using System.Text.Json.Serialization;
+using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Zetruv.Api.Features.Articles;
@@ -22,6 +24,19 @@ builder.Services
 builder.Services.AddProblemDetails();
 builder.Services.AddOpenApi();
 builder.Services.AddHealthChecks();
+builder.Services.AddRateLimiter(options =>
+{
+    options.AddPolicy("order-lookup", httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 10,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+                AutoReplenishment = true
+            }));
+});
 
 var connectionString = builder.Configuration.GetConnectionString("Postgres")
     ?? throw new InvalidOperationException("ConnectionStrings:Postgres is required.");
@@ -92,6 +107,7 @@ builder.Services.AddScoped<CatalogService>();
 builder.Services.AddScoped<CatalogSeeder>();
 builder.Services.AddScoped<ArticleService>();
 builder.Services.AddScoped<OrderService>();
+builder.Services.AddScoped<OrderTrackingService>();
 builder.Services.AddScoped<CheckoutService>();
 builder.Services.AddScoped<InventoryReservationService>();
 builder.Services.AddHostedService<InventoryReservationCleanupService>();
@@ -119,6 +135,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseCors("Frontend");
+app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 
