@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Zetruv.Api.Features.Articles;
 using Zetruv.Api.Features.Catalog;
 using Zetruv.Api.Persistence;
 
@@ -6,7 +7,8 @@ namespace Zetruv.Api.Features.Home;
 
 public sealed class HomepageService(
     ZetruvDbContext db,
-    CatalogService catalogService)
+    CatalogService catalogService,
+    ArticleService articleService)
 {
     public async Task<HomepageResponse> GetAsync(
         CancellationToken cancellationToken = default)
@@ -47,8 +49,7 @@ public sealed class HomepageService(
 
         var limits = sections.ToDictionary(x => x.Key, x => x.ItemLimit);
 
-        // CatalogService shares this scoped DbContext, so keep EF queries sequential.
-        // A single DbContext does not support multiple concurrent operations.
+        // These services share the same scoped DbContext, so EF operations stay sequential.
         var serviceCategories = await catalogService.GetActiveCategoriesAsync(
             Limit(limits, "service_categories", 10),
             cancellationToken);
@@ -71,6 +72,9 @@ public sealed class HomepageService(
             ProductKind.Merchandise,
             Limit(limits, "merchandise", 5),
             cancellationToken);
+        var latestArticles = await articleService.GetLatestAsync(
+            Limit(limits, "articles", 3),
+            cancellationToken);
 
         return new HomepageResponse(
             heroes,
@@ -80,7 +84,8 @@ public sealed class HomepageService(
             popularGames,
             joki,
             gameAccounts,
-            merchandise);
+            merchandise,
+            latestArticles);
     }
 
     private static int Limit(

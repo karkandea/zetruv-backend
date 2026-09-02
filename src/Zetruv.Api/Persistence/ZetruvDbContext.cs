@@ -1,7 +1,9 @@
 using Microsoft.EntityFrameworkCore;
+using Zetruv.Api.Features.Articles;
 using Zetruv.Api.Features.Auth;
 using Zetruv.Api.Features.Catalog;
 using Zetruv.Api.Features.Home;
+using Zetruv.Api.Features.Site;
 
 namespace Zetruv.Api.Persistence;
 
@@ -18,6 +20,12 @@ public sealed class ZetruvDbContext(
     public DbSet<ProductImage> ProductImages => Set<ProductImage>();
     public DbSet<Promotion> Promotions => Set<Promotion>();
     public DbSet<PromotionItem> PromotionItems => Set<PromotionItem>();
+    public DbSet<ArticleCategory> ArticleCategories => Set<ArticleCategory>();
+    public DbSet<Article> Articles => Set<Article>();
+    public DbSet<SiteSetting> SiteSettings => Set<SiteSetting>();
+    public DbSet<SiteFooterLink> SiteFooterLinks => Set<SiteFooterLink>();
+    public DbSet<SiteSocialLink> SiteSocialLinks => Set<SiteSocialLink>();
+    public DbSet<SitePaymentMethod> SitePaymentMethods => Set<SitePaymentMethod>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -162,6 +170,77 @@ public sealed class ZetruvDbContext(
                 .WithMany()
                 .HasForeignKey(x => x.ProductVariantId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<ArticleCategory>(entity =>
+        {
+            entity.ToTable("article_categories");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Name).HasMaxLength(120).IsRequired();
+            entity.Property(x => x.Slug).HasMaxLength(160).IsRequired();
+            entity.HasIndex(x => x.Slug).IsUnique();
+            entity.HasIndex(x => new { x.IsActive, x.SortOrder });
+        });
+
+        modelBuilder.Entity<Article>(entity =>
+        {
+            entity.ToTable("articles");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Title).HasMaxLength(220).IsRequired();
+            entity.Property(x => x.Slug).HasMaxLength(240).IsRequired();
+            entity.Property(x => x.Excerpt).HasMaxLength(600).IsRequired();
+            entity.Property(x => x.Content).HasColumnType("text").IsRequired();
+            entity.Property(x => x.ThumbnailUrl).HasMaxLength(1000).IsRequired();
+            entity.Property(x => x.AuthorName).HasMaxLength(120);
+            entity.HasIndex(x => x.Slug).IsUnique();
+            entity.HasIndex(x => new { x.IsPublished, x.PublishedAt });
+            entity.HasIndex(x => x.CategoryId);
+            entity.HasOne(x => x.Category)
+                .WithMany(x => x.Articles)
+                .HasForeignKey(x => x.CategoryId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<SiteSetting>(entity =>
+        {
+            entity.ToTable("site_settings");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.LogoUrl).HasMaxLength(1000);
+            entity.Property(x => x.BrandDescription).HasMaxLength(1000).IsRequired();
+            entity.Property(x => x.CopyrightText).HasMaxLength(250).IsRequired();
+            entity.Property(x => x.ContactTeamLabel).HasMaxLength(80).IsRequired();
+            entity.Property(x => x.ContactTeamUrl).HasMaxLength(500);
+        });
+
+        modelBuilder.Entity<SiteFooterLink>(entity =>
+        {
+            entity.ToTable("site_footer_links");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Group).HasConversion<string>().HasMaxLength(30).IsRequired();
+            entity.Property(x => x.Label).HasMaxLength(100).IsRequired();
+            entity.Property(x => x.Url).HasMaxLength(500).IsRequired();
+            entity.HasIndex(x => new { x.Group, x.IsActive, x.SortOrder });
+        });
+
+        modelBuilder.Entity<SiteSocialLink>(entity =>
+        {
+            entity.ToTable("site_social_links");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Platform).HasMaxLength(80).IsRequired();
+            entity.Property(x => x.Url).HasMaxLength(500).IsRequired();
+            entity.Property(x => x.IconUrl).HasMaxLength(1000);
+            entity.HasIndex(x => new { x.IsActive, x.SortOrder });
+        });
+
+        modelBuilder.Entity<SitePaymentMethod>(entity =>
+        {
+            entity.ToTable("site_payment_methods");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Code).HasMaxLength(80).IsRequired();
+            entity.Property(x => x.Name).HasMaxLength(120).IsRequired();
+            entity.Property(x => x.IconUrl).HasMaxLength(1000);
+            entity.HasIndex(x => x.Code).IsUnique();
+            entity.HasIndex(x => new { x.IsActive, x.SortOrder });
         });
     }
 }
