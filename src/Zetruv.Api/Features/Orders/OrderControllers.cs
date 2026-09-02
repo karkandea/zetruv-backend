@@ -53,6 +53,25 @@ public sealed class CmsOrdersController(
             return NotFound();
         }
 
+        if (request.Status == OrderStatus.Cancelled)
+        {
+            var alreadyShipped = await db.Set<Shipment>()
+                .AsNoTracking()
+                .AnyAsync(
+                    x => x.OrderId == id &&
+                         (x.Status == ShipmentStatus.Shipped ||
+                          x.Status == ShipmentStatus.Delivered),
+                    cancellationToken);
+
+            if (alreadyShipped)
+            {
+                return BadRequest(new
+                {
+                    message = "A shipped or delivered merchandise order cannot be cancelled."
+                });
+            }
+        }
+
         order.Status = request.Status;
         order.UpdatedAt = DateTimeOffset.UtcNow;
 
