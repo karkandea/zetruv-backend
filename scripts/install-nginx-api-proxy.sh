@@ -18,7 +18,21 @@ command -v python3 >/dev/null 2>&1 || { echo 'python3 is required.' >&2; exit 1;
 [[ -f "$SNIPPET_SOURCE" ]] || { echo "Missing $SNIPPET_SOURCE" >&2; exit 1; }
 
 echo '=== PRECHECK BACKEND ==='
-curl -fsS http://127.0.0.1:8080/health; echo
+BACKEND_READY=false
+for _ in $(seq 1 60); do
+  if curl -fsS http://127.0.0.1:8080/health >/tmp/zetruv-health.txt 2>/dev/null; then
+    BACKEND_READY=true
+    break
+  fi
+  sleep 1
+done
+if [[ "$BACKEND_READY" != "true" ]]; then
+  echo 'FAIL: backend did not become healthy within 60 seconds.' >&2
+  echo '=== API LOGS ===' >&2
+  docker compose logs --tail=160 api >&2 || true
+  exit 1
+fi
+cat /tmp/zetruv-health.txt; echo
 
 mapfile -t CANDIDATES < <(
   {
