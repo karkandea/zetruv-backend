@@ -1,0 +1,10 @@
+**/bin/
+**/obj/
+.vs/
+.vscode/
+.idea/
+.env
+*.user
+*.suo
+*.log
+uploads/
