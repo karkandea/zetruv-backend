@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using Microsoft.EntityFrameworkCore;
 using Zetruv.Api.Features.Catalog;
 using Zetruv.Api.Features.GameAccounts;
 using Zetruv.Api.Features.Shipping;
@@ -83,6 +84,7 @@ public sealed class OrderItem
     public GameAccountValidation? GameAccountValidation { get; set; }
 }
 
+[Index(nameof(Provider), nameof(ProviderReference), IsUnique = true)]
 public sealed class PaymentTransaction
 {
     public Guid Id { get; set; } = Guid.NewGuid();
