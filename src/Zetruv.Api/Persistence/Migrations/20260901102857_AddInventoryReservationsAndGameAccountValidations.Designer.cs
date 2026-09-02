@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Zetruv.Api.Persistence;
@@ -11,9 +12,11 @@ using Zetruv.Api.Persistence;
 namespace Zetruv.Api.Persistence.Migrations
 {
     [DbContext(typeof(ZetruvDbContext))]
-    partial class ZetruvDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260901102857_AddInventoryReservationsAndGameAccountValidations")]
+    partial class AddInventoryReservationsAndGameAccountValidations
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
