@@ -94,7 +94,10 @@ assert d['provider']=='mock'
 assert d['amount']==50000
 assert d['currency']=='IDR'
 PY
+TX_COUNT=$(docker exec "$C" psql -At -U zetruv -d "$DB" -c "SELECT COUNT(*) FROM payment_transactions WHERE \"OrderId\"='$FIRST_ID' AND \"Provider\"='mock' AND \"Status\"='Pending';")
+[[ "$TX_COUNT" == "1" ]]
 echo 'PASS: correct order access token authorizes payment initiation'
+echo 'PASS: authorized payment inserts exactly one pending transaction'
 
 echo '=== ORDER LOOKUP RECOVERY ==='
 LOOKUP=$(curl -fsS -X POST "http://127.0.0.1:$API/api/v1/orders/lookup" \
