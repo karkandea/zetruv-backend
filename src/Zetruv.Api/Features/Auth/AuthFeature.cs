@@ -120,8 +120,8 @@ namespace Zetruv.Api.Features.Auth
     }
 
     public sealed record LoginRequest(
-        [property: Required, EmailAddress] string Email,
-        [property: Required, MinLength(8)] string Password);
+        [Required, EmailAddress] string Email,
+        [Required, MinLength(8)] string Password);
 
     public sealed record LoginResponse(
         string AccessToken,
