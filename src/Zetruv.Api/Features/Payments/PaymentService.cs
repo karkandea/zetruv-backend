@@ -148,7 +148,11 @@ public sealed class PaymentService(
         order.PaymentReference = gatewayResult.ProviderReference;
         order.PaymentStatus = PaymentStatus.Pending;
         order.UpdatedAt = now;
-        order.Transactions.Add(paymentTransaction);
+
+        // Explicitly mark the brand-new transaction as Added. Because IDs are assigned
+        // client-side, relying on navigation discovery can treat the entity as existing
+        // and issue an UPDATE instead of the required INSERT.
+        db.PaymentTransactions.Add(paymentTransaction);
 
         await db.SaveChangesAsync(cancellationToken);
 
