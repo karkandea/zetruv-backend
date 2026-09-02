@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Zetruv.Api.Features.Catalog;
 using Zetruv.Api.Features.Orders;
@@ -342,6 +343,7 @@ public sealed class GameAccountValidationController(
     GameAccountValidationService validationService) : ControllerBase
 {
     [HttpPost("validate")]
+    [EnableRateLimiting("game-account-validation")]
     public async Task<ActionResult<GameAccountValidationResponse>> Validate(
         GameAccountValidationRequest request,
         CancellationToken cancellationToken)

@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace Zetruv.Api.Features.Payments;
 
@@ -7,6 +8,7 @@ namespace Zetruv.Api.Features.Payments;
 public sealed class PaymentController(PaymentService paymentService) : ControllerBase
 {
     [HttpPost]
+    [EnableRateLimiting("payment-initiation")]
     public async Task<ActionResult<InitiatePaymentResponse>> Initiate(
         Guid orderId,
         CancellationToken cancellationToken)
