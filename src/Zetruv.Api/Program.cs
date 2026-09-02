@@ -19,6 +19,29 @@ using Zetruv.Api.Persistence;
 
 var builder = WebApplication.CreateBuilder(args);
 
+if (builder.Environment.IsProduction())
+{
+    var mockProviderSettings = new[]
+    {
+        "Payments:Provider",
+        "Shipping:Provider",
+        "GameAccountValidation:Provider"
+    };
+
+    var enabledMockProviders = mockProviderSettings
+        .Where(key => string.Equals(
+            builder.Configuration[key]?.Trim(),
+            "mock",
+            StringComparison.OrdinalIgnoreCase))
+        .ToArray();
+
+    if (enabledMockProviders.Length > 0)
+    {
+        throw new InvalidOperationException(
+            $"Mock providers cannot be enabled in Production: {string.Join(", ", enabledMockProviders)}.");
+    }
+}
+
 builder.Services
     .AddControllers()
     .AddJsonOptions(options =>
@@ -124,14 +147,19 @@ builder.Services.AddScoped<OrderTrackingService>();
 builder.Services.AddScoped<CheckoutService>();
 builder.Services.AddScoped<InventoryReservationService>();
 builder.Services.AddHostedService<InventoryReservationCleanupService>();
-builder.Services.AddScoped<IGameAccountValidator, MockGameAccountValidator>();
+
+if (!builder.Environment.IsProduction())
+{
+    builder.Services.AddScoped<IGameAccountValidator, MockGameAccountValidator>();
+    builder.Services.AddScoped<IShippingProvider, MockShippingProvider>();
+    builder.Services.AddScoped<IPaymentGateway, MockPaymentGateway>();
+}
+
 builder.Services.AddScoped<GameAccountValidatorResolver>();
 builder.Services.AddScoped<GameAccountValidationService>();
-builder.Services.AddScoped<IShippingProvider, MockShippingProvider>();
 builder.Services.AddScoped<ShippingProviderResolver>();
 builder.Services.AddScoped<ShippingService>();
 builder.Services.AddScoped<ShipmentFulfillmentService>();
-builder.Services.AddScoped<IPaymentGateway, MockPaymentGateway>();
 builder.Services.AddScoped<PaymentGatewayResolver>();
 builder.Services.AddScoped<PaymentService>();
 builder.Services.AddScoped<SiteService>();
