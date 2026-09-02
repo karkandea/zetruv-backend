@@ -101,35 +101,60 @@ public sealed class CmsOrdersController(
         UpdatePaymentStatusRequest request,
         CancellationToken cancellationToken)
     {
-        var order = await db.Orders.SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
+        var order = await db.Orders
+            .Include(x => x.Items)
+            .SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
+
         if (order is null)
         {
             return NotFound();
         }
 
-        order.PaymentStatus = request.Status;
-        order.UpdatedAt = DateTimeOffset.UtcNow;
-
         if (request.Status == PaymentStatus.Paid)
         {
+            if (order.Status == OrderStatus.Cancelled)
+            {
+                return Conflict(new { message = "A cancelled order cannot transition to paid." });
+            }
+
+            await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+            var inventory = await inventoryReservations.EnsureConsumedForPaidAsync(
+                order,
+                cancellationToken);
+
+            if (!inventory.IsSuccess)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                return Conflict(new
+                {
+                    message = inventory.Error ?? "Inventory could not be secured for the paid order."
+                });
+            }
+
+            order.PaymentStatus = PaymentStatus.Paid;
             order.PaidAt ??= DateTimeOffset.UtcNow;
             if (order.Status == OrderStatus.Pending)
             {
                 order.Status = OrderStatus.Processing;
             }
+            order.UpdatedAt = DateTimeOffset.UtcNow;
+
+            await db.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return NoContent();
         }
-        else if (request.Status is PaymentStatus.Pending or PaymentStatus.Failed)
+
+        order.PaymentStatus = request.Status;
+        order.UpdatedAt = DateTimeOffset.UtcNow;
+
+        if (request.Status is PaymentStatus.Pending or PaymentStatus.Failed)
         {
             order.PaidAt = null;
         }
 
         await db.SaveChangesAsync(cancellationToken);
 
-        if (request.Status == PaymentStatus.Paid)
-        {
-            await inventoryReservations.ConsumeAsync(id, cancellationToken);
-        }
-        else if (request.Status == PaymentStatus.Failed)
+        if (request.Status == PaymentStatus.Failed)
         {
             await inventoryReservations.ReleaseAsync(id, cancellationToken);
         }
