@@ -21,6 +21,7 @@ namespace Zetruv.Api.Features.Home
 
     [ApiController]
     [Authorize(Policy = AuthPolicies.CmsAdmin)]
+    [Route("api/v1/cms/homepage")]
     [Route("api/v1/admin/homepage")]
     public sealed class AdminHomepageController(ZetruvDbContext db) : ControllerBase
     {
