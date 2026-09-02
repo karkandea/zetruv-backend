@@ -150,16 +150,57 @@ fi
 
 systemctl reload nginx
 
-echo '=== LIVE DOMAIN SMOKE ==='
-curl -fsS -o /tmp/zetruv-live-homepage.json -w 'API HTTP %{http_code}\n' "https://${DOMAIN}/api/v1/homepage"
-python3 - <<'PY'
-import json
-with open('/tmp/zetruv-live-homepage.json') as f:
-    data = json.load(f)
-assert isinstance(data, dict)
-print('PASS: /api/v1/homepage returned JSON through Nginx')
+validate_json_response() {
+  local label="$1"
+  local body_file="$2"
+  local header_file="$3"
+  python3 - "$label" "$body_file" "$header_file" <<'PY'
+import json, pathlib, sys
+label, body_path, header_path = sys.argv[1:]
+body = pathlib.Path(body_path).read_bytes()
+headers = pathlib.Path(header_path).read_text(errors='replace')
+print(f'{label} bytes={len(body)}')
+try:
+    data = json.loads(body)
+except Exception as exc:
+    print(f'FAIL: {label} did not return valid JSON: {exc}', file=sys.stderr)
+    print('--- response headers ---', file=sys.stderr)
+    print(headers[-2000:], file=sys.stderr)
+    print('--- first 800 response bytes ---', file=sys.stderr)
+    print(body[:800].decode('utf-8', errors='replace'), file=sys.stderr)
+    sys.exit(1)
+if not isinstance(data, dict):
+    print(f'FAIL: {label} JSON root is not an object.', file=sys.stderr)
+    sys.exit(1)
+print(f'PASS: {label} returned JSON')
 PY
-curl -fsS -o /dev/null -w 'Frontend HTTP %{http_code}\n' "https://${DOMAIN}/"
+}
+
+echo '=== DIRECT KESTREL SMOKE ==='
+DIRECT_CODE=$(curl -sS -D /tmp/zetruv-direct.headers -o /tmp/zetruv-direct.json -w '%{http_code}' \
+  'http://127.0.0.1:8080/api/v1/homepage')
+echo "Direct API HTTP $DIRECT_CODE"
+[[ "$DIRECT_CODE" == "200" ]] || { cat /tmp/zetruv-direct.headers; exit 1; }
+validate_json_response 'direct Kestrel /api/v1/homepage' /tmp/zetruv-direct.json /tmp/zetruv-direct.headers
+
+echo '=== LOCAL NGINX HTTPS SMOKE ==='
+LOCAL_CODE=$(curl -sS --resolve "${DOMAIN}:443:127.0.0.1" \
+  -D /tmp/zetruv-local-nginx.headers -o /tmp/zetruv-local-nginx.json -w '%{http_code}' \
+  "https://${DOMAIN}/api/v1/homepage")
+echo "Local Nginx API HTTP $LOCAL_CODE"
+[[ "$LOCAL_CODE" == "200" ]] || { cat /tmp/zetruv-local-nginx.headers; exit 1; }
+validate_json_response 'local Nginx /api/v1/homepage' /tmp/zetruv-local-nginx.json /tmp/zetruv-local-nginx.headers
+
+echo '=== PUBLIC DOMAIN SMOKE ==='
+PUBLIC_CODE=$(curl -sS -D /tmp/zetruv-public.headers -o /tmp/zetruv-public.json -w '%{http_code}' \
+  "https://${DOMAIN}/api/v1/homepage")
+echo "Public API HTTP $PUBLIC_CODE"
+[[ "$PUBLIC_CODE" == "200" ]] || { cat /tmp/zetruv-public.headers; exit 1; }
+validate_json_response 'public domain /api/v1/homepage' /tmp/zetruv-public.json /tmp/zetruv-public.headers
+
+FRONTEND_CODE=$(curl -sS -o /dev/null -w '%{http_code}' "https://${DOMAIN}/")
+echo "Frontend HTTP $FRONTEND_CODE"
+[[ "$FRONTEND_CODE" == "200" ]]
 
 echo "PASS: live Nginx API proxy installed for https://${DOMAIN}/api/"
 echo "Backup kept at: $CONFIG_BACKUP"
