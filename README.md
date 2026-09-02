@@ -55,7 +55,16 @@ Checkout:
 - Inactive products/categories/games/variants and insufficient stock are rejected
 - Checkout currently requires at least customer email or phone
 - Shipping is currently `0` until the shipping-provider slice is implemented
-- Stock is validated but not reserved/decremented yet; inventory reservation belongs with the payment/fulfillment slice
+- Stock is validated but not reserved/decremented yet
+
+Payments:
+
+- Payment provider integration is behind `IPaymentGateway`
+- `POST /api/v1/checkout/orders/{orderId}/payment` initiates payment using the configured provider
+- Payment amount always comes from the persisted order; the frontend cannot override it
+- Each initiation creates a pending `PaymentTransaction` and stores the provider/reference on the order
+- A `mock` gateway is available for development/staging flow testing
+- Real provider callbacks/webhooks and reconciliation are intentionally deferred until a production provider is selected
 
 Articles:
 
@@ -84,12 +93,13 @@ Site / footer:
 - `GET /api/v1/catalog/products/{slug}`
 - `GET /api/v1/catalog/flash-sale`
 - `POST /api/v1/checkout/orders`
+- `POST /api/v1/checkout/orders/{orderId}/payment`
 - `GET /api/v1/articles/categories`
 - `GET /api/v1/articles`
 - `GET /api/v1/articles/{slug}`
 - `GET /api/v1/site/footer`
 
-`POST /api/v1/checkout/orders` accepts customer contact data plus variant IDs and quantities. All totals are recalculated from the current server-side catalog and active Flash Sale data.
+Checkout order creation accepts customer contact data plus variant IDs and quantities. All totals are recalculated from the current server-side catalog and active Flash Sale data.
 
 ## Admin / CMS API
 
@@ -168,5 +178,6 @@ At minimum for staging/production:
 - `CmsAdmin__Password`
 - `Cors__AllowedOrigins__0` (public frontend)
 - `Cors__AllowedOrigins__1` (CMS frontend)
+- `Payments__Provider` (`mock` for development/staging until a real provider adapter is configured)
 
 Do not commit real credentials.
