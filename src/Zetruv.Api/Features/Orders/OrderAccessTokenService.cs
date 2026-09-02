@@ -106,7 +106,7 @@ public sealed class OrderAccessTokenService
     private static byte[]? Base64UrlDecode(string value)
     {
         var base64 = value.Replace('-', '+').Replace('_', '/');
-        base64 = base64.Length % 4 switch
+        base64 = (base64.Length % 4) switch
         {
             0 => base64,
             2 => base64 + "==",
