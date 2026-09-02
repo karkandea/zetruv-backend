@@ -99,7 +99,7 @@ public sealed class Promotion
     public string Name { get; set; } = string.Empty;
     public string Slug { get; set; } = string.Empty;
     public bool IsFlashSale { get; set; }
-    public bool IsActive { get; set; } = true;
+    public bool IsActive { get; set; }
     public DateTimeOffset StartsAt { get; set; }
     public DateTimeOffset EndsAt { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
@@ -208,20 +208,20 @@ public sealed record FlashSaleResponse(
     IReadOnlyList<FlashSaleItemResponse> Items);
 
 public sealed record UpsertCategoryRequest(
-    [property: Required, MaxLength(80)] string Key,
-    [property: Required, MaxLength(120)] string Name,
-    [property: Required, MaxLength(160)] string Slug,
-    [property: MaxLength(500)] string? Description,
-    [property: MaxLength(1000)] string? IconUrl,
+    [Required, MaxLength(80)] string Key,
+    [Required, MaxLength(120)] string Name,
+    [Required, MaxLength(160)] string Slug,
+    [MaxLength(500)] string? Description,
+    [MaxLength(1000)] string? IconUrl,
     ProductKind Kind,
     bool IsActive,
     int SortOrder);
 
 public sealed record UpsertGameRequest(
-    [property: Required, MaxLength(120)] string Name,
-    [property: Required, MaxLength(160)] string Slug,
-    [property: MaxLength(120)] string? Publisher,
-    [property: MaxLength(1000)] string? ImageUrl,
+    [Required, MaxLength(120)] string Name,
+    [Required, MaxLength(160)] string Slug,
+    [MaxLength(120)] string? Publisher,
+    [MaxLength(1000)] string? ImageUrl,
     bool IsActive,
     bool IsPopular,
     int SortOrder);
@@ -229,11 +229,11 @@ public sealed record UpsertGameRequest(
 public sealed record UpsertProductRequest(
     Guid CategoryId,
     Guid? GameId,
-    [property: Required, MaxLength(180)] string Name,
-    [property: Required, MaxLength(220)] string Slug,
-    [property: MaxLength(500)] string? ShortDescription,
+    [Required, MaxLength(180)] string Name,
+    [Required, MaxLength(220)] string Slug,
+    [MaxLength(500)] string? ShortDescription,
     string? Description,
-    [property: MaxLength(1000)] string? ThumbnailUrl,
+    [MaxLength(1000)] string? ThumbnailUrl,
     ProductKind Kind,
     bool RequiresGameAccountValidation,
     bool IsActive,
@@ -241,9 +241,9 @@ public sealed record UpsertProductRequest(
     int SortOrder);
 
 public sealed record UpsertVariantRequest(
-    [property: Required, MaxLength(180)] string Name,
-    [property: Required, MaxLength(100)] string Sku,
-    [property: Range(typeof(decimal), "0", "9999999999999999")] decimal Price,
+    [Required, MaxLength(180)] string Name,
+    [Required, MaxLength(100)] string Sku,
+    [Range(typeof(decimal), "0", "9999999999999999")] decimal Price,
     decimal? CompareAtPrice,
     int? StockQuantity,
     int? WeightGrams,
@@ -251,18 +251,18 @@ public sealed record UpsertVariantRequest(
     int SortOrder);
 
 public sealed record UpsertImageRequest(
-    [property: Required, MaxLength(1000)] string Url,
-    [property: MaxLength(250)] string? AltText,
+    [Required, MaxLength(1000)] string Url,
+    [MaxLength(250)] string? AltText,
     int SortOrder);
 
 public sealed record PromotionItemRequest(
     Guid ProductVariantId,
-    [property: Range(typeof(decimal), "0", "9999999999999999")] decimal SalePrice,
+    [Range(typeof(decimal), "0", "9999999999999999")] decimal SalePrice,
     int SortOrder);
 
 public sealed record UpsertPromotionRequest(
-    [property: Required, MaxLength(160)] string Name,
-    [property: Required, MaxLength(180)] string Slug,
+    [Required, MaxLength(160)] string Name,
+    [Required, MaxLength(180)] string Slug,
     bool IsFlashSale,
     bool IsActive,
     DateTimeOffset StartsAt,

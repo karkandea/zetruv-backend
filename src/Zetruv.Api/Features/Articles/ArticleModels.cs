@@ -63,19 +63,19 @@ public sealed record ArticlePageResponse(
     int TotalPages);
 
 public sealed record UpsertArticleCategoryRequest(
-    [property: Required, MaxLength(120)] string Name,
-    [property: Required, MaxLength(160)] string Slug,
+    [Required, MaxLength(120)] string Name,
+    [Required, MaxLength(160)] string Slug,
     bool IsActive,
     int SortOrder);
 
 public sealed record UpsertArticleRequest(
-    [property: Required] Guid CategoryId,
-    [property: Required, MaxLength(220)] string Title,
-    [property: Required, MaxLength(240)] string Slug,
-    [property: Required, MaxLength(600)] string Excerpt,
-    [property: Required] string Content,
-    [property: Required, MaxLength(1000)] string ThumbnailUrl,
-    [property: MaxLength(120)] string? AuthorName,
+    [Required] Guid CategoryId,
+    [Required, MaxLength(220)] string Title,
+    [Required, MaxLength(240)] string Slug,
+    [Required, MaxLength(600)] string Excerpt,
+    [Required] string Content,
+    [Required, MaxLength(1000)] string ThumbnailUrl,
+    [MaxLength(120)] string? AuthorName,
     bool IsPublished,
     bool IsFeatured,
     DateTimeOffset? PublishedAt);

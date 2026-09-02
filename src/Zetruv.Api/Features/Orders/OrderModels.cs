@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using Zetruv.Api.Features.Catalog;
 using Zetruv.Api.Features.GameAccounts;
+using Zetruv.Api.Features.Shipping;
 
 namespace Zetruv.Api.Features.Orders;
 
@@ -55,6 +56,8 @@ public sealed class Order
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
     public ICollection<OrderItem> Items { get; set; } = [];
     public ICollection<PaymentTransaction> Transactions { get; set; } = [];
+    public ShippingQuote? ShippingQuote { get; set; }
+    public Shipment? Shipment { get; set; }
 }
 
 public sealed class OrderItem
@@ -166,6 +169,7 @@ public sealed record OrderDetailResponse(
     DateTimeOffset? CompletedAt,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
+    ShipmentAdminResponse? Shipment,
     IReadOnlyList<OrderItemResponse> Items,
     IReadOnlyList<PaymentTransactionResponse> Transactions);
 

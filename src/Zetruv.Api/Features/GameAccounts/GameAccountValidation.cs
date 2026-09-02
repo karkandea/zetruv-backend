@@ -50,7 +50,7 @@ public sealed class GameAccountValidation
 
 public sealed record GameAccountValidationRequest(
     Guid ProductId,
-    [property: Required] IReadOnlyDictionary<string, string> Fields);
+    [Required] IReadOnlyDictionary<string, string> Fields);
 
 public sealed record GameAccountValidationResponse(
     Guid ValidationId,

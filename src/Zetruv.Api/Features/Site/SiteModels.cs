@@ -86,29 +86,29 @@ public sealed record SiteFooterResponse(
     IReadOnlyList<PaymentMethodResponse> PaymentMethods);
 
 public sealed record UpdateSiteSettingsRequest(
-    [property: MaxLength(1000)] string? LogoUrl,
-    [property: Required, MaxLength(1000)] string BrandDescription,
-    [property: Required, MaxLength(250)] string CopyrightText,
-    [property: Required, MaxLength(80)] string ContactTeamLabel,
-    [property: MaxLength(500)] string? ContactTeamUrl);
+    [MaxLength(1000)] string? LogoUrl,
+    [Required, MaxLength(1000)] string BrandDescription,
+    [Required, MaxLength(250)] string CopyrightText,
+    [Required, MaxLength(80)] string ContactTeamLabel,
+    [MaxLength(500)] string? ContactTeamUrl);
 
 public sealed record UpsertFooterLinkRequest(
     FooterLinkGroup Group,
-    [property: Required, MaxLength(100)] string Label,
-    [property: Required, MaxLength(500)] string Url,
+    [Required, MaxLength(100)] string Label,
+    [Required, MaxLength(500)] string Url,
     bool IsActive,
     int SortOrder);
 
 public sealed record UpsertSocialLinkRequest(
-    [property: Required, MaxLength(80)] string Platform,
-    [property: Required, MaxLength(500)] string Url,
-    [property: MaxLength(1000)] string? IconUrl,
+    [Required, MaxLength(80)] string Platform,
+    [Required, MaxLength(500)] string Url,
+    [MaxLength(1000)] string? IconUrl,
     bool IsActive,
     int SortOrder);
 
 public sealed record UpsertPaymentMethodRequest(
-    [property: Required, MaxLength(80)] string Code,
-    [property: Required, MaxLength(120)] string Name,
-    [property: MaxLength(1000)] string? IconUrl,
+    [Required, MaxLength(80)] string Code,
+    [Required, MaxLength(120)] string Name,
+    [MaxLength(1000)] string? IconUrl,
     bool IsActive,
     int SortOrder);

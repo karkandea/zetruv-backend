@@ -69,23 +69,23 @@ public sealed record HomepageResponse(
     IReadOnlyList<ArticleListItemResponse> LatestArticles);
 
 public sealed record UpsertHeroRequest(
-    [property: Required, MaxLength(160)] string Title,
-    [property: Required, MaxLength(500)] string Subtitle,
-    [property: Required, MaxLength(1000)] string ImageUrl,
-    [property: MaxLength(80)] string? PrimaryCtaLabel,
-    [property: MaxLength(500)] string? PrimaryCtaUrl,
-    [property: MaxLength(80)] string? SecondaryCtaLabel,
-    [property: MaxLength(500)] string? SecondaryCtaUrl,
+    [Required, MaxLength(160)] string Title,
+    [Required, MaxLength(500)] string Subtitle,
+    [Required, MaxLength(1000)] string ImageUrl,
+    [MaxLength(80)] string? PrimaryCtaLabel,
+    [MaxLength(500)] string? PrimaryCtaUrl,
+    [MaxLength(80)] string? SecondaryCtaLabel,
+    [MaxLength(500)] string? SecondaryCtaUrl,
     bool IsActive,
     int SortOrder,
     DateTimeOffset? StartsAt,
     DateTimeOffset? EndsAt);
 
 public sealed record UpdateSectionRequest(
-    [property: Required, MaxLength(160)] string Title,
-    [property: MaxLength(500)] string? Subtitle,
-    [property: MaxLength(80)] string? CtaLabel,
-    [property: MaxLength(500)] string? CtaUrl,
+    [Required, MaxLength(160)] string Title,
+    [MaxLength(500)] string? Subtitle,
+    [MaxLength(80)] string? CtaLabel,
+    [MaxLength(500)] string? CtaUrl,
     bool IsEnabled,
     int SortOrder,
-    [property: Range(1, 50)] int ItemLimit);
+    [Range(1, 50)] int ItemLimit);
