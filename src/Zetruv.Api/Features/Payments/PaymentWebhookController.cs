@@ -41,6 +41,11 @@ public sealed class PaymentWebhookController(PaymentService paymentService) : Co
             return NotFound(new { message = result.Error });
         }
 
+        if (result.IsConflict)
+        {
+            return Conflict(new { message = result.Error });
+        }
+
         return BadRequest(new { message = result.Error });
     }
 }
