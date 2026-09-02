@@ -130,6 +130,7 @@ builder.Services.AddScoped<GameAccountValidationService>();
 builder.Services.AddScoped<IShippingProvider, MockShippingProvider>();
 builder.Services.AddScoped<ShippingProviderResolver>();
 builder.Services.AddScoped<ShippingService>();
+builder.Services.AddScoped<ShipmentFulfillmentService>();
 builder.Services.AddScoped<IPaymentGateway, MockPaymentGateway>();
 builder.Services.AddScoped<PaymentGatewayResolver>();
 builder.Services.AddScoped<PaymentService>();

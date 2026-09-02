@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Zetruv.Api.Features.Auth;
+using Zetruv.Api.Features.Shipping;
 using Zetruv.Api.Persistence;
 
 namespace Zetruv.Api.Features.Orders;
@@ -12,7 +13,8 @@ namespace Zetruv.Api.Features.Orders;
 public sealed class CmsOrdersController(
     ZetruvDbContext db,
     OrderService orderService,
-    InventoryReservationService inventoryReservations) : ControllerBase
+    InventoryReservationService inventoryReservations,
+    ShipmentFulfillmentService shipmentFulfillment) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<OrderPageResponse>> GetOrders(
@@ -51,6 +53,25 @@ public sealed class CmsOrdersController(
             return NotFound();
         }
 
+        if (request.Status == OrderStatus.Cancelled)
+        {
+            var alreadyShipped = await db.Set<Shipment>()
+                .AsNoTracking()
+                .AnyAsync(
+                    x => x.OrderId == id &&
+                         (x.Status == ShipmentStatus.Shipped ||
+                          x.Status == ShipmentStatus.Delivered),
+                    cancellationToken);
+
+            if (alreadyShipped)
+            {
+                return BadRequest(new
+                {
+                    message = "A shipped or delivered merchandise order cannot be cancelled."
+                });
+            }
+        }
+
         order.Status = request.Status;
         order.UpdatedAt = DateTimeOffset.UtcNow;
 
@@ -68,6 +89,7 @@ public sealed class CmsOrdersController(
         if (request.Status == OrderStatus.Cancelled)
         {
             await inventoryReservations.ReleaseAsync(id, cancellationToken);
+            await shipmentFulfillment.CancelUnshippedAsync(id, cancellationToken);
         }
 
         return NoContent();
