@@ -79,7 +79,7 @@ curl -fsS "$BASE/health"
 echo
 
 echo "=== SEED MERCHANDISE ==="
-docker exec "$CONTAINER" psql -v ON_ERROR_STOP=1 -U zetruv -d "$DB" <<'SQL'
+docker exec -i "$CONTAINER" psql -v ON_ERROR_STOP=1 -U zetruv -d "$DB" <<'SQL'
 INSERT INTO products (
   "Id", "CategoryId", "GameId", "Name", "Slug",
   "ShortDescription", "Description", "ThumbnailUrl",
@@ -123,9 +123,36 @@ VALUES (
 );
 SQL
 
-QUOTE_JSON=$(curl -fsS -X POST "$BASE/api/v1/shipping/quotes" \
-  -H 'Content-Type: application/json' \
-  -d '{
+request_json() {
+  local label="$1"
+  local url="$2"
+  local payload="$3"
+  local output
+  local status
+
+  output=$(mktemp)
+  status=$(curl -sS -o "$output" -w '%{http_code}' -X POST "$url" \
+    -H 'Content-Type: application/json' \
+    -d "$payload")
+
+  if [[ "$status" -lt 200 || "$status" -ge 300 ]]; then
+    echo "ERROR: $label returned HTTP $status"
+    cat "$output"
+    echo
+    echo "=== API LOG TAIL ==="
+    tail -n 120 "$LOG"
+    rm -f "$output"
+    return 1
+  fi
+
+  cat "$output"
+  rm -f "$output"
+}
+
+QUOTE_JSON=$(request_json \
+  "shipping quotes" \
+  "$BASE/api/v1/shipping/quotes" \
+  '{
     "address": {
       "recipientName": "Smoke Test",
       "phone": "08123456789",
@@ -145,9 +172,10 @@ echo "=== SHIPPING QUOTES ==="
 echo "$QUOTE_JSON" | python3 -m json.tool
 QUOTE_ID=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["rates"][0]["quoteId"])' <<< "$QUOTE_JSON")
 
-CHECKOUT_JSON=$(curl -fsS -X POST "$BASE/api/v1/checkout/orders" \
-  -H 'Content-Type: application/json' \
-  -d "{
+CHECKOUT_JSON=$(request_json \
+  "checkout" \
+  "$BASE/api/v1/checkout/orders" \
+  "{
     \"customerName\": \"Smoke Test\",
     \"customerEmail\": \"shipping-test@example.com\",
     \"items\": [{
@@ -161,13 +189,15 @@ echo "=== CHECKOUT ==="
 echo "$CHECKOUT_JSON" | python3 -m json.tool
 ORDER_NUMBER=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["orderNumber"])' <<< "$CHECKOUT_JSON")
 
-echo "=== ORDER LOOKUP ==="
-LOOKUP_JSON=$(curl -fsS -X POST "$BASE/api/v1/orders/lookup" \
-  -H 'Content-Type: application/json' \
-  -d "{
+LOOKUP_JSON=$(request_json \
+  "order lookup" \
+  "$BASE/api/v1/orders/lookup" \
+  "{
     \"orderNumber\": \"$ORDER_NUMBER\",
     \"customerEmail\": \"shipping-test@example.com\"
   }")
+
+echo "=== ORDER LOOKUP ==="
 echo "$LOOKUP_JSON" | python3 -m json.tool
 
 echo "=== DATABASE CHECK ==="
