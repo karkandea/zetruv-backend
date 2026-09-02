@@ -25,6 +25,7 @@ public sealed record TrackOrderItemResponse(
     decimal LineTotal);
 
 public sealed record TrackOrderResponse(
+    Guid OrderId,
     string OrderNumber,
     OrderStatus Status,
     PaymentStatus PaymentStatus,
@@ -34,13 +35,17 @@ public sealed record TrackOrderResponse(
     decimal GrandTotal,
     string Currency,
     bool CanInitiatePayment,
+    string? OrderAccessToken,
+    DateTimeOffset? OrderAccessTokenExpiresAt,
     DateTimeOffset CreatedAt,
     DateTimeOffset? PaidAt,
     DateTimeOffset? CompletedAt,
     ShipmentTrackingResponse? Shipment,
     IReadOnlyList<TrackOrderItemResponse> Items);
 
-public sealed class OrderTrackingService(ZetruvDbContext db)
+public sealed class OrderTrackingService(
+    ZetruvDbContext db,
+    OrderAccessTokenService orderAccessTokens)
 {
     public async Task<TrackOrderResponse?> TrackAsync(
         TrackOrderRequest request,
@@ -56,13 +61,14 @@ public sealed class OrderTrackingService(ZetruvDbContext db)
             return null;
         }
 
-        return await db.Orders
+        var order = await db.Orders
             .AsNoTracking()
             .Where(x =>
                 EF.Functions.ILike(x.OrderNumber, orderNumber) &&
                 ((email != null && x.CustomerEmail != null && EF.Functions.ILike(x.CustomerEmail, email)) ||
                  (phone != null && x.CustomerPhone != null && x.CustomerPhone == phone)))
             .Select(x => new TrackOrderResponse(
+                x.Id,
                 x.OrderNumber,
                 x.Status,
                 x.PaymentStatus,
@@ -73,6 +79,8 @@ public sealed class OrderTrackingService(ZetruvDbContext db)
                 x.Currency,
                 x.Status != OrderStatus.Cancelled &&
                     (x.PaymentStatus == PaymentStatus.Pending || x.PaymentStatus == PaymentStatus.Failed),
+                null,
+                null,
                 x.CreatedAt,
                 x.PaidAt,
                 x.CompletedAt,
@@ -102,6 +110,18 @@ public sealed class OrderTrackingService(ZetruvDbContext db)
                         i.LineTotal))
                     .ToList()))
             .SingleOrDefaultAsync(cancellationToken);
+
+        if (order is null || !order.CanInitiatePayment)
+        {
+            return order;
+        }
+
+        var grant = orderAccessTokens.Issue(order.OrderId);
+        return order with
+        {
+            OrderAccessToken = grant.Token,
+            OrderAccessTokenExpiresAt = grant.ExpiresAt
+        };
     }
 
     private static string? Clean(string? value) =>
