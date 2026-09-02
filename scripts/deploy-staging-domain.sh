@@ -2,7 +2,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-./scripts/bootstrap-staging-env.sh
+bash ./scripts/bootstrap-staging-env.sh
 
 get_env() {
   local key="$1"
