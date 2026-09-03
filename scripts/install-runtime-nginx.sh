@@ -41,6 +41,34 @@ rollback() {
 }
 trap rollback ERR
 
+wait_http_health() {
+  local code=""
+  for _ in $(seq 1 30); do
+    code=$(curl --noproxy '*' -sS -H "Host: $DOMAIN" -o /tmp/zetruv-api-env-health.txt -w '%{http_code}' "http://127.0.0.1/health" || true)
+    if [[ "$code" == 200 ]]; then
+      echo "$code"
+      return 0
+    fi
+    sleep 0.2
+  done
+  echo "${code:-000}"
+  return 1
+}
+
+wait_https_health() {
+  local code=""
+  for _ in $(seq 1 30); do
+    code=$(curl --noproxy '*' --resolve "${DOMAIN}:443:127.0.0.1" -sS -o /tmp/zetruv-api-env-health-https.txt -w '%{http_code}' "https://${DOMAIN}/health" || true)
+    if [[ "$code" == 200 ]]; then
+      echo "$code"
+      return 0
+    fi
+    sleep 0.2
+  done
+  echo "${code:-000}"
+  return 1
+}
+
 cat > "$AVAILABLE" <<NGINX
 server {
     listen 80;
@@ -68,17 +96,14 @@ ln -sfn "$AVAILABLE" "$ENABLED"
 nginx -t
 systemctl reload nginx
 
-HTTP_CODE=$(curl --noproxy '*' -sS -H "Host: $DOMAIN" -o /tmp/zetruv-api-env-health.txt -w '%{http_code}' "http://127.0.0.1/health")
-[[ "$HTTP_CODE" == 200 ]] || { echo "Local Nginx HTTP health returned $HTTP_CODE." >&2; exit 1; }
-
+HTTP_CODE=$(wait_http_health) || { echo "Local Nginx HTTP health returned $HTTP_CODE after reload wait." >&2; exit 1; }
 echo "PASS: local HTTP proxy for $DOMAIN -> 127.0.0.1:$API_PORT"
 
 if command -v certbot >/dev/null 2>&1; then
   certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos --redirect --register-unsafely-without-email
   nginx -t
   systemctl reload nginx
-  HTTPS_CODE=$(curl --noproxy '*' --resolve "${DOMAIN}:443:127.0.0.1" -sS -o /tmp/zetruv-api-env-health-https.txt -w '%{http_code}' "https://${DOMAIN}/health")
-  [[ "$HTTPS_CODE" == 200 ]] || { echo "Local HTTPS health returned $HTTPS_CODE." >&2; exit 1; }
+  HTTPS_CODE=$(wait_https_health) || { echo "Local HTTPS health returned $HTTPS_CODE after reload wait." >&2; exit 1; }
   echo "PASS: https://$DOMAIN is live and proxies only to $ENVIRONMENT backend"
 else
   echo "PASS: http://$DOMAIN is live. certbot not installed; HTTPS not configured."
