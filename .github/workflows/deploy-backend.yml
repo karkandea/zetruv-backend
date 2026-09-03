@@ -1,0 +1,46 @@
+name: Deploy Backend
+
+on:
+  push:
+    branches:
+      - dev
+      - main
+
+concurrency:
+  group: zetruv-backend-${{ github.ref_name }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, Linux, X64, zetruv-backend]
+    timeout-minutes: 20
+
+    steps:
+      - name: Resolve target
+        id: target
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${GITHUB_REF_NAME}" in
+            dev)
+              echo "environment=dev" >> "$GITHUB_OUTPUT"
+              ;;
+            main)
+              echo "environment=staging" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "Unsupported branch: ${GITHUB_REF_NAME}" >&2
+              exit 1
+              ;;
+          esac
+
+      - name: Deploy exact commit
+        shell: bash
+        env:
+          TARGET_ENV: ${{ steps.target.outputs.environment }}
+        run: |
+          set -euo pipefail
+          sudo /usr/local/bin/deploy-zetruv-backend "${TARGET_ENV}" "${GITHUB_SHA}"
