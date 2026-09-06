@@ -1,13 +1,15 @@
 # Frontend API handoff — DEV
 
-Status: **DEV acceptance only**. Do not point frontend STAGING at this environment and do not use STAGING as a fallback while DEV is under test.
+Status: **DEV acceptance only**. DEV is moving to the client-owned `zetruv.com` domain. STAGING remains separate and must not be used as a fallback.
 
 ## Environment contract
 
 | Purpose | Value |
 | --- | --- |
-| Frontend | `https://dev.zetruv.dualangka.com` |
-| API base URL | `https://api-dev.zetruv.dualangka.com` |
+| Frontend primary | `https://dev.zetruv.com` |
+| API primary | `https://api-dev.zetruv.com` |
+| Temporary frontend alias | `https://dev.zetruv.dualangka.com` |
+| Temporary API alias | `https://api-dev.zetruv.dualangka.com` |
 | Health | `GET /health` |
 | OpenAPI | `GET /openapi/v1.json` |
 | Backend source | branch `dev` |
@@ -15,13 +17,13 @@ Status: **DEV acceptance only**. Do not point frontend STAGING at this environme
 
 Frontend only consumes the HTTPS API. Frontend developers do **not** need PostgreSQL credentials, VPS access, Docker access, JWT signing keys, webhook secrets, or the backend runtime `.env`.
 
-Use one frontend environment variable for the base URL, for example:
+Use:
 
 ```env
-VITE_API_BASE_URL=https://api-dev.zetruv.dualangka.com
+VITE_API_BASE_URL=https://api-dev.zetruv.com
 ```
 
-Do not hard-code a STAGING or production API URL in DEV source code.
+Do not hard-code STAGING or the legacy API URL in new DEV frontend work.
 
 ## Public frontend endpoints
 
@@ -62,18 +64,7 @@ Content-Type: application/json
 }
 ```
 
-Successful response:
-
-```json
-{
-  "accessToken": "<jwt>",
-  "expiresAt": "2026-09-06T12:00:00Z",
-  "email": "admin-dev@zetruv.com",
-  "role": "Admin"
-}
-```
-
-Protected CMS calls send:
+Successful response contains `accessToken`, `expiresAt`, `email`, and `role`. Protected CMS calls send:
 
 ```http
 Authorization: Bearer <accessToken>
@@ -83,53 +74,49 @@ The DEV test password must be shared separately with the CMS frontend developer.
 
 ## Error handling
 
-Frontend should primarily branch on HTTP status.
-
-ASP.NET validation/framework failures use Problem Details / validation Problem Details. Some application-level failures return a JSON `message` field. A frontend error normalizer should therefore tolerate these fields when present:
-
-- `message`
-- `title`
-- `detail`
-- `errors`
+Frontend should primarily branch on HTTP status. ASP.NET validation/framework failures use Problem Details / validation Problem Details. Some application-level failures return a JSON `message` field. The frontend error normalizer should tolerate `message`, `title`, `detail`, and `errors`.
 
 Important statuses include `400`, `401`, `403`, `404`, `409`, `422` when returned by a feature, and `429` for rate-limited public provider operations.
 
 ## CORS
 
-DEV browser origin must be:
+Primary DEV browser origin:
+
+```text
+https://dev.zetruv.com
+```
+
+During migration, backend DEV also accepts:
 
 ```text
 https://dev.zetruv.dualangka.com
 ```
 
-Backend DEV must return `Access-Control-Allow-Origin` for that exact origin. Do not add `*` as a workaround.
+Do not add wildcard CORS.
 
 ## Environment isolation rule
-
-Data written through DEV CMS/API belongs only to DEV.
-
-Example:
 
 ```text
 CMS/API DEV -> zetruv_dev -> Frontend DEV
 ```
 
-A banner, product, article, promotion, or other record created in DEV is not expected to appear in STAGING. STAGING has its own API and database and will be accepted separately after DEV passes.
+A banner, product, article, promotion, or other record created in DEV is not expected to appear in STAGING.
 
 ## DEV acceptance checklist
 
-Run on the DEV backend host after deployment:
+Run on the DEV backend host after DNS, deploy, and Nginx/SSL setup:
 
 ```bash
 bash scripts/smoke-frontend-handoff-dev.sh
 ```
 
-PASS requires all of the following:
+PASS requires:
 
-1. `/health` responds.
-2. `/openapi/v1.json` is published.
-3. `/api/v1/homepage` responds.
-4. Browser preflight from `https://dev.zetruv.dualangka.com` is accepted.
-5. Frontend only receives API/base URL and contract information; no backend secrets or infrastructure access is handed off.
+1. `https://api-dev.zetruv.com/health` responds.
+2. OpenAPI is published on the new API domain.
+3. Homepage responds on the new API domain.
+4. CORS accepts `https://dev.zetruv.com`.
+5. The old API alias remains healthy during cutover.
+6. CORS still accepts the old DEV frontend during cutover.
 
-Only after DEV passes should the equivalent STAGING handoff be prepared and tested.
+Only after DEV passes should STAGING be migrated to `zetruv.com`.
