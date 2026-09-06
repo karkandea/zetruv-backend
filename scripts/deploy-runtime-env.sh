@@ -26,12 +26,17 @@ API_PORT=$(get_env API_PORT)
 DB_NAME=$(get_env POSTGRES_DB)
 ASPNET_ENV=$(get_env ASPNETCORE_ENVIRONMENT)
 FORWARDED=$(get_env FORWARDED_HEADERS_ENABLED)
+FRONTEND_ORIGIN=$(get_env FRONTEND_ORIGIN)
 
-[[ -n "$PROJECT" && -n "$API_PORT" && -n "$DB_NAME" ]] || { echo 'Required runtime values are missing from .env.' >&2; exit 1; }
+[[ -n "$PROJECT" && -n "$API_PORT" && -n "$DB_NAME" && -n "$FRONTEND_ORIGIN" ]] || { echo 'Required runtime values are missing from .env.' >&2; exit 1; }
 [[ "$FORWARDED" == true ]] || { echo 'FORWARDED_HEADERS_ENABLED must be true behind Nginx.' >&2; exit 1; }
 if [[ "$ENVIRONMENT" == dev ]]; then
   [[ "$ASPNET_ENV" == Development ]] || { echo 'DEV must use ASPNETCORE_ENVIRONMENT=Development.' >&2; exit 1; }
   [[ "$API_PORT" == 8081 ]] || { echo 'DEV API_PORT must remain 8081 on this VPS layout.' >&2; exit 1; }
+  [[ "$FRONTEND_ORIGIN" == "https://dev.zetruv.dualangka.com" ]] || {
+    echo "DEV FRONTEND_ORIGIN must be https://dev.zetruv.dualangka.com (current: $FRONTEND_ORIGIN)." >&2
+    exit 1
+  }
 else
   [[ "$ASPNET_ENV" == Staging ]] || { echo 'STAGING must use ASPNETCORE_ENVIRONMENT=Staging.' >&2; exit 1; }
   [[ "$API_PORT" == 8082 ]] || { echo 'STAGING API_PORT must remain 8082 on this VPS layout.' >&2; exit 1; }
@@ -51,6 +56,7 @@ echo "Commit: $SHA"
 echo "Compose project: $PROJECT"
 echo "Database: $DB_NAME"
 echo "API bind: 127.0.0.1:$API_PORT"
+echo "Frontend origin: $FRONTEND_ORIGIN"
 
 docker compose --project-name "$PROJECT" --env-file .env up -d --build --remove-orphans
 
