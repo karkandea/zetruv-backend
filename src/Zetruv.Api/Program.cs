@@ -141,9 +141,13 @@ builder.Services.AddAuthorization(options =>
         policy.RequireRole(AdminRoles.Admin));
 });
 
-var allowedOrigins = builder.Configuration
+var allowedOrigins = (builder.Configuration
     .GetSection("Cors:AllowedOrigins")
-    .Get<string[]>() ?? [];
+    .Get<string[]>() ?? [])
+    .Where(origin => !string.IsNullOrWhiteSpace(origin))
+    .Select(origin => origin.Trim())
+    .Distinct(StringComparer.OrdinalIgnoreCase)
+    .ToArray();
 
 builder.Services.AddCors(options =>
 {
