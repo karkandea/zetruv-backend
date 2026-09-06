@@ -14,6 +14,8 @@ case "$ENVIRONMENT" in
     CMS_EMAIL=admin-dev@zetruv.com
     FRONTEND_ORIGIN=https://dev.zetruv.com
     FRONTEND_ORIGIN_LEGACY=https://dev.zetruv.dualangka.com
+    CMS_ORIGIN=https://admin-dev.zetruv.com
+    CMS_ORIGIN_LEGACY=https://admin.zetruv.dualangka.com
     ;;
   staging)
     ASPNET_ENV=Staging
@@ -25,6 +27,8 @@ case "$ENVIRONMENT" in
     CMS_EMAIL=admin-staging@zetruv.com
     FRONTEND_ORIGIN=https://zetruv.dualangka.com
     FRONTEND_ORIGIN_LEGACY=
+    CMS_ORIGIN=https://admin.zetruv.dualangka.com
+    CMS_ORIGIN_LEGACY=
     ;;
   *)
     echo 'Usage: bash scripts/bootstrap-runtime-env.sh <dev|staging>' >&2
@@ -61,7 +65,8 @@ CMS_ADMIN_EMAIL=$CMS_EMAIL
 CMS_ADMIN_PASSWORD=$CMS_ADMIN_PASSWORD
 FRONTEND_ORIGIN=$FRONTEND_ORIGIN
 FRONTEND_ORIGIN_LEGACY=$FRONTEND_ORIGIN_LEGACY
-CMS_ORIGIN=https://admin.zetruv.dualangka.com
+CMS_ORIGIN=$CMS_ORIGIN
+CMS_ORIGIN_LEGACY=$CMS_ORIGIN_LEGACY
 API_PORT=$API_PORT
 API_DOMAIN=$API_DOMAIN
 API_DOMAIN_LEGACY=$API_DOMAIN_LEGACY
@@ -82,5 +87,7 @@ echo "Public API domain: https://$API_DOMAIN"
 [[ -n "$API_DOMAIN_LEGACY" ]] && echo "Legacy API alias: https://$API_DOMAIN_LEGACY"
 echo "Frontend origin: $FRONTEND_ORIGIN"
 [[ -n "$FRONTEND_ORIGIN_LEGACY" ]] && echo "Legacy frontend origin: $FRONTEND_ORIGIN_LEGACY"
+echo "CMS origin: $CMS_ORIGIN"
+[[ -n "$CMS_ORIGIN_LEGACY" ]] && echo "Legacy CMS origin: $CMS_ORIGIN_LEGACY"
 echo "CMS admin email: $CMS_EMAIL"
 echo 'Generated passwords/secrets are stored only in this clone .env (mode 600).'

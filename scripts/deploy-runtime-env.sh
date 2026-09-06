@@ -30,8 +30,10 @@ ASPNET_ENV=$(get_env ASPNETCORE_ENVIRONMENT)
 FORWARDED=$(get_env FORWARDED_HEADERS_ENABLED)
 FRONTEND_ORIGIN=$(get_env FRONTEND_ORIGIN)
 FRONTEND_ORIGIN_LEGACY=$(get_env FRONTEND_ORIGIN_LEGACY)
+CMS_ORIGIN=$(get_env CMS_ORIGIN)
+CMS_ORIGIN_LEGACY=$(get_env CMS_ORIGIN_LEGACY)
 
-[[ -n "$PROJECT" && -n "$API_PORT" && -n "$API_DOMAIN" && -n "$DB_NAME" && -n "$FRONTEND_ORIGIN" ]] || { echo 'Required runtime values are missing from .env.' >&2; exit 1; }
+[[ -n "$PROJECT" && -n "$API_PORT" && -n "$API_DOMAIN" && -n "$DB_NAME" && -n "$FRONTEND_ORIGIN" && -n "$CMS_ORIGIN" ]] || { echo 'Required runtime values are missing from .env.' >&2; exit 1; }
 [[ "$FORWARDED" == true ]] || { echo 'FORWARDED_HEADERS_ENABLED must be true behind Nginx.' >&2; exit 1; }
 if [[ "$ENVIRONMENT" == dev ]]; then
   [[ "$ASPNET_ENV" == Development ]] || { echo 'DEV must use ASPNETCORE_ENVIRONMENT=Development.' >&2; exit 1; }
@@ -40,6 +42,8 @@ if [[ "$ENVIRONMENT" == dev ]]; then
   [[ "$API_DOMAIN_LEGACY" == "api-dev.zetruv.dualangka.com" ]] || { echo "DEV API_DOMAIN_LEGACY must preserve api-dev.zetruv.dualangka.com during cutover." >&2; exit 1; }
   [[ "$FRONTEND_ORIGIN" == "https://dev.zetruv.com" ]] || { echo "DEV FRONTEND_ORIGIN must be https://dev.zetruv.com (current: $FRONTEND_ORIGIN)." >&2; exit 1; }
   [[ "$FRONTEND_ORIGIN_LEGACY" == "https://dev.zetruv.dualangka.com" ]] || { echo "DEV FRONTEND_ORIGIN_LEGACY must preserve https://dev.zetruv.dualangka.com during cutover." >&2; exit 1; }
+  [[ "$CMS_ORIGIN" == "https://admin-dev.zetruv.com" ]] || { echo "DEV CMS_ORIGIN must be https://admin-dev.zetruv.com (current: $CMS_ORIGIN)." >&2; exit 1; }
+  [[ "$CMS_ORIGIN_LEGACY" == "https://admin.zetruv.dualangka.com" ]] || { echo "DEV CMS_ORIGIN_LEGACY must preserve https://admin.zetruv.dualangka.com during cutover." >&2; exit 1; }
 else
   [[ "$ASPNET_ENV" == Staging ]] || { echo 'STAGING must use ASPNETCORE_ENVIRONMENT=Staging.' >&2; exit 1; }
   [[ "$API_PORT" == 8082 ]] || { echo 'STAGING API_PORT must remain 8082 on this VPS layout.' >&2; exit 1; }
@@ -63,6 +67,8 @@ echo "API domain: https://$API_DOMAIN"
 [[ -n "$API_DOMAIN_LEGACY" ]] && echo "Legacy API alias: https://$API_DOMAIN_LEGACY"
 echo "Frontend origin: $FRONTEND_ORIGIN"
 [[ -n "$FRONTEND_ORIGIN_LEGACY" ]] && echo "Legacy frontend origin: $FRONTEND_ORIGIN_LEGACY"
+echo "CMS origin: $CMS_ORIGIN"
+[[ -n "$CMS_ORIGIN_LEGACY" ]] && echo "Legacy CMS origin: $CMS_ORIGIN_LEGACY"
 
 docker compose --project-name "$PROJECT" --env-file .env up -d --build --remove-orphans
 

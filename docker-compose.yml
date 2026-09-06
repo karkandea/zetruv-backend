@@ -30,6 +30,7 @@ services:
       Cors__AllowedOrigins__0: ${FRONTEND_ORIGIN:-http://localhost:5173}
       Cors__AllowedOrigins__1: ${CMS_ORIGIN:-http://localhost:5174}
       Cors__AllowedOrigins__2: ${FRONTEND_ORIGIN_LEGACY:-}
+      Cors__AllowedOrigins__3: ${CMS_ORIGIN_LEGACY:-}
       Payments__Provider: ${PAYMENTS_PROVIDER:-mock}
       Payments__Mock__WebhookSecret: ${PAYMENTS_MOCK_WEBHOOK_SECRET}
       GameAccountValidation__Provider: ${GAME_ACCOUNT_VALIDATION_PROVIDER:-mock}
