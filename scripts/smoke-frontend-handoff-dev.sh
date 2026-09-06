@@ -15,13 +15,15 @@ FRONTEND_ORIGIN=$(get_env FRONTEND_ORIGIN)
 
 BASE_URL="https://$API_DOMAIN"
 TMP_HEADERS=$(mktemp)
-trap 'rm -f "$TMP_HEADERS"' EXIT
+TMP_OPENAPI=$(mktemp)
+trap 'rm -f "$TMP_HEADERS" "$TMP_OPENAPI"' EXIT
 
 echo '1/4 health'
 curl -fsS "$BASE_URL/health" >/dev/null
 
 echo '2/4 OpenAPI contract'
-curl -fsS "$BASE_URL/openapi/v1.json" | grep -q '"openapi"'
+curl -fsS "$BASE_URL/openapi/v1.json" -o "$TMP_OPENAPI"
+grep -q '"openapi"' "$TMP_OPENAPI"
 
 echo '3/4 public homepage'
 curl -fsS "$BASE_URL/api/v1/homepage" >/dev/null
