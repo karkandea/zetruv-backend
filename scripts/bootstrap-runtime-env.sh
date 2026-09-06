@@ -11,6 +11,7 @@ case "$ENVIRONMENT" in
     API_DOMAIN=api-dev.zetruv.dualangka.com
     PROJECT_NAME=zetruv-dev
     CMS_EMAIL=admin-dev@zetruv.com
+    FRONTEND_ORIGIN=https://dev.zetruv.dualangka.com
     ;;
   staging)
     ASPNET_ENV=Staging
@@ -19,6 +20,7 @@ case "$ENVIRONMENT" in
     API_DOMAIN=api-staging.zetruv.dualangka.com
     PROJECT_NAME=zetruv-staging
     CMS_EMAIL=admin-staging@zetruv.com
+    FRONTEND_ORIGIN=https://zetruv.dualangka.com
     ;;
   *)
     echo 'Usage: bash scripts/bootstrap-runtime-env.sh <dev|staging>' >&2
@@ -53,7 +55,7 @@ POSTGRES_PASSWORD=$POSTGRES_PASSWORD
 JWT_KEY=$JWT_KEY
 CMS_ADMIN_EMAIL=$CMS_EMAIL
 CMS_ADMIN_PASSWORD=$CMS_ADMIN_PASSWORD
-FRONTEND_ORIGIN=https://zetruv.dualangka.com
+FRONTEND_ORIGIN=$FRONTEND_ORIGIN
 CMS_ORIGIN=https://admin.zetruv.dualangka.com
 API_PORT=$API_PORT
 API_DOMAIN=$API_DOMAIN
@@ -71,5 +73,6 @@ echo "Compose project: $PROJECT_NAME"
 echo "Database: $DB_NAME"
 echo "Local API bind: 127.0.0.1:$API_PORT"
 echo "Public API domain: https://$API_DOMAIN"
+echo "Frontend origin: $FRONTEND_ORIGIN"
 echo "CMS admin email: $CMS_EMAIL"
 echo 'Generated passwords/secrets are stored only in this clone .env (mode 600).'
