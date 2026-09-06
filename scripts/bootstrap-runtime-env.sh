@@ -8,19 +8,23 @@ case "$ENVIRONMENT" in
     ASPNET_ENV=Development
     DB_NAME=zetruv_dev
     API_PORT=8081
-    API_DOMAIN=api-dev.zetruv.dualangka.com
+    API_DOMAIN=api-dev.zetruv.com
+    API_DOMAIN_LEGACY=api-dev.zetruv.dualangka.com
     PROJECT_NAME=zetruv-dev
     CMS_EMAIL=admin-dev@zetruv.com
-    FRONTEND_ORIGIN=https://dev.zetruv.dualangka.com
+    FRONTEND_ORIGIN=https://dev.zetruv.com
+    FRONTEND_ORIGIN_LEGACY=https://dev.zetruv.dualangka.com
     ;;
   staging)
     ASPNET_ENV=Staging
     DB_NAME=zetruv_staging
     API_PORT=8082
     API_DOMAIN=api-staging.zetruv.dualangka.com
+    API_DOMAIN_LEGACY=
     PROJECT_NAME=zetruv-staging
     CMS_EMAIL=admin-staging@zetruv.com
     FRONTEND_ORIGIN=https://zetruv.dualangka.com
+    FRONTEND_ORIGIN_LEGACY=
     ;;
   *)
     echo 'Usage: bash scripts/bootstrap-runtime-env.sh <dev|staging>' >&2
@@ -56,9 +60,11 @@ JWT_KEY=$JWT_KEY
 CMS_ADMIN_EMAIL=$CMS_EMAIL
 CMS_ADMIN_PASSWORD=$CMS_ADMIN_PASSWORD
 FRONTEND_ORIGIN=$FRONTEND_ORIGIN
+FRONTEND_ORIGIN_LEGACY=$FRONTEND_ORIGIN_LEGACY
 CMS_ORIGIN=https://admin.zetruv.dualangka.com
 API_PORT=$API_PORT
 API_DOMAIN=$API_DOMAIN
+API_DOMAIN_LEGACY=$API_DOMAIN_LEGACY
 ORDER_ACCESS_TOKEN_LIFETIME_MINUTES=1440
 FORWARDED_HEADERS_ENABLED=true
 PAYMENTS_PROVIDER=mock
@@ -73,6 +79,8 @@ echo "Compose project: $PROJECT_NAME"
 echo "Database: $DB_NAME"
 echo "Local API bind: 127.0.0.1:$API_PORT"
 echo "Public API domain: https://$API_DOMAIN"
+[[ -n "$API_DOMAIN_LEGACY" ]] && echo "Legacy API alias: https://$API_DOMAIN_LEGACY"
 echo "Frontend origin: $FRONTEND_ORIGIN"
+[[ -n "$FRONTEND_ORIGIN_LEGACY" ]] && echo "Legacy frontend origin: $FRONTEND_ORIGIN_LEGACY"
 echo "CMS admin email: $CMS_EMAIL"
 echo 'Generated passwords/secrets are stored only in this clone .env (mode 600).'
