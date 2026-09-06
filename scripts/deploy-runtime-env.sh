@@ -23,20 +23,23 @@ fi
 
 PROJECT=$(get_env COMPOSE_PROJECT_NAME)
 API_PORT=$(get_env API_PORT)
+API_DOMAIN=$(get_env API_DOMAIN)
+API_DOMAIN_LEGACY=$(get_env API_DOMAIN_LEGACY)
 DB_NAME=$(get_env POSTGRES_DB)
 ASPNET_ENV=$(get_env ASPNETCORE_ENVIRONMENT)
 FORWARDED=$(get_env FORWARDED_HEADERS_ENABLED)
 FRONTEND_ORIGIN=$(get_env FRONTEND_ORIGIN)
+FRONTEND_ORIGIN_LEGACY=$(get_env FRONTEND_ORIGIN_LEGACY)
 
-[[ -n "$PROJECT" && -n "$API_PORT" && -n "$DB_NAME" && -n "$FRONTEND_ORIGIN" ]] || { echo 'Required runtime values are missing from .env.' >&2; exit 1; }
+[[ -n "$PROJECT" && -n "$API_PORT" && -n "$API_DOMAIN" && -n "$DB_NAME" && -n "$FRONTEND_ORIGIN" ]] || { echo 'Required runtime values are missing from .env.' >&2; exit 1; }
 [[ "$FORWARDED" == true ]] || { echo 'FORWARDED_HEADERS_ENABLED must be true behind Nginx.' >&2; exit 1; }
 if [[ "$ENVIRONMENT" == dev ]]; then
   [[ "$ASPNET_ENV" == Development ]] || { echo 'DEV must use ASPNETCORE_ENVIRONMENT=Development.' >&2; exit 1; }
   [[ "$API_PORT" == 8081 ]] || { echo 'DEV API_PORT must remain 8081 on this VPS layout.' >&2; exit 1; }
-  [[ "$FRONTEND_ORIGIN" == "https://dev.zetruv.dualangka.com" ]] || {
-    echo "DEV FRONTEND_ORIGIN must be https://dev.zetruv.dualangka.com (current: $FRONTEND_ORIGIN)." >&2
-    exit 1
-  }
+  [[ "$API_DOMAIN" == "api-dev.zetruv.com" ]] || { echo "DEV API_DOMAIN must be api-dev.zetruv.com (current: $API_DOMAIN)." >&2; exit 1; }
+  [[ "$API_DOMAIN_LEGACY" == "api-dev.zetruv.dualangka.com" ]] || { echo "DEV API_DOMAIN_LEGACY must preserve api-dev.zetruv.dualangka.com during cutover." >&2; exit 1; }
+  [[ "$FRONTEND_ORIGIN" == "https://dev.zetruv.com" ]] || { echo "DEV FRONTEND_ORIGIN must be https://dev.zetruv.com (current: $FRONTEND_ORIGIN)." >&2; exit 1; }
+  [[ "$FRONTEND_ORIGIN_LEGACY" == "https://dev.zetruv.dualangka.com" ]] || { echo "DEV FRONTEND_ORIGIN_LEGACY must preserve https://dev.zetruv.dualangka.com during cutover." >&2; exit 1; }
 else
   [[ "$ASPNET_ENV" == Staging ]] || { echo 'STAGING must use ASPNETCORE_ENVIRONMENT=Staging.' >&2; exit 1; }
   [[ "$API_PORT" == 8082 ]] || { echo 'STAGING API_PORT must remain 8082 on this VPS layout.' >&2; exit 1; }
@@ -56,7 +59,10 @@ echo "Commit: $SHA"
 echo "Compose project: $PROJECT"
 echo "Database: $DB_NAME"
 echo "API bind: 127.0.0.1:$API_PORT"
+echo "API domain: https://$API_DOMAIN"
+[[ -n "$API_DOMAIN_LEGACY" ]] && echo "Legacy API alias: https://$API_DOMAIN_LEGACY"
 echo "Frontend origin: $FRONTEND_ORIGIN"
+[[ -n "$FRONTEND_ORIGIN_LEGACY" ]] && echo "Legacy frontend origin: $FRONTEND_ORIGIN_LEGACY"
 
 docker compose --project-name "$PROJECT" --env-file .env up -d --build --remove-orphans
 
