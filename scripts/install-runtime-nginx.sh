@@ -121,7 +121,9 @@ fi
 
 if command -v certbot >/dev/null 2>&1; then
   CERTBOT_ARGS=(--nginx -d "$DOMAIN")
-  [[ -z "$LEGACY_DOMAIN" ]] || CERTBOT_ARGS+=(-d "$LEGACY_DOMAIN")
+  if [[ -n "$LEGACY_DOMAIN" ]]; then
+    CERTBOT_ARGS+=(-d "$LEGACY_DOMAIN" --expand)
+  fi
   certbot "${CERTBOT_ARGS[@]}" --non-interactive --agree-tos --redirect --register-unsafely-without-email
   nginx -t
   systemctl reload nginx
