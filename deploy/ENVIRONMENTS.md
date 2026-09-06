@@ -6,8 +6,10 @@ This VPS hosts non-production environments only. Final production remains on the
 
 | Environment | Git source | VPS clone | Compose project | API bind | Database | Public domain |
 | --- | --- | --- | --- | --- | --- | --- |
-| DEV | `dev` | `/opt/zetruv-backend-dev` | `zetruv-dev` | `127.0.0.1:8081` | `zetruv_dev` | `api-dev.zetruv.dualangka.com` |
+| DEV | `dev` | `/opt/zetruv-backend-dev` | `zetruv-dev` | `127.0.0.1:8081` | `zetruv_dev` | `api-dev.zetruv.com` |
 | STAGING | `main` or `release/*` | `/opt/zetruv-backend-staging` | `zetruv-staging` | `127.0.0.1:8082` | `zetruv_staging` | `api-staging.zetruv.dualangka.com` |
+
+DEV is currently migrating to the client-owned `zetruv.com` domain. During the cutover, `api-dev.zetruv.dualangka.com` remains a temporary alias to the same DEV API. Do not reuse DEV database credentials, JWT keys, or CMS credentials in STAGING.
 
 Each Compose project owns its own PostgreSQL container and named volume. Each clone owns a separate `.env`, PostgreSQL password, JWT signing key, CMS admin password, and webhook secret. Neither API port is exposed publicly; Nginx is the only public entry point.
 
@@ -16,27 +18,31 @@ The old `/opt/zetruv-backend` / port `8080` stack is intentionally left untouche
 ## Branch / promotion model
 
 1. Feature branches are opened from `dev` and merged back into `dev` after review/testing.
-2. `dev` auto/manual deployment target is DEV (`api-dev...`). This environment may change frequently.
+2. `dev` auto/manual deployment target is DEV (`api-dev.zetruv.com`). This environment may change frequently.
 3. When a candidate is ready, promote `dev` into `main` through a PR. `main` is the STAGING source of truth.
 4. Optional `release/*` branches may be used for release stabilization; the staging deploy guard accepts `main` or `release/*` only.
 5. Production is not deployed from this VPS. A client production deployment should use a tested commit/tag from STAGING and production-only secrets/provider configuration.
 
 Do not merge `main` back into `dev` by copying files manually. Use Git merges/PRs so commit ancestry remains auditable.
 
-## Initial VPS setup
+## DEV client-domain cutover
 
-After this environment-separation change is merged to `main` and branch `dev` has been created from that merged commit:
+Before installing the new DEV Nginx configuration, create this DNS A record in the `zetruv.com` DNS zone:
 
-```bash
-bash scripts/bootstrap-vps-runtime-layout.sh
+```text
+api-dev.zetruv.com -> 103.175.207.127
 ```
 
-This creates the two clones if missing and generates independent `.env` files without touching the existing `/opt/zetruv-backend` stack.
+The DEV runtime should then use:
 
-Before running the Nginx installer, create DNS A records pointing to the current VPS:
+```env
+API_DOMAIN=api-dev.zetruv.com
+API_DOMAIN_LEGACY=api-dev.zetruv.dualangka.com
+FRONTEND_ORIGIN=https://dev.zetruv.com
+FRONTEND_ORIGIN_LEGACY=https://dev.zetruv.dualangka.com
+```
 
-- `api-dev.zetruv` -> VPS IPv4
-- `api-staging.zetruv` -> VPS IPv4
+The legacy values are temporary compatibility aliases only. They may be removed after frontend DEV is fully running on `dev.zetruv.com` and the new domain has passed acceptance.
 
 ## Deploy DEV
 
@@ -48,11 +54,12 @@ git fetch origin dev
 git reset --hard origin/dev
 bash scripts/deploy-runtime-env.sh dev
 sudo bash scripts/install-runtime-nginx.sh dev
+bash scripts/smoke-frontend-handoff-dev.sh
 ```
 
 ## Deploy STAGING
 
-Sync the STAGING clone explicitly to `origin/main`, then deploy:
+STAGING remains unchanged until DEV has passed on `zetruv.com`.
 
 ```bash
 cd /opt/zetruv-backend-staging
@@ -79,5 +86,3 @@ The smoke verifies different Compose projects, containers, localhost ports, Post
 `.env` is never committed. Generated environment secrets remain mode `600` in each clone. DEV and STAGING must never share JWT, PostgreSQL, CMS admin, or webhook secrets.
 
 The current backend still has external provider work pending, so DEV/STAGING may use mock providers. `ASPNETCORE_ENVIRONMENT=Production` remains reserved for the future client production environment, where mock providers are rejected and real provider configuration must be supplied.
-
-When frontend environments are split later, change `FRONTEND_ORIGIN` and `CMS_ORIGIN` in each environment `.env` to the corresponding DEV/STAGING frontend/admin origins before cross-origin browser use.
