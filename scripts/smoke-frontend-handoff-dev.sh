@@ -15,8 +15,9 @@ FRONTEND_ORIGIN=$(get_env FRONTEND_ORIGIN)
 
 BASE_URL="https://$API_DOMAIN"
 TMP_HEADERS=$(mktemp)
+TMP_HEADERS_NORMALIZED=$(mktemp)
 TMP_OPENAPI=$(mktemp)
-trap 'rm -f "$TMP_HEADERS" "$TMP_OPENAPI"' EXIT
+trap 'rm -f "$TMP_HEADERS" "$TMP_HEADERS_NORMALIZED" "$TMP_OPENAPI"' EXIT
 
 echo '1/4 health'
 curl -fsS "$BASE_URL/health" >/dev/null
@@ -32,9 +33,11 @@ echo '4/4 browser CORS from DEV frontend'
 STATUS=$(curl -sS -o /dev/null -D "$TMP_HEADERS" -w '%{http_code}' -X OPTIONS   "$BASE_URL/api/v1/homepage"   -H "Origin: $FRONTEND_ORIGIN"   -H 'Access-Control-Request-Method: GET'   -H 'Access-Control-Request-Headers: content-type')
 
 [[ "$STATUS" == "204" || "$STATUS" == "200" ]] || { echo "Unexpected preflight status: $STATUS" >&2; exit 1; }
-grep -qi "^access-control-allow-origin: $FRONTEND_ORIGIN\r\?$" "$TMP_HEADERS" || {
+
+tr -d '\r' < "$TMP_HEADERS" > "$TMP_HEADERS_NORMALIZED"
+grep -Fxiq "Access-Control-Allow-Origin: $FRONTEND_ORIGIN" "$TMP_HEADERS_NORMALIZED" || {
   echo "CORS header does not allow $FRONTEND_ORIGIN." >&2
-  cat "$TMP_HEADERS" >&2
+  cat "$TMP_HEADERS_NORMALIZED" >&2
   exit 1
 }
 
