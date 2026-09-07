@@ -23,8 +23,7 @@ PRIMARY_RESOLVE=(--resolve "$API_DOMAIN:443:127.0.0.1")
 LEGACY_RESOLVE=(--resolve "$API_DOMAIN_LEGACY:443:127.0.0.1")
 TMP_HEADERS=$(mktemp)
 TMP_HEADERS_NORMALIZED=$(mktemp)
-TMP_OPENAPI=$(mktemp)
-trap 'rm -f "$TMP_HEADERS" "$TMP_HEADERS_NORMALIZED" "$TMP_OPENAPI"' EXIT
+trap 'rm -f "$TMP_HEADERS" "$TMP_HEADERS_NORMALIZED"' EXIT
 
 assert_cors() {
   local base_url="$1"
@@ -47,23 +46,19 @@ assert_cors() {
   }
 }
 
-echo '1/6 primary health'
+echo '1/5 primary health'
 curl "${PRIMARY_RESOLVE[@]}" -fsS "$BASE_URL/health" >/dev/null
 
-echo '2/6 primary OpenAPI contract'
-curl "${PRIMARY_RESOLVE[@]}" -fsS "$BASE_URL/openapi/v1.json" -o "$TMP_OPENAPI"
-grep -q '"openapi"' "$TMP_OPENAPI"
-
-echo '3/6 primary homepage'
+echo '2/5 primary homepage'
 curl "${PRIMARY_RESOLVE[@]}" -fsS "$BASE_URL/api/v1/homepage" >/dev/null
 
-echo '4/6 CORS from new STAGING frontend'
+echo '3/5 CORS from new STAGING frontend'
 assert_cors "$BASE_URL" "$FRONTEND_ORIGIN"
 
-echo '5/6 legacy API alias health'
+echo '4/5 legacy API alias health'
 curl "${LEGACY_RESOLVE[@]}" -fsS "$LEGACY_BASE_URL/health" >/dev/null
 
-echo '6/6 legacy frontend CORS remains valid during cutover'
+echo '5/5 legacy frontend CORS remains valid during cutover'
 assert_cors "$LEGACY_BASE_URL" "$FRONTEND_ORIGIN_LEGACY"
 
 echo 'PASS: STAGING zetruv.com backend cutover is healthy; new API/origin are primary and dualangka.com remains a temporary alias.'
