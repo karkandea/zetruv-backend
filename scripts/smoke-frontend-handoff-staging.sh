@@ -29,7 +29,7 @@ assert_cors() {
   local origin="$2"
   : > "$TMP_HEADERS"
   local status
-  status=$(curl -sS -o /staging/null -D "$TMP_HEADERS" -w '%{http_code}' -X OPTIONS     "$base_url/api/v1/homepage"     -H "Origin: $origin"     -H 'Access-Control-Request-Method: GET'     -H 'Access-Control-Request-Headers: content-type')
+  status=$(curl -sS -o /dev/null -D "$TMP_HEADERS" -w '%{http_code}' -X OPTIONS     "$base_url/api/v1/homepage"     -H "Origin: $origin"     -H 'Access-Control-Request-Method: GET'     -H 'Access-Control-Request-Headers: content-type')
 
   [[ "$status" == "204" || "$status" == "200" ]] || { echo "Unexpected preflight status for $origin via $base_url: $status" >&2; exit 1; }
 
@@ -42,20 +42,20 @@ assert_cors() {
 }
 
 echo '1/6 primary health'
-curl -fsS "$BASE_URL/health" >/staging/null
+curl -fsS "$BASE_URL/health" >/dev/null
 
 echo '2/6 primary OpenAPI contract'
 curl -fsS "$BASE_URL/openapi/v1.json" -o "$TMP_OPENAPI"
 grep -q '"openapi"' "$TMP_OPENAPI"
 
 echo '3/6 primary homepage'
-curl -fsS "$BASE_URL/api/v1/homepage" >/staging/null
+curl -fsS "$BASE_URL/api/v1/homepage" >/dev/null
 
 echo '4/6 CORS from new STAGING frontend'
 assert_cors "$BASE_URL" "$FRONTEND_ORIGIN"
 
 echo '5/6 legacy API alias health'
-curl -fsS "$LEGACY_BASE_URL/health" >/staging/null
+curl -fsS "$LEGACY_BASE_URL/health" >/dev/null
 
 echo '6/6 legacy frontend CORS remains valid during cutover'
 assert_cors "$LEGACY_BASE_URL" "$FRONTEND_ORIGIN_LEGACY"
