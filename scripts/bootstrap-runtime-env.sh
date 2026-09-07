@@ -21,13 +21,13 @@ case "$ENVIRONMENT" in
     ASPNET_ENV=Staging
     DB_NAME=zetruv_staging
     API_PORT=8082
-    API_DOMAIN=api-staging.zetruv.dualangka.com
-    API_DOMAIN_LEGACY=
+    API_DOMAIN=api-staging.zetruv.com
+    API_DOMAIN_LEGACY=api-staging.zetruv.dualangka.com
     PROJECT_NAME=zetruv-staging
     CMS_EMAIL=admin-staging@zetruv.com
-    FRONTEND_ORIGIN=https://zetruv.dualangka.com
-    FRONTEND_ORIGIN_LEGACY=
-    CMS_ORIGIN=https://admin.zetruv.dualangka.com
+    FRONTEND_ORIGIN=https://staging.zetruv.com
+    FRONTEND_ORIGIN_LEGACY=https://staging.zetruv.dualangka.com
+    CMS_ORIGIN=https://admin-staging.zetruv.com
     CMS_ORIGIN_LEGACY=
     ;;
   *)

@@ -47,6 +47,12 @@ if [[ "$ENVIRONMENT" == dev ]]; then
 else
   [[ "$ASPNET_ENV" == Staging ]] || { echo 'STAGING must use ASPNETCORE_ENVIRONMENT=Staging.' >&2; exit 1; }
   [[ "$API_PORT" == 8082 ]] || { echo 'STAGING API_PORT must remain 8082 on this VPS layout.' >&2; exit 1; }
+  [[ "$API_DOMAIN" == "api-staging.zetruv.com" ]] || { echo "STAGING API_DOMAIN must be api-staging.zetruv.com (current: $API_DOMAIN)." >&2; exit 1; }
+  [[ "$API_DOMAIN_LEGACY" == "api-staging.zetruv.dualangka.com" ]] || { echo "STAGING API_DOMAIN_LEGACY must preserve api-staging.zetruv.dualangka.com during cutover." >&2; exit 1; }
+  [[ "$FRONTEND_ORIGIN" == "https://staging.zetruv.com" ]] || { echo "STAGING FRONTEND_ORIGIN must be https://staging.zetruv.com (current: $FRONTEND_ORIGIN)." >&2; exit 1; }
+  [[ "$FRONTEND_ORIGIN_LEGACY" == "https://staging.zetruv.dualangka.com" ]] || { echo "STAGING FRONTEND_ORIGIN_LEGACY must preserve https://staging.zetruv.dualangka.com during cutover." >&2; exit 1; }
+  [[ "$CMS_ORIGIN" == "https://admin-staging.zetruv.com" ]] || { echo "STAGING CMS_ORIGIN must be https://admin-staging.zetruv.com (current: $CMS_ORIGIN)." >&2; exit 1; }
+  [[ -z "$CMS_ORIGIN_LEGACY" ]] || { echo "STAGING CMS_ORIGIN_LEGACY must remain empty unless a dedicated legacy staging admin domain exists." >&2; exit 1; }
 fi
 
 JWT_KEY=$(get_env JWT_KEY)
