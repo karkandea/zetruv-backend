@@ -23,6 +23,7 @@ for cmd in curl python3; do
 done
 
 BASE_URL="https://$API_DOMAIN"
+CURL_RESOLVE=(--resolve "$API_DOMAIN:443:127.0.0.1")
 TMP_HEADERS=$(mktemp)
 TMP_HEADERS_NORMALIZED=$(mktemp)
 TMP_LOGIN=$(mktemp)
@@ -33,7 +34,7 @@ assert_cors() {
   local origin="$1"
   : > "$TMP_HEADERS"
   local status
-  status=$(curl -sS -o /dev/null -D "$TMP_HEADERS" -w '%{http_code}' -X OPTIONS     "$BASE_URL/api/v1/cms/orders"     -H "Origin: $origin"     -H 'Access-Control-Request-Method: GET'     -H 'Access-Control-Request-Headers: authorization,content-type')
+  status=$(curl "${CURL_RESOLVE[@]}" -sS -o /dev/null -D "$TMP_HEADERS" -w '%{http_code}' -X OPTIONS     "$BASE_URL/api/v1/cms/orders"     -H "Origin: $origin"     -H 'Access-Control-Request-Method: GET'     -H 'Access-Control-Request-Headers: authorization,content-type')
 
   [[ "$status" == "204" || "$status" == "200" ]] || {
     echo "Unexpected CMS preflight status for $origin: $status" >&2
@@ -52,7 +53,7 @@ echo '1/4 CORS from new STAGING admin'
 assert_cors "$CMS_ORIGIN"
 
 echo '2/4 protected CMS rejects unauthenticated request'
-UNAUTH_STATUS=$(curl -sS -o /dev/null -w '%{http_code}' "$BASE_URL/api/v1/cms/orders?pageSize=1")
+UNAUTH_STATUS=$(curl "${CURL_RESOLVE[@]}" -sS -o /dev/null -w '%{http_code}' "$BASE_URL/api/v1/cms/orders?pageSize=1")
 [[ "$UNAUTH_STATUS" == "401" ]] || { echo "Expected 401 without JWT, got $UNAUTH_STATUS." >&2; exit 1; }
 
 echo '3/4 canonical CMS login'
@@ -64,7 +65,7 @@ print(json.dumps({
 }))
 PY
 )
-LOGIN_STATUS=$(curl -sS -o "$TMP_LOGIN" -w '%{http_code}'   -X POST "$BASE_URL/api/v1/cms/auth/login"   -H 'Content-Type: application/json'   --data "$LOGIN_PAYLOAD")
+LOGIN_STATUS=$(curl "${CURL_RESOLVE[@]}" -sS -o "$TMP_LOGIN" -w '%{http_code}'   -X POST "$BASE_URL/api/v1/cms/auth/login"   -H 'Content-Type: application/json'   --data "$LOGIN_PAYLOAD")
 [[ "$LOGIN_STATUS" == "200" ]] || {
   echo "CMS login failed with HTTP $LOGIN_STATUS." >&2
   cat "$TMP_LOGIN" >&2
@@ -84,7 +85,7 @@ PY
 [[ -n "$ACCESS_TOKEN" ]] || { echo 'CMS login returned an empty access token.' >&2; exit 1; }
 
 echo '4/4 JWT opens protected CMS endpoint'
-AUTH_STATUS=$(curl -sS -o "$TMP_ORDERS" -w '%{http_code}'   "$BASE_URL/api/v1/cms/orders?pageSize=1"   -H "Authorization: Bearer $ACCESS_TOKEN")
+AUTH_STATUS=$(curl "${CURL_RESOLVE[@]}" -sS -o "$TMP_ORDERS" -w '%{http_code}'   "$BASE_URL/api/v1/cms/orders?pageSize=1"   -H "Authorization: Bearer $ACCESS_TOKEN")
 [[ "$AUTH_STATUS" == "200" ]] || {
   echo "Protected CMS endpoint returned HTTP $AUTH_STATUS." >&2
   cat "$TMP_ORDERS" >&2
