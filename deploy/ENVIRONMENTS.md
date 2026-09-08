@@ -98,4 +98,4 @@ The smoke verifies different Compose projects, containers, localhost ports, Post
 
 `.env` is never committed. Generated environment secrets remain mode `600` in each clone. DEV and STAGING must never share JWT, PostgreSQL, CMS admin, or webhook secrets.
 
-The current backend still has external provider work pending, so DEV/STAGING may use mock providers. `ASPNETCORE_ENVIRONMENT=Production` remains reserved for the future client production environment, where mock providers are rejected and real provider configuration must be supplied.
+DEV/STAGING may use mock providers for payment, game-account validation, shipping, and AUTO_ID fulfillment. The AUTO_ID provider is configured with `FULFILLMENT_AUTO_ID_PROVIDER` and defaults to `mock` only in non-production runtime setup. `ASPNETCORE_ENVIRONMENT=Production` remains reserved for the future client production environment, where mock providers are rejected and real provider configuration must be supplied.
