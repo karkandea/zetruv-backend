@@ -12,6 +12,13 @@ public enum ProductKind
     GameAccount
 }
 
+public enum FulfillmentMethod
+{
+    AUTO_ID,
+    MANUAL_LOGIN,
+    MANUAL
+}
+
 public sealed class CatalogCategory
 {
     public Guid Id { get; set; } = Guid.NewGuid();
@@ -56,6 +63,7 @@ public sealed class Product
     public string? Description { get; set; }
     public string? ThumbnailUrl { get; set; }
     public ProductKind Kind { get; set; }
+    public FulfillmentMethod FulfillmentMethod { get; set; } = FulfillmentMethod.MANUAL;
     public bool RequiresGameAccountValidation { get; set; }
     public bool IsActive { get; set; } = true;
     public bool IsFeatured { get; set; }
@@ -142,6 +150,7 @@ public sealed record ProductListItemResponse(
     string Name,
     string Slug,
     ProductKind Kind,
+    FulfillmentMethod FulfillmentMethod,
     string? ThumbnailUrl,
     string CategorySlug,
     string? GameName,
@@ -170,6 +179,7 @@ public sealed record ProductDetailResponse(
     string Name,
     string Slug,
     ProductKind Kind,
+    FulfillmentMethod FulfillmentMethod,
     string? ShortDescription,
     string? Description,
     string? ThumbnailUrl,
@@ -235,6 +245,7 @@ public sealed record UpsertProductRequest(
     string? Description,
     [MaxLength(1000)] string? ThumbnailUrl,
     ProductKind Kind,
+    FulfillmentMethod FulfillmentMethod,
     bool RequiresGameAccountValidation,
     bool IsActive,
     bool IsFeatured,
