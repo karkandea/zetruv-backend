@@ -35,6 +35,15 @@ public enum PaymentTransactionStatus
     Failed
 }
 
+public enum FulfillmentStatus
+{
+    Pending,
+    Processing,
+    Completed,
+    Failed,
+    Cancelled
+}
+
 public sealed class Order
 {
     public Guid Id { get; set; } = Guid.NewGuid();
@@ -74,6 +83,11 @@ public sealed class OrderItem
     public string ProductSlug { get; set; } = string.Empty;
     public ProductKind ProductKind { get; set; }
     public FulfillmentMethod FulfillmentMethod { get; set; } = FulfillmentMethod.MANUAL;
+    public FulfillmentStatus FulfillmentStatus { get; set; } = FulfillmentStatus.Pending;
+    public string? FulfillmentReference { get; set; }
+    public string? FulfillmentMessage { get; set; }
+    public DateTimeOffset? FulfillmentStartedAt { get; set; }
+    public DateTimeOffset? FulfilledAt { get; set; }
     public string? VariantName { get; set; }
     public string? Sku { get; set; }
     public string? ThumbnailUrl { get; set; }
@@ -109,6 +123,7 @@ public sealed record RecentPurchaseResponse(
     string ProductSlug,
     ProductKind ProductKind,
     FulfillmentMethod FulfillmentMethod,
+    FulfillmentStatus FulfillmentStatus,
     string? VariantName,
     string? ThumbnailUrl,
     string? GameName,
@@ -124,6 +139,7 @@ public sealed record OrderListItemResponse(
     decimal GrandTotal,
     string Currency,
     int ItemCount,
+    bool HasFulfillmentIssue,
     DateTimeOffset CreatedAt,
     DateTimeOffset? PaidAt,
     DateTimeOffset? CompletedAt);
@@ -136,6 +152,11 @@ public sealed record OrderItemResponse(
     string ProductSlug,
     ProductKind ProductKind,
     FulfillmentMethod FulfillmentMethod,
+    FulfillmentStatus FulfillmentStatus,
+    string? FulfillmentReference,
+    string? FulfillmentMessage,
+    DateTimeOffset? FulfillmentStartedAt,
+    DateTimeOffset? FulfilledAt,
     string? VariantName,
     string? Sku,
     string? ThumbnailUrl,
@@ -174,6 +195,7 @@ public sealed record OrderDetailResponse(
     DateTimeOffset? CompletedAt,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
+    bool HasFulfillmentIssue,
     ShipmentAdminResponse? Shipment,
     IReadOnlyList<OrderItemResponse> Items,
     IReadOnlyList<PaymentTransactionResponse> Transactions);
@@ -187,3 +209,20 @@ public sealed record OrderPageResponse(
 
 public sealed record UpdateOrderStatusRequest(OrderStatus Status);
 public sealed record UpdatePaymentStatusRequest(PaymentStatus Status);
+
+public sealed record UpdateOrderItemFulfillmentRequest(
+    FulfillmentStatus Status,
+    [MaxLength(180)] string? Reference = null,
+    [MaxLength(500)] string? Message = null);
+
+public sealed record OrderItemFulfillmentResponse(
+    Guid OrderId,
+    Guid OrderItemId,
+    FulfillmentMethod FulfillmentMethod,
+    FulfillmentStatus Status,
+    string? Reference,
+    string? Message,
+    DateTimeOffset? StartedAt,
+    DateTimeOffset? FulfilledAt,
+    OrderStatus OrderStatus,
+    bool HasFulfillmentIssue);
