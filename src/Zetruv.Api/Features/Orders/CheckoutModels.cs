@@ -20,6 +20,7 @@ public sealed record CheckoutOrderItemResponse(
     string ProductName,
     string ProductSlug,
     ProductKind ProductKind,
+    FulfillmentMethod FulfillmentMethod,
     string VariantName,
     string? ThumbnailUrl,
     string? GameName,
