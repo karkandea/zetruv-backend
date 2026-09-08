@@ -21,6 +21,7 @@ check_env() {
   grep -Fxq "API_PORT=$expected_port" "$TMP/.env"
   grep -Fxq "POSTGRES_DB=$expected_db" "$TMP/.env"
   grep -Fxq "ASPNETCORE_ENVIRONMENT=$expected_aspnet" "$TMP/.env"
+  grep -Fxq "FULFILLMENT_AUTO_ID_PROVIDER=mock" "$TMP/.env"
   [[ "$(stat -c '%a' "$TMP/.env")" == 600 ]]
   (cd "$TMP" && docker compose --project-name "$expected_project" --env-file .env config >/dev/null)
 }
