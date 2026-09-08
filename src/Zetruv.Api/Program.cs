@@ -25,7 +25,8 @@ if (builder.Environment.IsProduction())
     {
         "Payments:Provider",
         "Shipping:Provider",
-        "GameAccountValidation:Provider"
+        "GameAccountValidation:Provider",
+        "Fulfillment:AutoId:Provider"
     };
 
     var enabledMockProviders = mockProviderSettings
@@ -172,6 +173,8 @@ builder.Services.AddScoped<CatalogSeeder>();
 builder.Services.AddScoped<ArticleService>();
 builder.Services.AddScoped<OrderService>();
 builder.Services.AddScoped<OrderFulfillmentService>();
+builder.Services.AddScoped<FulfillmentExecutionService>();
+builder.Services.AddScoped<FulfillmentQueueService>();
 builder.Services.AddScoped<OrderAccessTokenService>();
 builder.Services.AddScoped<OrderTrackingService>();
 builder.Services.AddScoped<CheckoutService>();
@@ -183,6 +186,7 @@ if (!builder.Environment.IsProduction())
     builder.Services.AddScoped<IGameAccountValidator, MockGameAccountValidator>();
     builder.Services.AddScoped<IShippingProvider, MockShippingProvider>();
     builder.Services.AddScoped<IPaymentGateway, MockPaymentGateway>();
+    builder.Services.AddScoped<IAutoIdFulfillmentProvider, MockAutoIdFulfillmentProvider>();
 }
 
 builder.Services.AddScoped<GameAccountValidatorResolver>();
@@ -191,6 +195,7 @@ builder.Services.AddScoped<ShippingProviderResolver>();
 builder.Services.AddScoped<ShippingService>();
 builder.Services.AddScoped<ShipmentFulfillmentService>();
 builder.Services.AddScoped<PaymentGatewayResolver>();
+builder.Services.AddScoped<AutoIdFulfillmentProviderResolver>();
 builder.Services.AddScoped<PaymentService>();
 builder.Services.AddScoped<SiteService>();
 builder.Services.AddScoped<SiteSeeder>();
