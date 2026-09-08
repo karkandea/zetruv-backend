@@ -27,7 +27,9 @@ public sealed record ShipmentFulfillmentResult(
         new(null, error);
 }
 
-public sealed class ShipmentFulfillmentService(ZetruvDbContext db)
+public sealed class ShipmentFulfillmentService(
+    ZetruvDbContext db,
+    OrderFulfillmentService fulfillmentService)
 {
     public async Task<ShipmentFulfillmentResult> UpdateAsync(
         Guid orderId,
@@ -51,6 +53,13 @@ public sealed class ShipmentFulfillmentService(ZetruvDbContext db)
         {
             return ShipmentFulfillmentResult.Failure(
                 "A cancelled order cannot move to an active shipment status.");
+        }
+
+        if (request.Status is ShipmentStatus.ReadyToShip or ShipmentStatus.Shipped or ShipmentStatus.Delivered &&
+            order.PaymentStatus != PaymentStatus.Paid)
+        {
+            return ShipmentFulfillmentResult.Failure(
+                "Order must be paid before shipment fulfillment can advance.");
         }
 
         if (!IsAllowedTransition(shipment.Status, request.Status))
@@ -94,6 +103,20 @@ public sealed class ShipmentFulfillmentService(ZetruvDbContext db)
         }
 
         await db.SaveChangesAsync(cancellationToken);
+
+        var fulfillmentStatus = request.Status switch
+        {
+            ShipmentStatus.Delivered => FulfillmentStatus.Completed,
+            ShipmentStatus.Cancelled => FulfillmentStatus.Cancelled,
+            _ => FulfillmentStatus.Processing
+        };
+
+        await fulfillmentService.SyncMerchandiseFromShipmentAsync(
+            order.Id,
+            fulfillmentStatus,
+            now,
+            cancellationToken);
+
         return ShipmentFulfillmentResult.Success(ToResponse(shipment));
     }
 
@@ -110,10 +133,17 @@ public sealed class ShipmentFulfillmentService(ZetruvDbContext db)
             return;
         }
 
+        var now = DateTimeOffset.UtcNow;
         shipment.Status = ShipmentStatus.Cancelled;
-        shipment.UpdatedAt = DateTimeOffset.UtcNow;
+        shipment.UpdatedAt = now;
         shipment.DeliveredAt = null;
         await db.SaveChangesAsync(cancellationToken);
+
+        await fulfillmentService.SyncMerchandiseFromShipmentAsync(
+            orderId,
+            FulfillmentStatus.Cancelled,
+            now,
+            cancellationToken);
     }
 
     private static bool IsAllowedTransition(ShipmentStatus current, ShipmentStatus next)
