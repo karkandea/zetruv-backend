@@ -7,7 +7,7 @@ This VPS hosts non-production environments only. Final production remains on the
 | Environment | Git source | VPS clone | Compose project | API bind | Database | Public domain |
 | --- | --- | --- | --- | --- | --- | --- |
 | DEV | `dev` | `/opt/zetruv-backend-dev` | `zetruv-dev` | `127.0.0.1:8081` | `zetruv_dev` | `api-dev.zetruv.com` |
-| STAGING | `main` or `release/*` | `/opt/zetruv-backend-staging` | `zetruv-staging` | `127.0.0.1:8082` | `zetruv_staging` | `api-staging.zetruv.dualangka.com` |
+| STAGING | `main` or `release/*` | `/opt/zetruv-backend-staging` | `zetruv-staging` | `127.0.0.1:8082` | `zetruv_staging` | `api-staging.zetruv.com` |
 
 DEV is currently migrating to the client-owned `zetruv.com` domain. During the cutover, `api-dev.zetruv.dualangka.com` remains a temporary alias to the same DEV API. Do not reuse DEV database credentials, JWT keys, or CMS credentials in STAGING.
 
@@ -59,7 +59,20 @@ bash scripts/smoke-frontend-handoff-dev.sh
 
 ## Deploy STAGING
 
-STAGING remains unchanged until DEV has passed on `zetruv.com`.
+STAGING now follows the same client-domain cutover pattern as DEV.
+
+Primary staging endpoints:
+
+- API: `api-staging.zetruv.com`
+- Storefront origin: `https://staging.zetruv.com`
+- Admin origin: `https://admin-staging.zetruv.com`
+
+Temporary compatibility aliases:
+
+- API: `api-staging.zetruv.dualangka.com`
+- Storefront: `https://staging.zetruv.dualangka.com`
+
+Do not reuse the DEV legacy admin domain for STAGING.
 
 ```bash
 cd /opt/zetruv-backend-staging
