@@ -237,6 +237,9 @@ public sealed class ZetruvDbContext(
             entity.Property(x => x.ProductSlug).HasMaxLength(220).IsRequired();
             entity.Property(x => x.ProductKind).HasConversion<string>().HasMaxLength(30).IsRequired();
             entity.Property(x => x.FulfillmentMethod).HasConversion<string>().HasMaxLength(30).IsRequired();
+            entity.Property(x => x.FulfillmentStatus).HasConversion<string>().HasMaxLength(30).IsRequired();
+            entity.Property(x => x.FulfillmentReference).HasMaxLength(180);
+            entity.Property(x => x.FulfillmentMessage).HasMaxLength(500);
             entity.Property(x => x.VariantName).HasMaxLength(180);
             entity.Property(x => x.Sku).HasMaxLength(100);
             entity.Property(x => x.ThumbnailUrl).HasMaxLength(1000);
@@ -244,6 +247,7 @@ public sealed class ZetruvDbContext(
             entity.Property(x => x.UnitPrice).HasPrecision(18, 2);
             entity.Property(x => x.LineTotal).HasPrecision(18, 2);
             entity.HasIndex(x => new { x.OrderId, x.CreatedAt });
+            entity.HasIndex(x => new { x.OrderId, x.FulfillmentStatus });
             entity.HasIndex(x => x.ProductId);
             entity.HasIndex(x => x.ProductVariantId);
             entity.HasOne(x => x.Order)
