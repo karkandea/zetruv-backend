@@ -53,12 +53,30 @@ public sealed record GameAccountValidationRequest(
     Guid ProductId,
     [Required] IReadOnlyDictionary<string, string> Fields);
 
+public enum GameAccountValidationStatus
+{
+    Verified
+}
+
+public enum GameAccountValidationFailureKind
+{
+    InvalidRequest,
+    ProductUnavailable,
+    AccountNotFound,
+    ProviderUnavailable
+}
+
 public sealed record GameAccountValidationResponse(
+    GameAccountValidationStatus Status,
     Guid ValidationId,
     Guid ProductId,
     string Provider,
     string? AccountDisplayName,
     DateTimeOffset ExpiresAt);
+
+public sealed record GameAccountValidationErrorResponse(
+    string Code,
+    string Message);
 
 public sealed record GameAccountProviderRequest(
     Guid ProductId,
@@ -108,7 +126,7 @@ public sealed class MockGameAccountValidator : IGameAccountValidator
                 "At least one account field is required."));
         }
 
-        var displayName = TryGetDisplayName(request.Fields);
+        var displayName = TryGetDisplayName(request.Fields) ?? "ZetruvPlayer";
         var reference = $"MOCK-{request.GameSlug}-{Guid.NewGuid():N}";
 
         return Task.FromResult(GameAccountProviderResult.Valid(
@@ -152,21 +170,22 @@ public sealed class GameAccountValidatorResolver(
 
 public sealed record GameAccountValidationResult(
     GameAccountValidationResponse? Validation,
-    string? Error,
-    bool IsConfigurationError = false)
+    GameAccountValidationFailureKind? FailureKind,
+    string? Error)
 {
     public static GameAccountValidationResult Success(GameAccountValidationResponse validation) =>
-        new(validation, null);
+        new(validation, null, null);
 
     public static GameAccountValidationResult Failure(
-        string error,
-        bool isConfigurationError = false) =>
-        new(null, error, isConfigurationError);
+        GameAccountValidationFailureKind failureKind,
+        string error) =>
+        new(null, failureKind, error);
 }
 
 public sealed class GameAccountValidationService(
     ZetruvDbContext db,
-    GameAccountValidatorResolver resolver)
+    GameAccountValidatorResolver resolver,
+    ILogger<GameAccountValidationService> logger)
 {
     private static readonly HashSet<string> SensitiveFieldNames = new(
         new[]
@@ -194,7 +213,9 @@ public sealed class GameAccountValidationService(
         var fieldsResult = NormalizeFields(request.Fields);
         if (fieldsResult.Error is not null)
         {
-            return GameAccountValidationResult.Failure(fieldsResult.Error);
+            return GameAccountValidationResult.Failure(
+                GameAccountValidationFailureKind.InvalidRequest,
+                fieldsResult.Error);
         }
 
         var product = await db.Products
@@ -206,6 +227,7 @@ public sealed class GameAccountValidationService(
                 x.Name,
                 x.IsActive,
                 x.RequiresGameAccountValidation,
+                x.FulfillmentMethod,
                 CategoryIsActive = x.Category.IsActive,
                 GameId = x.GameId,
                 GameName = x.Game == null ? null : x.Game.Name,
@@ -216,13 +238,17 @@ public sealed class GameAccountValidationService(
 
         if (product is null || !product.IsActive || !product.CategoryIsActive)
         {
-            return GameAccountValidationResult.Failure("Product is not available.");
+            return GameAccountValidationResult.Failure(
+                GameAccountValidationFailureKind.ProductUnavailable,
+                "Product is not available.");
         }
 
-        if (!product.RequiresGameAccountValidation)
+        if (product.FulfillmentMethod != FulfillmentMethod.AUTO_ID ||
+            !product.RequiresGameAccountValidation)
         {
             return GameAccountValidationResult.Failure(
-                "This product does not require game account validation.");
+                GameAccountValidationFailureKind.ProductUnavailable,
+                "This product does not support AUTO_ID account validation.");
         }
 
         if (!product.GameId.HasValue ||
@@ -231,6 +257,7 @@ public sealed class GameAccountValidationService(
             !product.GameIsActive)
         {
             return GameAccountValidationResult.Failure(
+                GameAccountValidationFailureKind.ProductUnavailable,
                 "This product does not have an active game configured for account validation.");
         }
 
@@ -238,24 +265,45 @@ public sealed class GameAccountValidationService(
         if (validator is null)
         {
             return GameAccountValidationResult.Failure(
-                "Game account validation provider is not configured.",
-                isConfigurationError: true);
+                GameAccountValidationFailureKind.ProviderUnavailable,
+                "Game account validation is temporarily unavailable.");
         }
 
-        var providerResult = await validator.ValidateAsync(
-            new GameAccountProviderRequest(
-                product.Id,
-                product.Name,
-                product.GameId.Value,
-                product.GameName,
-                product.GameSlug,
-                fieldsResult.Fields!),
-            cancellationToken);
+        GameAccountProviderResult providerResult;
+        try
+        {
+            providerResult = await validator.ValidateAsync(
+                new GameAccountProviderRequest(
+                    product.Id,
+                    product.Name,
+                    product.GameId.Value,
+                    product.GameName,
+                    product.GameSlug,
+                    fieldsResult.Fields!),
+                cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            logger.LogError(
+                exception,
+                "Game account validation provider {Provider} failed for product {ProductId}.",
+                validator.Name,
+                product.Id);
+
+            return GameAccountValidationResult.Failure(
+                GameAccountValidationFailureKind.ProviderUnavailable,
+                "Game account validation is temporarily unavailable.");
+        }
 
         if (!providerResult.IsValid)
         {
             return GameAccountValidationResult.Failure(
-                providerResult.Error ?? "Game account could not be validated.");
+                GameAccountValidationFailureKind.AccountNotFound,
+                "Game account was not found. Check the account details and try again.");
         }
 
         var now = DateTimeOffset.UtcNow;
@@ -263,7 +311,8 @@ public sealed class GameAccountValidationService(
         if (expiresAt <= now)
         {
             return GameAccountValidationResult.Failure(
-                "Game account validation provider returned an expired result.");
+                GameAccountValidationFailureKind.ProviderUnavailable,
+                "Game account validation is temporarily unavailable.");
         }
 
         var inputJson = JsonSerializer.Serialize(fieldsResult.Fields);
@@ -286,6 +335,7 @@ public sealed class GameAccountValidationService(
 
         return GameAccountValidationResult.Success(
             new GameAccountValidationResponse(
+                GameAccountValidationStatus.Verified,
                 validation.Id,
                 validation.ProductId,
                 validation.Provider,
@@ -354,13 +404,40 @@ public sealed class GameAccountValidationController(
             return Ok(result.Validation);
         }
 
-        if (result.IsConfigurationError)
+        var error = result.FailureKind switch
         {
-            return StatusCode(
-                StatusCodes.Status503ServiceUnavailable,
-                new { message = result.Error });
-        }
+            GameAccountValidationFailureKind.InvalidRequest =>
+                new GameAccountValidationErrorResponse(
+                    "INVALID_REQUEST",
+                    result.Error ?? "Account validation request is invalid."),
+            GameAccountValidationFailureKind.ProductUnavailable =>
+                new GameAccountValidationErrorResponse(
+                    "PRODUCT_UNAVAILABLE",
+                    result.Error ?? "Product is not available for account validation."),
+            GameAccountValidationFailureKind.AccountNotFound =>
+                new GameAccountValidationErrorResponse(
+                    "ACCOUNT_NOT_FOUND",
+                    result.Error ?? "Game account was not found."),
+            GameAccountValidationFailureKind.ProviderUnavailable =>
+                new GameAccountValidationErrorResponse(
+                    "VALIDATION_UNAVAILABLE",
+                    result.Error ?? "Game account validation is temporarily unavailable."),
+            _ =>
+                new GameAccountValidationErrorResponse(
+                    "VALIDATION_FAILED",
+                    result.Error ?? "Game account validation failed.")
+        };
 
-        return BadRequest(new { message = result.Error });
+        return result.FailureKind switch
+        {
+            GameAccountValidationFailureKind.ProductUnavailable =>
+                NotFound(error),
+            GameAccountValidationFailureKind.AccountNotFound =>
+                UnprocessableEntity(error),
+            GameAccountValidationFailureKind.ProviderUnavailable =>
+                StatusCode(StatusCodes.Status503ServiceUnavailable, error),
+            _ =>
+                BadRequest(error)
+        };
     }
 }
