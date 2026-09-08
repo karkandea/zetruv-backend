@@ -161,6 +161,8 @@ public sealed class OrderService(ZetruvDbContext db)
                         i.FulfillmentMessage,
                         i.FulfillmentStartedAt,
                         i.FulfilledAt,
+                        i.FulfillmentAttemptCount,
+                        i.LastFulfillmentAttemptAt,
                         i.VariantName,
                         i.Sku,
                         i.ThumbnailUrl,
