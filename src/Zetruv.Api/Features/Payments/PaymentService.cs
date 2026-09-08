@@ -60,7 +60,8 @@ public sealed record ReconcilePaymentResult(
 public sealed class PaymentService(
     ZetruvDbContext db,
     PaymentGatewayResolver gatewayResolver,
-    InventoryReservationService inventoryReservations)
+    InventoryReservationService inventoryReservations,
+    OrderFulfillmentService fulfillmentService)
 {
     public async Task<InitiatePaymentResult> InitiateAsync(
         Guid orderId,
@@ -260,11 +261,7 @@ public sealed class PaymentService(
                     paymentTransaction.UpdatedAt = now;
                     order.PaymentStatus = PaymentStatus.Paid;
                     order.PaidAt ??= now;
-                    if (order.Status == OrderStatus.Pending)
-                    {
-                        order.Status = OrderStatus.Processing;
-                    }
-                    order.UpdatedAt = now;
+                    fulfillmentService.StartPaidOrder(order, now);
 
                     await db.SaveChangesAsync(cancellationToken);
                     await dbTransaction.CommitAsync(cancellationToken);

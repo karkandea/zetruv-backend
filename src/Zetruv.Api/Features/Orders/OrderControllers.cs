@@ -13,6 +13,7 @@ namespace Zetruv.Api.Features.Orders;
 public sealed class CmsOrdersController(
     ZetruvDbContext db,
     OrderService orderService,
+    OrderFulfillmentService fulfillmentService,
     InventoryReservationService inventoryReservations,
     ShipmentFulfillmentService shipmentFulfillment) : ControllerBase
 {
@@ -47,50 +48,56 @@ public sealed class CmsOrdersController(
         UpdateOrderStatusRequest request,
         CancellationToken cancellationToken)
     {
-        var order = await db.Orders.SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
+        var order = await db.Orders
+            .Include(x => x.Items)
+            .SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
         if (order is null)
         {
             return NotFound();
         }
 
-        if (request.Status == OrderStatus.Cancelled)
+        if (request.Status == order.Status)
         {
-            var alreadyShipped = await db.Set<Shipment>()
-                .AsNoTracking()
-                .AnyAsync(
-                    x => x.OrderId == id &&
-                         (x.Status == ShipmentStatus.Shipped ||
-                          x.Status == ShipmentStatus.Delivered),
-                    cancellationToken);
+            return NoContent();
+        }
 
-            if (alreadyShipped)
+        if (request.Status != OrderStatus.Cancelled)
+        {
+            return BadRequest(new
             {
-                return BadRequest(new
-                {
-                    message = "A shipped or delivered merchandise order cannot be cancelled."
-                });
-            }
+                message = "Order status is derived from payment and per-item fulfillment. Update item fulfillment instead."
+            });
         }
 
-        order.Status = request.Status;
-        order.UpdatedAt = DateTimeOffset.UtcNow;
-
-        if (request.Status == OrderStatus.Completed)
+        if (order.Items.Any(x => x.FulfillmentStatus == FulfillmentStatus.Completed))
         {
-            order.CompletedAt ??= DateTimeOffset.UtcNow;
-        }
-        else
-        {
-            order.CompletedAt = null;
+            return Conflict(new
+            {
+                message = "An order with completed fulfillment items cannot be cancelled."
+            });
         }
 
+        var alreadyShipped = await db.Set<Shipment>()
+            .AsNoTracking()
+            .AnyAsync(
+                x => x.OrderId == id &&
+                     (x.Status == ShipmentStatus.Shipped ||
+                      x.Status == ShipmentStatus.Delivered),
+                cancellationToken);
+
+        if (alreadyShipped)
+        {
+            return Conflict(new
+            {
+                message = "A shipped or delivered merchandise order cannot be cancelled."
+            });
+        }
+
+        fulfillmentService.CancelOrder(order, DateTimeOffset.UtcNow);
         await db.SaveChangesAsync(cancellationToken);
 
-        if (request.Status == OrderStatus.Cancelled)
-        {
-            await inventoryReservations.ReleaseAsync(id, cancellationToken);
-            await shipmentFulfillment.CancelUnshippedAsync(id, cancellationToken);
-        }
+        await inventoryReservations.ReleaseAsync(id, cancellationToken);
+        await shipmentFulfillment.CancelUnshippedAsync(id, cancellationToken);
 
         return NoContent();
     }
@@ -108,6 +115,15 @@ public sealed class CmsOrdersController(
         if (order is null)
         {
             return NotFound();
+        }
+
+        if (order.PaymentStatus == PaymentStatus.Paid &&
+            request.Status is PaymentStatus.Pending or PaymentStatus.Failed)
+        {
+            return Conflict(new
+            {
+                message = "A paid order cannot move back to pending or failed payment status."
+            });
         }
 
         if (request.Status == PaymentStatus.Paid)
@@ -131,13 +147,10 @@ public sealed class CmsOrdersController(
                 });
             }
 
+            var now = DateTimeOffset.UtcNow;
             order.PaymentStatus = PaymentStatus.Paid;
-            order.PaidAt ??= DateTimeOffset.UtcNow;
-            if (order.Status == OrderStatus.Pending)
-            {
-                order.Status = OrderStatus.Processing;
-            }
-            order.UpdatedAt = DateTimeOffset.UtcNow;
+            order.PaidAt ??= now;
+            fulfillmentService.StartPaidOrder(order, now);
 
             await db.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
@@ -161,4 +174,36 @@ public sealed class CmsOrdersController(
 
         return NoContent();
     }
+
+    [HttpPut("{orderId:guid}/items/{orderItemId:guid}/fulfillment")]
+    public async Task<ActionResult<OrderItemFulfillmentResponse>> UpdateItemFulfillment(
+        Guid orderId,
+        Guid orderItemId,
+        UpdateOrderItemFulfillmentRequest request,
+        CancellationToken cancellationToken)
+    {
+        var result = await fulfillmentService.UpdateItemAsync(
+            orderId,
+            orderItemId,
+            request,
+            cancellationToken);
+
+        if (result.Fulfillment is not null)
+        {
+            return Ok(result.Fulfillment);
+        }
+
+        if (result.NotFound)
+        {
+            return NotFound();
+        }
+
+        if (result.Conflict)
+        {
+            return Conflict(new { message = result.Error });
+        }
+
+        return BadRequest(new { message = result.Error });
+    }
+
 }

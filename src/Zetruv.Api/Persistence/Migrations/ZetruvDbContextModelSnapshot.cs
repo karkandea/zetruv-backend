@@ -824,6 +824,25 @@ namespace Zetruv.Api.Persistence.Migrations
                         .HasMaxLength(30)
                         .HasColumnType("character varying(30)");
 
+                    b.Property<string>("FulfillmentMessage")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("FulfillmentReference")
+                        .HasMaxLength(180)
+                        .HasColumnType("character varying(180)");
+
+                    b.Property<DateTimeOffset?>("FulfillmentStartedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("FulfillmentStatus")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<DateTimeOffset?>("FulfilledAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("GameName")
                         .HasMaxLength(120)
                         .HasColumnType("character varying(120)");
@@ -882,6 +901,8 @@ namespace Zetruv.Api.Persistence.Migrations
                     b.HasIndex("ProductVariantId");
 
                     b.HasIndex("OrderId", "CreatedAt");
+
+                    b.HasIndex("OrderId", "FulfillmentStatus");
 
                     b.ToTable("order_items", (string)null);
                 });
