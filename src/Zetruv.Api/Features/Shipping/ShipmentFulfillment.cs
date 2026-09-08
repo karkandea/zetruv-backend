@@ -107,7 +107,7 @@ public sealed class ShipmentFulfillmentService(
         var fulfillmentStatus = request.Status switch
         {
             ShipmentStatus.Delivered => FulfillmentStatus.Completed,
-            ShipmentStatus.Cancelled => FulfillmentStatus.Cancelled,
+            ShipmentStatus.Cancelled => FulfillmentStatus.Failed,
             _ => FulfillmentStatus.Processing
         };
 
