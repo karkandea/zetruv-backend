@@ -240,7 +240,6 @@ public sealed class ZetruvDbContext(
             entity.Property(x => x.FulfillmentStatus).HasConversion<string>().HasMaxLength(30).IsRequired();
             entity.Property(x => x.FulfillmentReference).HasMaxLength(180);
             entity.Property(x => x.FulfillmentMessage).HasMaxLength(500);
-            entity.Property(x => x.FulfillmentReference).HasMaxLength(180);
             entity.Property(x => x.VariantName).HasMaxLength(180);
             entity.Property(x => x.Sku).HasMaxLength(100);
             entity.Property(x => x.ThumbnailUrl).HasMaxLength(1000);
