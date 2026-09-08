@@ -108,6 +108,7 @@ public sealed class ZetruvDbContext(
             entity.Property(x => x.ShortDescription).HasMaxLength(500);
             entity.Property(x => x.ThumbnailUrl).HasMaxLength(1000);
             entity.Property(x => x.Kind).HasConversion<string>().HasMaxLength(30).IsRequired();
+            entity.Property(x => x.FulfillmentMethod).HasConversion<string>().HasMaxLength(30).IsRequired();
             entity.HasIndex(x => x.Slug).IsUnique();
             entity.HasIndex(x => new { x.IsActive, x.Kind, x.SortOrder });
             entity.HasIndex(x => x.GameId);
@@ -235,6 +236,7 @@ public sealed class ZetruvDbContext(
             entity.Property(x => x.ProductName).HasMaxLength(180).IsRequired();
             entity.Property(x => x.ProductSlug).HasMaxLength(220).IsRequired();
             entity.Property(x => x.ProductKind).HasConversion<string>().HasMaxLength(30).IsRequired();
+            entity.Property(x => x.FulfillmentMethod).HasConversion<string>().HasMaxLength(30).IsRequired();
             entity.Property(x => x.VariantName).HasMaxLength(180);
             entity.Property(x => x.Sku).HasMaxLength(100);
             entity.Property(x => x.ThumbnailUrl).HasMaxLength(1000);
