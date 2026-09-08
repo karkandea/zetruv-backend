@@ -14,6 +14,11 @@ get_env() { sed -n "s/^${1}=//p" .env | tail -n 1; }
 CONFIG_ENV=$(get_env ZETRUV_ENVIRONMENT)
 [[ "$CONFIG_ENV" == "$ENVIRONMENT" ]] || { echo ".env belongs to '$CONFIG_ENV', not '$ENVIRONMENT'." >&2; exit 1; }
 
+if [[ -z "$(get_env FULFILLMENT_AUTO_ID_PROVIDER)" ]]; then
+  printf '\nFULFILLMENT_AUTO_ID_PROVIDER=mock\n' >> .env
+  chmod 600 .env
+fi
+
 CURRENT_BRANCH=$(git branch --show-current)
 if [[ "$ENVIRONMENT" == dev ]]; then
   [[ "$CURRENT_BRANCH" == dev ]] || { echo "DEV deployment must run from branch 'dev' (current: $CURRENT_BRANCH)." >&2; exit 1; }
