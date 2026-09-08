@@ -73,6 +73,7 @@ public sealed class OrderItem
     public string ProductName { get; set; } = string.Empty;
     public string ProductSlug { get; set; } = string.Empty;
     public ProductKind ProductKind { get; set; }
+    public FulfillmentMethod FulfillmentMethod { get; set; } = FulfillmentMethod.MANUAL;
     public string? VariantName { get; set; }
     public string? Sku { get; set; }
     public string? ThumbnailUrl { get; set; }
@@ -107,6 +108,7 @@ public sealed record RecentPurchaseResponse(
     string ProductName,
     string ProductSlug,
     ProductKind ProductKind,
+    FulfillmentMethod FulfillmentMethod,
     string? VariantName,
     string? ThumbnailUrl,
     string? GameName,
@@ -133,6 +135,7 @@ public sealed record OrderItemResponse(
     string ProductName,
     string ProductSlug,
     ProductKind ProductKind,
+    FulfillmentMethod FulfillmentMethod,
     string? VariantName,
     string? Sku,
     string? ThumbnailUrl,
