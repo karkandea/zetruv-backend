@@ -117,6 +117,15 @@ public sealed class CmsOrdersController(
             return NotFound();
         }
 
+        if (order.PaymentStatus == PaymentStatus.Paid &&
+            request.Status is PaymentStatus.Pending or PaymentStatus.Failed)
+        {
+            return Conflict(new
+            {
+                message = "A paid order cannot move back to pending or failed payment status."
+            });
+        }
+
         if (request.Status == PaymentStatus.Paid)
         {
             if (order.Status == OrderStatus.Cancelled)
