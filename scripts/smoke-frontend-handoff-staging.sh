@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+[[ -f .env ]] || { echo 'Missing .env.' >&2; exit 1; }
+get_env() { sed -n "s/^${1}=//p" .env | tail -n 1; }
+
+ENVIRONMENT=$(get_env ZETRUV_ENVIRONMENT)
+API_DOMAIN=$(get_env API_DOMAIN)
+API_DOMAIN_LEGACY=$(get_env API_DOMAIN_LEGACY)
+FRONTEND_ORIGIN=$(get_env FRONTEND_ORIGIN)
+FRONTEND_ORIGIN_LEGACY=$(get_env FRONTEND_ORIGIN_LEGACY)
+
+[[ "$ENVIRONMENT" == "staging" ]] || { echo "This smoke is STAGING-only (current: ${ENVIRONMENT:-unknown})." >&2; exit 1; }
+[[ "$API_DOMAIN" == "api-staging.zetruv.com" ]] || { echo "Unexpected STAGING API_DOMAIN: $API_DOMAIN" >&2; exit 1; }
+[[ "$API_DOMAIN_LEGACY" == "api-staging.zetruv.dualangka.com" ]] || { echo "Unexpected STAGING API_DOMAIN_LEGACY: $API_DOMAIN_LEGACY" >&2; exit 1; }
+[[ "$FRONTEND_ORIGIN" == "https://staging.zetruv.com" ]] || { echo "Unexpected STAGING FRONTEND_ORIGIN: $FRONTEND_ORIGIN" >&2; exit 1; }
+[[ "$FRONTEND_ORIGIN_LEGACY" == "https://staging.zetruv.dualangka.com" ]] || { echo "Unexpected STAGING FRONTEND_ORIGIN_LEGACY: $FRONTEND_ORIGIN_LEGACY" >&2; exit 1; }
+
+BASE_URL="https://$API_DOMAIN"
+LEGACY_BASE_URL="https://$API_DOMAIN_LEGACY"
+PRIMARY_RESOLVE=(--resolve "$API_DOMAIN:443:127.0.0.1")
+LEGACY_RESOLVE=(--resolve "$API_DOMAIN_LEGACY:443:127.0.0.1")
+TMP_HEADERS=$(mktemp)
+TMP_HEADERS_NORMALIZED=$(mktemp)
+trap 'rm -f "$TMP_HEADERS" "$TMP_HEADERS_NORMALIZED"' EXIT
+
+assert_cors() {
+  local base_url="$1"
+  local origin="$2"
+  : > "$TMP_HEADERS"
+  local status
+  if [[ "$base_url" == "$BASE_URL" ]]; then
+    status=$(curl "${PRIMARY_RESOLVE[@]}" -sS -o /dev/null -D "$TMP_HEADERS" -w '%{http_code}' -X OPTIONS "$base_url/api/v1/homepage" -H "Origin: $origin" -H 'Access-Control-Request-Method: GET' -H 'Access-Control-Request-Headers: content-type')
+  else
+    status=$(curl "${LEGACY_RESOLVE[@]}" -sS -o /dev/null -D "$TMP_HEADERS" -w '%{http_code}' -X OPTIONS "$base_url/api/v1/homepage" -H "Origin: $origin" -H 'Access-Control-Request-Method: GET' -H 'Access-Control-Request-Headers: content-type')
+  fi
+
+  [[ "$status" == "204" || "$status" == "200" ]] || { echo "Unexpected preflight status for $origin via $base_url: $status" >&2; exit 1; }
+
+  tr -d '\r' < "$TMP_HEADERS" > "$TMP_HEADERS_NORMALIZED"
+  grep -Fxiq "Access-Control-Allow-Origin: $origin" "$TMP_HEADERS_NORMALIZED" || {
+    echo "CORS header does not allow $origin via $base_url." >&2
+    cat "$TMP_HEADERS_NORMALIZED" >&2
+    exit 1
+  }
+}
+
+echo '1/5 primary health'
+curl "${PRIMARY_RESOLVE[@]}" -fsS "$BASE_URL/health" >/dev/null
+
+echo '2/5 primary homepage'
+curl "${PRIMARY_RESOLVE[@]}" -fsS "$BASE_URL/api/v1/homepage" >/dev/null
+
+echo '3/5 CORS from new STAGING frontend'
+assert_cors "$BASE_URL" "$FRONTEND_ORIGIN"
+
+echo '4/5 legacy API alias health'
+curl "${LEGACY_RESOLVE[@]}" -fsS "$LEGACY_BASE_URL/health" >/dev/null
+
+echo '5/5 legacy frontend CORS remains valid during cutover'
+assert_cors "$LEGACY_BASE_URL" "$FRONTEND_ORIGIN_LEGACY"
+
+echo 'PASS: STAGING zetruv.com backend cutover is healthy; new API/origin are primary and dualangka.com remains a temporary alias.'

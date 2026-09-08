@@ -14,16 +14,25 @@ get_env() { sed -n "s/^${1}=//p" .env | tail -n 1; }
 
 [[ "$(get_env ZETRUV_ENVIRONMENT)" == "$ENVIRONMENT" ]] || { echo '.env environment mismatch.' >&2; exit 1; }
 DOMAIN=$(get_env API_DOMAIN)
+LEGACY_DOMAIN=$(get_env API_DOMAIN_LEGACY)
 API_PORT=$(get_env API_PORT)
 [[ -n "$DOMAIN" && -n "$API_PORT" ]] || { echo 'API_DOMAIN/API_PORT missing from .env.' >&2; exit 1; }
 
 for cmd in nginx curl dig; do command -v "$cmd" >/dev/null 2>&1 || { echo "$cmd is required." >&2; exit 1; }; done
 
-DNS_CF=$(dig +short @1.1.1.1 "$DOMAIN" A | tail -n 1)
-DNS_GOOGLE=$(dig +short @8.8.8.8 "$DOMAIN" A | tail -n 1)
-echo "DNS Cloudflare: ${DNS_CF:-<empty>}"
-echo "DNS Google: ${DNS_GOOGLE:-<empty>}"
-[[ -n "$DNS_CF" && "$DNS_CF" == "$DNS_GOOGLE" ]] || { echo "Public DNS for $DOMAIN is not ready/consistent." >&2; exit 2; }
+check_dns_best_effort() {
+  local domain="$1"
+  local resolved
+  resolved=$(getent ahostsv4 "$domain" 2>/dev/null | awk 'NR==1 {print $1}' || true)
+  if [[ -n "$resolved" ]]; then
+    echo "$domain DNS: $resolved"
+  else
+    echo "WARN: local VPS resolver returned <empty> for $domain; continuing because Certbot will perform external validation."
+  fi
+}
+
+check_dns_best_effort "$DOMAIN"
+[[ -z "$LEGACY_DOMAIN" ]] || check_dns_best_effort "$LEGACY_DOMAIN"
 
 curl -fsS "http://127.0.0.1:$API_PORT/health" >/dev/null || { echo "Backend is not healthy on 127.0.0.1:$API_PORT." >&2; exit 1; }
 
@@ -42,9 +51,10 @@ rollback() {
 trap rollback ERR
 
 wait_http_health() {
+  local domain="$1"
   local code=""
   for _ in $(seq 1 30); do
-    code=$(curl --noproxy '*' -sS -H "Host: $DOMAIN" -o /tmp/zetruv-api-env-health.txt -w '%{http_code}' "http://127.0.0.1/health" || true)
+    code=$(curl --noproxy '*' -sS -H "Host: $domain" -o /tmp/zetruv-api-env-health.txt -w '%{http_code}' "http://127.0.0.1/health" || true)
     if [[ "$code" == 200 ]]; then
       echo "$code"
       return 0
@@ -56,9 +66,10 @@ wait_http_health() {
 }
 
 wait_https_health() {
+  local domain="$1"
   local code=""
   for _ in $(seq 1 30); do
-    code=$(curl --noproxy '*' --resolve "${DOMAIN}:443:127.0.0.1" -sS -o /tmp/zetruv-api-env-health-https.txt -w '%{http_code}' "https://${DOMAIN}/health" || true)
+    code=$(curl --noproxy '*' --resolve "${domain}:443:127.0.0.1" -sS -o /tmp/zetruv-api-env-health-https.txt -w '%{http_code}' "https://${domain}/health" || true)
     if [[ "$code" == 200 ]]; then
       echo "$code"
       return 0
@@ -69,11 +80,14 @@ wait_https_health() {
   return 1
 }
 
+SERVER_NAMES="$DOMAIN"
+[[ -z "$LEGACY_DOMAIN" ]] || SERVER_NAMES="$SERVER_NAMES $LEGACY_DOMAIN"
+
 cat > "$AVAILABLE" <<NGINX
 server {
     listen 80;
     listen [::]:80;
-    server_name $DOMAIN;
+    server_name $SERVER_NAMES;
 
     client_max_body_size 20m;
 
@@ -96,15 +110,29 @@ ln -sfn "$AVAILABLE" "$ENABLED"
 nginx -t
 systemctl reload nginx
 
-HTTP_CODE=$(wait_http_health) || { echo "Local Nginx HTTP health returned $HTTP_CODE after reload wait." >&2; exit 1; }
+HTTP_CODE=$(wait_http_health "$DOMAIN") || { echo "Local Nginx HTTP health for $DOMAIN returned $HTTP_CODE after reload wait." >&2; exit 1; }
 echo "PASS: local HTTP proxy for $DOMAIN -> 127.0.0.1:$API_PORT"
+if [[ -n "$LEGACY_DOMAIN" ]]; then
+  LEGACY_HTTP_CODE=$(wait_http_health "$LEGACY_DOMAIN") || { echo "Local Nginx HTTP health for $LEGACY_DOMAIN returned $LEGACY_HTTP_CODE after reload wait." >&2; exit 1; }
+  echo "PASS: local HTTP proxy for legacy alias $LEGACY_DOMAIN -> 127.0.0.1:$API_PORT"
+fi
 
 if command -v certbot >/dev/null 2>&1; then
-  certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos --redirect --register-unsafely-without-email
+  CERTBOT_ARGS=(--nginx -d "$DOMAIN")
+  if [[ -n "$LEGACY_DOMAIN" ]]; then
+    CERTBOT_ARGS+=(-d "$LEGACY_DOMAIN" --expand)
+  fi
+  certbot "${CERTBOT_ARGS[@]}" --non-interactive --agree-tos --redirect --register-unsafely-without-email
   nginx -t
   systemctl reload nginx
-  HTTPS_CODE=$(wait_https_health) || { echo "Local HTTPS health returned $HTTPS_CODE after reload wait." >&2; exit 1; }
+
+  HTTPS_CODE=$(wait_https_health "$DOMAIN") || { echo "Local HTTPS health for $DOMAIN returned $HTTPS_CODE after reload wait." >&2; exit 1; }
   echo "PASS: https://$DOMAIN is live and proxies only to $ENVIRONMENT backend"
+
+  if [[ -n "$LEGACY_DOMAIN" ]]; then
+    LEGACY_HTTPS_CODE=$(wait_https_health "$LEGACY_DOMAIN") || { echo "Local HTTPS health for $LEGACY_DOMAIN returned $LEGACY_HTTPS_CODE after reload wait." >&2; exit 1; }
+    echo "PASS: https://$LEGACY_DOMAIN remains live as a temporary $ENVIRONMENT alias"
+  fi
 else
   echo "PASS: http://$DOMAIN is live. certbot not installed; HTTPS not configured."
 fi
