@@ -500,6 +500,19 @@ public sealed class CmsCatalogController(ZetruvDbContext db) : ControllerBase
             });
         }
 
+        var shouldRequireGameAccountValidation =
+            request.FulfillmentMethod == FulfillmentMethod.AUTO_ID;
+
+        if (request.RequiresGameAccountValidation != shouldRequireGameAccountValidation)
+        {
+            return BadRequest(new
+            {
+                message = shouldRequireGameAccountValidation
+                    ? "AUTO_ID products must require game account validation."
+                    : "Only AUTO_ID products may require game account validation."
+            });
+        }
+
         if (request.GameId.HasValue &&
             !await db.Games.AnyAsync(x => x.Id == request.GameId.Value, cancellationToken))
         {
