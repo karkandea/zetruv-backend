@@ -27,6 +27,7 @@ public sealed class OrderService(ZetruvDbContext db)
                 x.ProductSlug,
                 x.ProductKind,
                 x.FulfillmentMethod,
+                x.FulfillmentStatus,
                 x.VariantName,
                 x.ThumbnailUrl,
                 x.GameName,
@@ -82,6 +83,7 @@ public sealed class OrderService(ZetruvDbContext db)
                 x.GrandTotal,
                 x.Currency,
                 x.Items.Sum(i => i.Quantity),
+                x.Items.Any(i => i.FulfillmentStatus == FulfillmentStatus.Failed),
                 x.CreatedAt,
                 x.PaidAt,
                 x.CompletedAt))
@@ -120,6 +122,7 @@ public sealed class OrderService(ZetruvDbContext db)
                 x.CompletedAt,
                 x.CreatedAt,
                 x.UpdatedAt,
+                x.Items.Any(i => i.FulfillmentStatus == FulfillmentStatus.Failed),
                 x.Shipment == null
                     ? null
                     : new ShipmentAdminResponse(
@@ -153,6 +156,11 @@ public sealed class OrderService(ZetruvDbContext db)
                         i.ProductSlug,
                         i.ProductKind,
                         i.FulfillmentMethod,
+                        i.FulfillmentStatus,
+                        i.FulfillmentReference,
+                        i.FulfillmentMessage,
+                        i.FulfillmentStartedAt,
+                        i.FulfilledAt,
                         i.VariantName,
                         i.Sku,
                         i.ThumbnailUrl,
