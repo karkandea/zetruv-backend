@@ -234,6 +234,7 @@ public sealed class CmsCatalogController(ZetruvDbContext db) : ControllerBase
                 x.Name,
                 x.Slug,
                 x.Kind,
+                x.FulfillmentMethod,
                 x.ThumbnailUrl,
                 x.CategoryId,
                 CategoryName = x.Category.Name,
@@ -491,6 +492,14 @@ public sealed class CmsCatalogController(ZetruvDbContext db) : ControllerBase
             return BadRequest(new { message = "Product kind must match its category kind." });
         }
 
+        if (!IsFulfillmentMethodAllowed(request.Kind, request.FulfillmentMethod))
+        {
+            return BadRequest(new
+            {
+                message = $"Fulfillment method {request.FulfillmentMethod} is not valid for product kind {request.Kind}."
+            });
+        }
+
         if (request.GameId.HasValue &&
             !await db.Games.AnyAsync(x => x.Id == request.GameId.Value, cancellationToken))
         {
@@ -499,6 +508,16 @@ public sealed class CmsCatalogController(ZetruvDbContext db) : ControllerBase
 
         return null;
     }
+
+    private static bool IsFulfillmentMethodAllowed(
+        ProductKind kind,
+        FulfillmentMethod fulfillmentMethod) =>
+        kind switch
+        {
+            ProductKind.TopUpGame => fulfillmentMethod == FulfillmentMethod.AUTO_ID,
+            ProductKind.TopUpLogin => fulfillmentMethod == FulfillmentMethod.MANUAL_LOGIN,
+            _ => fulfillmentMethod == FulfillmentMethod.MANUAL
+        };
 
     private IActionResult? ValidateVariant(UpsertVariantRequest request)
     {
@@ -554,6 +573,7 @@ public sealed class CmsCatalogController(ZetruvDbContext db) : ControllerBase
         product.Description = request.Description?.Trim();
         product.ThumbnailUrl = request.ThumbnailUrl?.Trim();
         product.Kind = request.Kind;
+        product.FulfillmentMethod = request.FulfillmentMethod;
         product.RequiresGameAccountValidation = request.RequiresGameAccountValidation;
         product.IsActive = request.IsActive;
         product.IsFeatured = request.IsFeatured;
