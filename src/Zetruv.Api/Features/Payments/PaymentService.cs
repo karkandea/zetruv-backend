@@ -61,7 +61,9 @@ public sealed class PaymentService(
     ZetruvDbContext db,
     PaymentGatewayResolver gatewayResolver,
     InventoryReservationService inventoryReservations,
-    OrderFulfillmentService fulfillmentService)
+    OrderFulfillmentService fulfillmentService,
+    FulfillmentExecutionService executionService,
+    ILogger<PaymentService> logger)
 {
     public async Task<InitiatePaymentResult> InitiateAsync(
         Guid orderId,
@@ -265,6 +267,24 @@ public sealed class PaymentService(
 
                     await db.SaveChangesAsync(cancellationToken);
                     await dbTransaction.CommitAsync(cancellationToken);
+                }
+
+                try
+                {
+                    await executionService.ExecuteAutoItemsForOrderAsync(
+                        order.Id,
+                        cancellationToken);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception exception)
+                {
+                    logger.LogError(
+                        exception,
+                        "Automatic fulfillment dispatch failed after payment for order {OrderId}.",
+                        order.Id);
                 }
                 break;
 
