@@ -2,7 +2,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-for script in scripts/bootstrap-runtime-env.sh scripts/deploy-runtime-env.sh scripts/install-runtime-nginx.sh scripts/bootstrap-vps-runtime-layout.sh scripts/smoke-runtime-separation.sh; do
+for script in scripts/bootstrap-runtime-env.sh scripts/deploy-runtime-env.sh scripts/install-runtime-nginx.sh scripts/bootstrap-vps-runtime-layout.sh scripts/smoke-runtime-separation.sh scripts/smoke-manual-login-credentials.sh; do
   bash -n "$script"
 done
 
