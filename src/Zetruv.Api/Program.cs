@@ -184,6 +184,7 @@ builder.Services.AddScoped<FulfillmentExecutionService>();
 builder.Services.AddScoped<FulfillmentQueueService>();
 builder.Services.AddSingleton<ManualLoginCredentialProtector>();
 builder.Services.AddScoped<ManualLoginCredentialService>();
+builder.Services.AddHostedService<ManualLoginCredentialCleanupService>();
 builder.Services.AddScoped<OrderAccessTokenService>();
 builder.Services.AddScoped<OrderTrackingService>();
 builder.Services.AddScoped<CheckoutService>();
