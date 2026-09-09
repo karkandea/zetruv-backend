@@ -163,6 +163,8 @@ public sealed class OrderService(ZetruvDbContext db)
                         i.FulfilledAt,
                         i.FulfillmentAttemptCount,
                         i.LastFulfillmentAttemptAt,
+                        i.ManualLoginCredential != null &&
+                            i.ManualLoginCredential.EncryptedPayload != null,
                         i.VariantName,
                         i.Sku,
                         i.ThumbnailUrl,
