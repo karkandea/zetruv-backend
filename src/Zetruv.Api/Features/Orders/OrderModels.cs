@@ -99,6 +99,7 @@ public sealed class OrderItem
     public decimal LineTotal { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public GameAccountValidation? GameAccountValidation { get; set; }
+    public ManualLoginCredential? ManualLoginCredential { get; set; }
 }
 
 [Index(nameof(Provider), nameof(ProviderReference), IsUnique = true)]
@@ -161,6 +162,7 @@ public sealed record OrderItemResponse(
     DateTimeOffset? FulfilledAt,
     int FulfillmentAttemptCount,
     DateTimeOffset? LastFulfillmentAttemptAt,
+    bool HasManualLoginCredentials,
     string? VariantName,
     string? Sku,
     string? ThumbnailUrl,
@@ -249,6 +251,8 @@ public sealed record FulfillmentQueueItemResponse(
     string? CustomerPhone,
     string? AccountDisplayName,
     IReadOnlyDictionary<string, string>? DestinationFields,
+    bool HasManualLoginCredentials,
+    IReadOnlyList<string>? ManualLoginCredentialFields,
     string? FulfillmentReference,
     string? FulfillmentMessage,
     int FulfillmentAttemptCount,

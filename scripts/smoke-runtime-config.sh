@@ -2,7 +2,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-for script in scripts/bootstrap-runtime-env.sh scripts/deploy-runtime-env.sh scripts/install-runtime-nginx.sh scripts/bootstrap-vps-runtime-layout.sh scripts/smoke-runtime-separation.sh; do
+for script in scripts/bootstrap-runtime-env.sh scripts/deploy-runtime-env.sh scripts/install-runtime-nginx.sh scripts/bootstrap-vps-runtime-layout.sh scripts/smoke-runtime-separation.sh scripts/smoke-manual-login-credentials.sh; do
   bash -n "$script"
 done
 
@@ -22,6 +22,25 @@ check_env() {
   grep -Fxq "POSTGRES_DB=$expected_db" "$TMP/.env"
   grep -Fxq "ASPNETCORE_ENVIRONMENT=$expected_aspnet" "$TMP/.env"
   grep -Fxq "FULFILLMENT_AUTO_ID_PROVIDER=mock" "$TMP/.env"
+  grep -Eq '^MANUAL_LOGIN_ENCRYPTION_KEY=.+
+  (cd "$TMP" && docker compose --project-name "$expected_project" --env-file .env config >/dev/null)
+}
+
+check_env dev zetruv-dev 8081 zetruv_dev Development
+DEV_JWT=$(sed -n 's/^JWT_KEY=//p' "$TMP/.env")
+DEV_DB_PASSWORD=$(sed -n 's/^POSTGRES_PASSWORD=//p' "$TMP/.env")
+DEV_MANUAL_LOGIN_KEY=$(sed -n 's/^MANUAL_LOGIN_ENCRYPTION_KEY=//p' "$TMP/.env")
+check_env staging zetruv-staging 8082 zetruv_staging Staging
+STAGING_JWT=$(sed -n 's/^JWT_KEY=//p' "$TMP/.env")
+STAGING_DB_PASSWORD=$(sed -n 's/^POSTGRES_PASSWORD=//p' "$TMP/.env")
+STAGING_MANUAL_LOGIN_KEY=$(sed -n 's/^MANUAL_LOGIN_ENCRYPTION_KEY=//p' "$TMP/.env")
+
+[[ "$DEV_JWT" != "$STAGING_JWT" ]]
+[[ "$DEV_DB_PASSWORD" != "$STAGING_DB_PASSWORD" ]]
+[[ "$DEV_MANUAL_LOGIN_KEY" != "$STAGING_MANUAL_LOGIN_KEY" ]]
+
+echo 'PASS: DEV/STAGING scripts parse, generated env files are isolated, permissions are 600, and both Compose configs are valid.'
+ "$TMP/.env"
   [[ "$(stat -c '%a' "$TMP/.env")" == 600 ]]
   (cd "$TMP" && docker compose --project-name "$expected_project" --env-file .env config >/dev/null)
 }
