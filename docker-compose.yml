@@ -36,6 +36,7 @@ services:
       GameAccountValidation__Provider: ${GAME_ACCOUNT_VALIDATION_PROVIDER:-mock}
       Fulfillment__AutoId__Provider: ${FULFILLMENT_AUTO_ID_PROVIDER:-mock}
       ManualLogin__EncryptionKey: ${MANUAL_LOGIN_ENCRYPTION_KEY}
+      ManualLogin__RetentionHours: ${MANUAL_LOGIN_RETENTION_HOURS:-24}
       Shipping__Provider: ${SHIPPING_PROVIDER:-mock}
       OrderAccess__TokenLifetimeMinutes: ${ORDER_ACCESS_TOKEN_LIFETIME_MINUTES:-1440}
     depends_on:
