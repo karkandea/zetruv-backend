@@ -88,6 +88,8 @@ public sealed class OrderItem
     public string? FulfillmentMessage { get; set; }
     public DateTimeOffset? FulfillmentStartedAt { get; set; }
     public DateTimeOffset? FulfilledAt { get; set; }
+    public int FulfillmentAttemptCount { get; set; }
+    public DateTimeOffset? LastFulfillmentAttemptAt { get; set; }
     public string? VariantName { get; set; }
     public string? Sku { get; set; }
     public string? ThumbnailUrl { get; set; }
@@ -157,6 +159,8 @@ public sealed record OrderItemResponse(
     string? FulfillmentMessage,
     DateTimeOffset? FulfillmentStartedAt,
     DateTimeOffset? FulfilledAt,
+    int FulfillmentAttemptCount,
+    DateTimeOffset? LastFulfillmentAttemptAt,
     string? VariantName,
     string? Sku,
     string? ThumbnailUrl,
@@ -226,3 +230,46 @@ public sealed record OrderItemFulfillmentResponse(
     DateTimeOffset? FulfilledAt,
     OrderStatus OrderStatus,
     bool HasFulfillmentIssue);
+
+
+public sealed record FulfillmentQueueItemResponse(
+    Guid OrderId,
+    string OrderNumber,
+    Guid OrderItemId,
+    FulfillmentMethod FulfillmentMethod,
+    FulfillmentStatus FulfillmentStatus,
+    string ProductName,
+    string ProductSlug,
+    string? VariantName,
+    string? Sku,
+    string? GameName,
+    int Quantity,
+    string? CustomerName,
+    string? CustomerEmail,
+    string? CustomerPhone,
+    string? AccountDisplayName,
+    IReadOnlyDictionary<string, string>? DestinationFields,
+    string? FulfillmentReference,
+    string? FulfillmentMessage,
+    int FulfillmentAttemptCount,
+    DateTimeOffset? LastFulfillmentAttemptAt,
+    DateTimeOffset? FulfillmentStartedAt,
+    DateTimeOffset? FulfilledAt,
+    DateTimeOffset OrderCreatedAt,
+    DateTimeOffset? PaidAt);
+
+public sealed record FulfillmentQueueResponse(
+    IReadOnlyList<FulfillmentQueueItemResponse> Items,
+    int Page,
+    int PageSize,
+    int TotalItems,
+    int TotalPages);
+
+public sealed record ExecuteAutoFulfillmentResponse(
+    Guid OrderId,
+    Guid OrderItemId,
+    FulfillmentStatus Status,
+    string? Reference,
+    string? Message,
+    int AttemptCount,
+    OrderStatus OrderStatus);

@@ -32,8 +32,8 @@ curl -fsS "http://127.0.0.1:$API/health"; echo
 
 echo '=== SEED PRODUCT ==='
 docker exec -i "$C" psql -v ON_ERROR_STOP=1 -U zetruv -d "$DB" <<'SQL'
-INSERT INTO products ("Id","CategoryId","Name","Slug","Kind","RequiresGameAccountValidation","IsActive","IsFeatured","SortOrder","CreatedAt","UpdatedAt")
-VALUES ('71000000-0000-0000-0000-000000000001',(SELECT "Id" FROM catalog_categories WHERE "Key"='top_up_games'),'Access Test Product','access-test-product','TopUpGame',FALSE,TRUE,FALSE,0,NOW(),NOW());
+INSERT INTO products ("Id","CategoryId","Name","Slug","Kind","FulfillmentMethod","RequiresGameAccountValidation","IsActive","IsFeatured","SortOrder","CreatedAt","UpdatedAt")
+VALUES ('71000000-0000-0000-0000-000000000001',(SELECT "Id" FROM catalog_categories WHERE "Key"='top_up_games'),'Access Test Product','access-test-product','TopUpGame','AUTO_ID',FALSE,TRUE,FALSE,0,NOW(),NOW());
 INSERT INTO product_variants ("Id","ProductId","Name","Sku","Price","StockQuantity","IsActive","SortOrder","CreatedAt","UpdatedAt")
 VALUES ('72000000-0000-0000-0000-000000000001','71000000-0000-0000-0000-000000000001','Default','ACCESS-TEST',50000,10,TRUE,0,NOW(),NOW());
 SQL

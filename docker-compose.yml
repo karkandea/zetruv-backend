@@ -34,6 +34,7 @@ services:
       Payments__Provider: ${PAYMENTS_PROVIDER:-mock}
       Payments__Mock__WebhookSecret: ${PAYMENTS_MOCK_WEBHOOK_SECRET}
       GameAccountValidation__Provider: ${GAME_ACCOUNT_VALIDATION_PROVIDER:-mock}
+      Fulfillment__AutoId__Provider: ${FULFILLMENT_AUTO_ID_PROVIDER:-mock}
       Shipping__Provider: ${SHIPPING_PROVIDER:-mock}
       OrderAccess__TokenLifetimeMinutes: ${ORDER_ACCESS_TOKEN_LIFETIME_MINUTES:-1440}
     depends_on:

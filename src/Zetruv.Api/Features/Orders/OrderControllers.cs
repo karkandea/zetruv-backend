@@ -14,6 +14,7 @@ public sealed class CmsOrdersController(
     ZetruvDbContext db,
     OrderService orderService,
     OrderFulfillmentService fulfillmentService,
+    FulfillmentExecutionService executionService,
     InventoryReservationService inventoryReservations,
     ShipmentFulfillmentService shipmentFulfillment) : ControllerBase
 {
@@ -154,6 +155,11 @@ public sealed class CmsOrdersController(
 
             await db.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
+
+            await executionService.ExecuteAutoItemsForOrderAsync(
+                order.Id,
+                cancellationToken);
+
             return NoContent();
         }
 

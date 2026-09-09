@@ -32,7 +32,7 @@ curl -fsS "http://127.0.0.1:$API/health"; echo
 
 echo '=== SEED ==='
 docker exec -i "$C" psql -v ON_ERROR_STOP=1 -U zetruv -d "$DB" <<'SQL'
-INSERT INTO products ("Id","CategoryId","Name","Slug","Kind","RequiresGameAccountValidation","IsActive","IsFeatured","SortOrder","CreatedAt","UpdatedAt") VALUES ('10000000-0000-0000-0000-000000000001',(SELECT "Id" FROM catalog_categories WHERE "Key"='top_up_games'),'Hardening Product','hardening-product','TopUpGame',FALSE,TRUE,FALSE,0,NOW(),NOW());
+INSERT INTO products ("Id","CategoryId","Name","Slug","Kind","FulfillmentMethod","RequiresGameAccountValidation","IsActive","IsFeatured","SortOrder","CreatedAt","UpdatedAt") VALUES ('10000000-0000-0000-0000-000000000001',(SELECT "Id" FROM catalog_categories WHERE "Key"='top_up_games'),'Hardening Product','hardening-product','TopUpGame','AUTO_ID',FALSE,TRUE,FALSE,0,NOW(),NOW());
 INSERT INTO product_variants ("Id","ProductId","Name","Sku","Price","StockQuantity","IsActive","SortOrder","CreatedAt","UpdatedAt") VALUES
 ('20000000-0000-0000-0000-000000000001','10000000-0000-0000-0000-000000000001','A','HARD-A',100000,1,TRUE,0,NOW(),NOW()),
 ('20000000-0000-0000-0000-000000000002','10000000-0000-0000-0000-000000000001','B','HARD-B',100000,0,TRUE,1,NOW(),NOW()),
@@ -41,10 +41,10 @@ INSERT INTO orders ("Id","OrderNumber","Status","PaymentStatus","Subtotal","Disc
 ('30000000-0000-0000-0000-000000000001','ZTR-HARD-001','Pending','Pending',100000,0,0,100000,'IDR','mock','REF-A',NOW(),NOW()),
 ('30000000-0000-0000-0000-000000000002','ZTR-HARD-002','Pending','Pending',100000,0,0,100000,'IDR','mock','REF-B',NOW(),NOW()),
 ('30000000-0000-0000-0000-000000000003','ZTR-HARD-003','Pending','Pending',100000,0,0,100000,'IDR','mock','REF-C',NOW(),NOW());
-INSERT INTO order_items ("Id","OrderId","ProductId","ProductVariantId","ProductName","ProductSlug","ProductKind","VariantName","Sku","UnitPrice","Quantity","LineTotal","CreatedAt") VALUES
-('40000000-0000-0000-0000-000000000001','30000000-0000-0000-0000-000000000001','10000000-0000-0000-0000-000000000001','20000000-0000-0000-0000-000000000001','Hardening Product','hardening-product','TopUpGame','A','HARD-A',100000,1,100000,NOW()),
-('40000000-0000-0000-0000-000000000002','30000000-0000-0000-0000-000000000002','10000000-0000-0000-0000-000000000001','20000000-0000-0000-0000-000000000002','Hardening Product','hardening-product','TopUpGame','B','HARD-B',100000,1,100000,NOW()),
-('40000000-0000-0000-0000-000000000003','30000000-0000-0000-0000-000000000003','10000000-0000-0000-0000-000000000001','20000000-0000-0000-0000-000000000003','Hardening Product','hardening-product','TopUpGame','C','HARD-C',100000,1,100000,NOW());
+INSERT INTO order_items ("Id","OrderId","ProductId","ProductVariantId","ProductName","ProductSlug","ProductKind","FulfillmentMethod","FulfillmentStatus","VariantName","Sku","UnitPrice","Quantity","LineTotal","CreatedAt") VALUES
+('40000000-0000-0000-0000-000000000001','30000000-0000-0000-0000-000000000001','10000000-0000-0000-0000-000000000001','20000000-0000-0000-0000-000000000001','Hardening Product','hardening-product','TopUpGame','AUTO_ID','Pending','A','HARD-A',100000,1,100000,NOW()),
+('40000000-0000-0000-0000-000000000002','30000000-0000-0000-0000-000000000002','10000000-0000-0000-0000-000000000001','20000000-0000-0000-0000-000000000002','Hardening Product','hardening-product','TopUpGame','AUTO_ID','Pending','B','HARD-B',100000,1,100000,NOW()),
+('40000000-0000-0000-0000-000000000003','30000000-0000-0000-0000-000000000003','10000000-0000-0000-0000-000000000001','20000000-0000-0000-0000-000000000003','Hardening Product','hardening-product','TopUpGame','AUTO_ID','Pending','C','HARD-C',100000,1,100000,NOW());
 INSERT INTO payment_transactions ("Id","OrderId","Provider","ProviderReference","Type","Status","Amount","Currency","CreatedAt","UpdatedAt") VALUES
 ('50000000-0000-0000-0000-000000000001','30000000-0000-0000-0000-000000000001','mock','REF-A','Payment','Pending',100000,'IDR',NOW(),NOW()),
 ('50000000-0000-0000-0000-000000000002','30000000-0000-0000-0000-000000000002','mock','REF-B','Payment','Pending',100000,'IDR',NOW(),NOW()),

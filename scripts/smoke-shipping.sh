@@ -83,7 +83,7 @@ docker exec -i "$CONTAINER" psql -v ON_ERROR_STOP=1 -U zetruv -d "$DB" <<'SQL'
 INSERT INTO products (
   "Id", "CategoryId", "GameId", "Name", "Slug",
   "ShortDescription", "Description", "ThumbnailUrl",
-  "Kind", "RequiresGameAccountValidation",
+  "Kind", "FulfillmentMethod", "RequiresGameAccountValidation",
   "IsActive", "IsFeatured", "SortOrder", "CreatedAt", "UpdatedAt"
 )
 VALUES (
@@ -94,6 +94,7 @@ VALUES (
   'smoke-test-jersey',
   NULL, NULL, NULL,
   'Merchandise',
+  'MANUAL',
   FALSE,
   TRUE,
   FALSE,

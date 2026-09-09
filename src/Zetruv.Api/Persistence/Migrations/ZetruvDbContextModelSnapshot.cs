@@ -843,6 +843,12 @@ namespace Zetruv.Api.Persistence.Migrations
                     b.Property<DateTimeOffset?>("FulfilledAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<int>("FulfillmentAttemptCount")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset?>("LastFulfillmentAttemptAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("GameName")
                         .HasMaxLength(120)
                         .HasColumnType("character varying(120)");
