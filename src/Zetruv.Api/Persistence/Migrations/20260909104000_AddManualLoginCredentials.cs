@@ -23,6 +23,7 @@ public partial class AddManualLoginCredentials : Migration
                 RevealCount = table.Column<int>(type: "integer", nullable: false),
                 LastRevealedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
                 ClearedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
+                ExpiresAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
                 CreatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
                 UpdatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
             },
