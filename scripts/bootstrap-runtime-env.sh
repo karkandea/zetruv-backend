@@ -52,6 +52,7 @@ POSTGRES_PASSWORD=$(openssl rand -hex 24)
 JWT_KEY=$(openssl rand -base64 48 | tr -d '\n' | tr '+/' '-_')
 CMS_ADMIN_PASSWORD=$(openssl rand -base64 24 | tr -d '\n' | tr '+/' '-_')
 WEBHOOK_SECRET=$(openssl rand -hex 32)
+MANUAL_LOGIN_ENCRYPTION_KEY=$(openssl rand -base64 32 | tr -d '\n')
 
 cat > .env <<EOF
 ZETRUV_ENVIRONMENT=$ENVIRONMENT
@@ -76,6 +77,7 @@ PAYMENTS_PROVIDER=mock
 PAYMENTS_MOCK_WEBHOOK_SECRET=$WEBHOOK_SECRET
 GAME_ACCOUNT_VALIDATION_PROVIDER=mock
 FULFILLMENT_AUTO_ID_PROVIDER=mock
+MANUAL_LOGIN_ENCRYPTION_KEY=$MANUAL_LOGIN_ENCRYPTION_KEY
 SHIPPING_PROVIDER=mock
 EOF
 chmod 600 .env
