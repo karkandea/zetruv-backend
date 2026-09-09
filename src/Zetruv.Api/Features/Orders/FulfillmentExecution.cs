@@ -361,8 +361,10 @@ public sealed class FulfillmentQueueService(ZetruvDbContext db)
             x.AccountDisplayName,
             ParseDestinationFields(x.DestinationJson),
             x.HasManualLoginCredentials,
-            ManualLoginCredentialService.ParseFieldNames(
-                x.ManualLoginCredentialFieldsJson),
+            x.HasManualLoginCredentials
+                ? ManualLoginCredentialService.ParseFieldNames(
+                    x.ManualLoginCredentialFieldsJson)
+                : null,
             x.FulfillmentReference,
             x.FulfillmentMessage,
             x.FulfillmentAttemptCount,
