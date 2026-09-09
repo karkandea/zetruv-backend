@@ -41,6 +41,13 @@ if (builder.Environment.IsProduction())
         throw new InvalidOperationException(
             $"Mock providers cannot be enabled in Production: {string.Join(", ", enabledMockProviders)}.");
     }
+
+    if (!ManualLoginCredentialProtector.IsValidConfiguredKey(
+            builder.Configuration["ManualLogin:EncryptionKey"]))
+    {
+        throw new InvalidOperationException(
+            "ManualLogin:EncryptionKey must be configured as a base64-encoded 32-byte key in Production.");
+    }
 }
 
 builder.Services
@@ -175,6 +182,8 @@ builder.Services.AddScoped<OrderService>();
 builder.Services.AddScoped<OrderFulfillmentService>();
 builder.Services.AddScoped<FulfillmentExecutionService>();
 builder.Services.AddScoped<FulfillmentQueueService>();
+builder.Services.AddSingleton<ManualLoginCredentialProtector>();
+builder.Services.AddScoped<ManualLoginCredentialService>();
 builder.Services.AddScoped<OrderAccessTokenService>();
 builder.Services.AddScoped<OrderTrackingService>();
 builder.Services.AddScoped<CheckoutService>();
