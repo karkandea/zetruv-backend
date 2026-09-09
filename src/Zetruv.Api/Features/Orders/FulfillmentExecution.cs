@@ -327,6 +327,11 @@ public sealed class FulfillmentQueueService(ZetruvDbContext db)
                 DestinationJson = x.GameAccountValidation == null
                     ? null
                     : x.GameAccountValidation.InputJson,
+                HasManualLoginCredentials = x.ManualLoginCredential != null &&
+                    x.ManualLoginCredential.EncryptedPayload != null,
+                ManualLoginCredentialFieldsJson = x.ManualLoginCredential == null
+                    ? null
+                    : x.ManualLoginCredential.FieldNamesJson,
                 x.FulfillmentReference,
                 x.FulfillmentMessage,
                 x.FulfillmentAttemptCount,
@@ -355,6 +360,9 @@ public sealed class FulfillmentQueueService(ZetruvDbContext db)
             x.CustomerPhone,
             x.AccountDisplayName,
             ParseDestinationFields(x.DestinationJson),
+            x.HasManualLoginCredentials,
+            ManualLoginCredentialService.ParseFieldNames(
+                x.ManualLoginCredentialFieldsJson),
             x.FulfillmentReference,
             x.FulfillmentMessage,
             x.FulfillmentAttemptCount,
@@ -396,7 +404,8 @@ public sealed class FulfillmentQueueService(ZetruvDbContext db)
 [Route("api/v1/cms/fulfillment")]
 public sealed class CmsFulfillmentController(
     FulfillmentQueueService queueService,
-    FulfillmentExecutionService executionService) : ControllerBase
+    FulfillmentExecutionService executionService,
+    ManualLoginCredentialService manualLoginCredentials) : ControllerBase
 {
     [HttpGet("queue")]
     public async Task<ActionResult<FulfillmentQueueResponse>> GetQueue(
@@ -406,6 +415,37 @@ public sealed class CmsFulfillmentController(
         [FromQuery] int pageSize = 20,
         CancellationToken cancellationToken = default) =>
         Ok(await queueService.GetAsync(method, status, page, pageSize, cancellationToken));
+
+    [HttpGet("orders/{orderId:guid}/items/{orderItemId:guid}/manual-login-credentials")]
+    public async Task<ActionResult<ManualLoginCredentialRevealResponse>> RevealManualLoginCredentials(
+        Guid orderId,
+        Guid orderItemId,
+        CancellationToken cancellationToken)
+    {
+        var result = await manualLoginCredentials.RevealAsync(
+            orderId,
+            orderItemId,
+            cancellationToken);
+
+        if (result.Credentials is not null)
+        {
+            return Ok(result.Credentials);
+        }
+
+        if (result.NotFound)
+        {
+            return NotFound();
+        }
+
+        if (result.Gone)
+        {
+            return StatusCode(
+                StatusCodes.Status410Gone,
+                new { message = result.Error });
+        }
+
+        return Conflict(new { message = result.Error });
+    }
 
     [HttpPost("orders/{orderId:guid}/items/{orderItemId:guid}/execute")]
     public async Task<ActionResult<ExecuteAutoFulfillmentResponse>> ExecuteAuto(
