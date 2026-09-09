@@ -17,6 +17,7 @@ public sealed class ManualLoginCredential
     public int RevealCount { get; set; }
     public DateTimeOffset? LastRevealedAt { get; set; }
     public DateTimeOffset? ClearedAt { get; set; }
+    public DateTimeOffset ExpiresAt { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 }
@@ -134,8 +135,13 @@ public sealed class ManualLoginCredentialProtector(IConfiguration configuration)
 
 public sealed class ManualLoginCredentialService(
     ZetruvDbContext db,
-    ManualLoginCredentialProtector protector)
+    ManualLoginCredentialProtector protector,
+    IConfiguration configuration)
 {
+    private readonly int retentionHours = Math.Clamp(
+        configuration.GetValue<int?>("ManualLogin:RetentionHours") ?? 24,
+        1,
+        168);
     private static readonly HashSet<string> BlockedOneTimeSecretFields = new(
         ["otp", "2fa", "totp", "verificationcode", "verification_code", "cookie", "session", "sessionid", "session_id", "token"],
         StringComparer.OrdinalIgnoreCase);
@@ -209,6 +215,7 @@ public sealed class ManualLoginCredentialService(
             OrderItemId = orderItemId,
             EncryptedPayload = protector.Protect(orderItemId, fields),
             FieldNamesJson = JsonSerializer.Serialize(fields.Keys.OrderBy(x => x, StringComparer.OrdinalIgnoreCase)),
+            ExpiresAt = now.AddHours(retentionHours),
             CreatedAt = now,
             UpdatedAt = now
         };
@@ -236,13 +243,20 @@ public sealed class ManualLoginCredentialService(
             return new(null, "Credentials can only be revealed after the order is paid.", Conflict: true);
         }
 
+        var now = DateTimeOffset.UtcNow;
+        if (credential.ExpiresAt <= now)
+        {
+            Clear(credential, now);
+            await db.SaveChangesAsync(cancellationToken);
+            return new(null, "Credentials expired and were cleared.", Gone: true);
+        }
+
         if (string.IsNullOrWhiteSpace(credential.EncryptedPayload))
         {
             return new(null, "Credentials were cleared after fulfillment or cancellation.", Gone: true);
         }
 
         var fields = protector.Unprotect(orderItemId, credential.EncryptedPayload);
-        var now = DateTimeOffset.UtcNow;
         credential.RevealCount++;
         credential.LastRevealedAt = now;
         credential.UpdatedAt = now;
@@ -256,6 +270,19 @@ public sealed class ManualLoginCredentialService(
                 credential.RevealCount,
                 now),
             null);
+    }
+
+    public async Task<int> ClearExpiredAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var now = DateTimeOffset.UtcNow;
+        return await db.Set<ManualLoginCredential>()
+            .Where(x => x.EncryptedPayload != null && x.ExpiresAt <= now)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(x => x.EncryptedPayload, (string?)null)
+                .SetProperty(x => x.ClearedAt, now)
+                .SetProperty(x => x.UpdatedAt, now),
+                cancellationToken);
     }
 
     public static void Clear(ManualLoginCredential? credential, DateTimeOffset now)
@@ -284,6 +311,40 @@ public sealed class ManualLoginCredentialService(
         catch (JsonException)
         {
             return [];
+        }
+    }
+}
+
+
+public sealed class ManualLoginCredentialCleanupService(
+    IServiceScopeFactory scopeFactory,
+    ILogger<ManualLoginCredentialCleanupService> logger) : BackgroundService
+{
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromMinutes(1));
+
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            try
+            {
+                await using var scope = scopeFactory.CreateAsyncScope();
+                var service = scope.ServiceProvider.GetRequiredService<ManualLoginCredentialService>();
+                await service.ClearExpiredAsync(stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                break;
+            }
+            catch (Exception exception)
+            {
+                logger.LogError(exception, "Failed to clear expired manual login credentials.");
+            }
+
+            if (!await timer.WaitForNextTickAsync(stoppingToken))
+            {
+                break;
+            }
         }
     }
 }
