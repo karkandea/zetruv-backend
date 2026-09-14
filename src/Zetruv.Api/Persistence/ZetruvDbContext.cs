@@ -25,6 +25,7 @@ public sealed class ZetruvDbContext(
     public DbSet<Article> Articles => Set<Article>();
     public DbSet<Order> Orders => Set<Order>();
     public DbSet<OrderItem> OrderItems => Set<OrderItem>();
+    public DbSet<ManualLoginCredential> ManualLoginCredentials => Set<ManualLoginCredential>();
     public DbSet<PaymentTransaction> PaymentTransactions => Set<PaymentTransaction>();
     public DbSet<InventoryReservation> InventoryReservations => Set<InventoryReservation>();
     public DbSet<SiteSetting> SiteSettings => Set<SiteSetting>();
@@ -262,6 +263,19 @@ public sealed class ZetruvDbContext(
                 .WithMany()
                 .HasForeignKey(x => x.ProductVariantId)
                 .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<ManualLoginCredential>(entity =>
+        {
+            entity.ToTable("manual_login_credentials");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.EncryptedPayload).HasColumnType("text");
+            entity.Property(x => x.FieldNamesJson).HasColumnType("jsonb").IsRequired();
+            entity.HasIndex(x => x.OrderItemId).IsUnique();
+            entity.HasOne(x => x.OrderItem)
+                .WithOne(x => x.ManualLoginCredential)
+                .HasForeignKey<ManualLoginCredential>(x => x.OrderItemId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<PaymentTransaction>(entity =>

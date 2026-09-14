@@ -810,6 +810,48 @@ namespace Zetruv.Api.Persistence.Migrations
                     b.ToTable("orders", (string)null);
                 });
 
+            modelBuilder.Entity("Zetruv.Api.Features.Orders.ManualLoginCredential", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("ClearedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("EncryptedPayload")
+                        .HasColumnType("text");
+
+                    b.Property<string>("FieldNamesJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<DateTimeOffset?>("LastRevealedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("OrderItemId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("RevealCount")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrderItemId")
+                        .IsUnique();
+
+                    b.ToTable("manual_login_credentials", (string)null);
+                });
+
             modelBuilder.Entity("Zetruv.Api.Features.Orders.OrderItem", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1463,6 +1505,17 @@ namespace Zetruv.Api.Persistence.Migrations
                     b.Navigation("Order");
                 });
 
+            modelBuilder.Entity("Zetruv.Api.Features.Orders.ManualLoginCredential", b =>
+                {
+                    b.HasOne("Zetruv.Api.Features.Orders.OrderItem", "OrderItem")
+                        .WithOne("ManualLoginCredential")
+                        .HasForeignKey("Zetruv.Api.Features.Orders.ManualLoginCredential", "OrderItemId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("OrderItem");
+                });
+
             modelBuilder.Entity("Zetruv.Api.Features.Orders.OrderItem", b =>
                 {
                     b.HasOne("Zetruv.Api.Features.Orders.Order", "Order")
@@ -1560,6 +1613,8 @@ namespace Zetruv.Api.Persistence.Migrations
             modelBuilder.Entity("Zetruv.Api.Features.Orders.OrderItem", b =>
                 {
                     b.Navigation("GameAccountValidation");
+
+                    b.Navigation("ManualLoginCredential");
                 });
 #pragma warning restore 612, 618
         }

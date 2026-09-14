@@ -10,12 +10,19 @@ esac
 
 [[ -f .env ]] || { echo 'Missing .env. Run bootstrap-runtime-env.sh first.' >&2; exit 1; }
 get_env() { sed -n "s/^${1}=//p" .env | tail -n 1; }
+command -v openssl >/dev/null 2>&1 || { echo 'openssl is required.' >&2; exit 1; }
 
 CONFIG_ENV=$(get_env ZETRUV_ENVIRONMENT)
 [[ "$CONFIG_ENV" == "$ENVIRONMENT" ]] || { echo ".env belongs to '$CONFIG_ENV', not '$ENVIRONMENT'." >&2; exit 1; }
 
 if [[ -z "$(get_env FULFILLMENT_AUTO_ID_PROVIDER)" ]]; then
   printf '\nFULFILLMENT_AUTO_ID_PROVIDER=mock\n' >> .env
+  chmod 600 .env
+fi
+
+if [[ -z "$(get_env MANUAL_LOGIN_ENCRYPTION_KEY)" ]]; then
+  MANUAL_LOGIN_ENCRYPTION_KEY=$(openssl rand -base64 32 | tr -d '\n')
+  printf '\nMANUAL_LOGIN_ENCRYPTION_KEY=%s\n' "$MANUAL_LOGIN_ENCRYPTION_KEY" >> .env
   chmod 600 .env
 fi
 
@@ -62,6 +69,9 @@ fi
 
 JWT_KEY=$(get_env JWT_KEY)
 [[ ${#JWT_KEY} -ge 32 ]] || { echo 'JWT_KEY must be at least 32 characters.' >&2; exit 1; }
+MANUAL_LOGIN_ENCRYPTION_KEY=$(get_env MANUAL_LOGIN_ENCRYPTION_KEY)
+MANUAL_LOGIN_KEY_BYTES=$(printf '%s' "$MANUAL_LOGIN_ENCRYPTION_KEY" | openssl base64 -d -A 2>/dev/null | wc -c | tr -d ' ') || true
+[[ "$MANUAL_LOGIN_KEY_BYTES" == 32 ]] || { echo 'MANUAL_LOGIN_ENCRYPTION_KEY must decode to exactly 32 bytes.' >&2; exit 1; }
 for key in POSTGRES_PASSWORD CMS_ADMIN_EMAIL CMS_ADMIN_PASSWORD PAYMENTS_MOCK_WEBHOOK_SECRET; do
   value=$(get_env "$key")
   [[ -n "$value" && "$value" != *change-me* && "$value" != replace-with-* ]] || { echo "$key is missing or unsafe." >&2; exit 1; }

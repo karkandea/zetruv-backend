@@ -42,6 +42,7 @@ public sealed class OrderFulfillmentService(ZetruvDbContext db)
         {
             item.FulfillmentStatus = FulfillmentStatus.Cancelled;
             item.FulfilledAt = null;
+            ManualLoginCredentialService.Clear(item.ManualLoginCredential, now);
         }
 
         order.Status = OrderStatus.Cancelled;
@@ -57,6 +58,7 @@ public sealed class OrderFulfillmentService(ZetruvDbContext db)
     {
         var order = await db.Orders
             .Include(x => x.Items)
+                .ThenInclude(x => x.ManualLoginCredential)
             .SingleOrDefaultAsync(x => x.Id == orderId, cancellationToken);
 
         if (order is null)
@@ -113,6 +115,7 @@ public sealed class OrderFulfillmentService(ZetruvDbContext db)
                 item.FulfillmentStartedAt ??= now;
                 item.FulfilledAt ??= now;
                 item.FulfillmentMessage = null;
+                ManualLoginCredentialService.Clear(item.ManualLoginCredential, now);
                 break;
 
             case FulfillmentStatus.Failed:

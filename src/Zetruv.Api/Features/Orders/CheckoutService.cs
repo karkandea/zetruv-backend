@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Zetruv.Api.Features.Catalog;
 using Zetruv.Api.Features.GameAccounts;
@@ -8,7 +9,8 @@ namespace Zetruv.Api.Features.Orders;
 
 public sealed class CheckoutService(
     ZetruvDbContext db,
-    ShippingService shippingService)
+    ShippingService shippingService,
+    ManualLoginCredentialService manualLoginCredentials)
 {
     public async Task<CreateCheckoutOrderResult> CreateOrderAsync(
         CreateCheckoutOrderRequest request,
@@ -28,11 +30,18 @@ public sealed class CheckoutService(
         }
 
         var groupedItems = items
-            .GroupBy(x => new { x.ProductVariantId, x.GameAccountValidationId })
+            .GroupBy(x => new
+            {
+                x.ProductVariantId,
+                x.GameAccountValidationId,
+                LoginCredentialsJson = CanonicalizeCredentials(x.LoginCredentials)
+            })
             .Select(x => new
             {
                 x.Key.ProductVariantId,
                 x.Key.GameAccountValidationId,
+                x.Key.LoginCredentialsJson,
+                LoginCredentials = x.First().LoginCredentials,
                 Quantity = x.Sum(i => i.Quantity)
             })
             .ToList();
@@ -91,6 +100,10 @@ public sealed class CheckoutService(
         }
 
         var variantById = variants.ToDictionary(x => x.Id);
+        var requestedQuantityByVariant = groupedItems
+            .GroupBy(x => x.ProductVariantId)
+            .ToDictionary(x => x.Key, x => x.Sum(i => i.Quantity));
+
         foreach (var item in groupedItems)
         {
             var variant = variantById[item.ProductVariantId];
@@ -102,7 +115,7 @@ public sealed class CheckoutService(
             }
 
             if (variant.StockQuantity.HasValue &&
-                item.Quantity > variant.StockQuantity.Value)
+                requestedQuantityByVariant[variant.Id] > variant.StockQuantity.Value)
             {
                 return CreateCheckoutOrderResult.Failure(
                     $"Insufficient stock for {variant.ProductName} / {variant.Name}.");
@@ -120,6 +133,20 @@ public sealed class CheckoutService(
             {
                 return CreateCheckoutOrderResult.Failure(
                     $"{variant.ProductName} does not accept a game account validation.");
+            }
+
+            if (variant.ProductFulfillmentMethod == FulfillmentMethod.MANUAL_LOGIN)
+            {
+                var normalized = manualLoginCredentials.Normalize(item.LoginCredentials);
+                if (normalized.Error is not null)
+                {
+                    return CreateCheckoutOrderResult.Failure(normalized.Error);
+                }
+            }
+            else if (item.LoginCredentials is not null)
+            {
+                return CreateCheckoutOrderResult.Failure(
+                    $"{variant.ProductName} does not accept login credentials.");
             }
         }
 
@@ -265,6 +292,21 @@ public sealed class CheckoutService(
                 CreatedAt = now
             };
 
+            if (variant.ProductFulfillmentMethod == FulfillmentMethod.MANUAL_LOGIN)
+            {
+                var normalized = manualLoginCredentials.Normalize(item.LoginCredentials);
+                if (normalized.Fields is null)
+                {
+                    return CreateCheckoutOrderResult.Failure(
+                        normalized.Error ?? "Login credentials are invalid.");
+                }
+
+                orderItem.ManualLoginCredential = manualLoginCredentials.Create(
+                    orderItem.Id,
+                    normalized.Fields,
+                    now);
+            }
+
             orderItems.Add(orderItem);
 
             if (item.GameAccountValidationId.HasValue)
@@ -395,6 +437,20 @@ public sealed class CheckoutService(
     {
         var suffix = Guid.NewGuid().ToString("N")[..8].ToUpperInvariant();
         return $"ZTR-{now:yyyyMMdd}-{suffix}";
+    }
+
+    private static string? CanonicalizeCredentials(
+        IReadOnlyDictionary<string, string>? fields)
+    {
+        if (fields is null)
+        {
+            return null;
+        }
+
+        return JsonSerializer.Serialize(
+            fields
+                .OrderBy(x => x.Key, StringComparer.Ordinal)
+                .ToDictionary(x => x.Key, x => x.Value, StringComparer.Ordinal));
     }
 
     private static string? Clean(string? value) =>

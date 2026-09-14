@@ -51,6 +51,16 @@ Third-party services stay behind provider boundaries. Payment, game-account vali
 - Expired reservations are cleaned up in the background
 - A `mock` payment gateway is available for development/staging
 
+### Manual-login fulfillment
+
+- `MANUAL_LOGIN` checkout lines require a `loginCredentials` object at checkout; credentials are never stored in Product Detail or Cart state by the backend contract
+- Credential values are encrypted at rest with AES-GCM using a runtime-only 32-byte key and are never included in normal order or fulfillment queue responses
+- One-time/session fields such as OTP, 2FA, cookies, sessions, and tokens are rejected at checkout
+- Paid manual-login items expose only credential field-name metadata in the CMS fulfillment queue
+- Plaintext credentials can only be revealed through the authenticated CMS reveal endpoint after payment; reveal count and last-revealed timestamp are persisted
+- Credentials are cleared after fulfillment completion, order cancellation, or retention expiry (24 hours by default)
+- Abandoned credentials are also cleared by a background cleanup service
+
 ### Game-account validation
 
 - Validation integration is behind `IGameAccountValidator`
@@ -94,6 +104,12 @@ Canonical CMS prefix: `/api/v1/cms`.
 Authentication:
 
 - `POST /api/v1/cms/auth/login`
+
+Manual fulfillment:
+
+- `GET /api/v1/cms/fulfillment/queue`
+- `GET /api/v1/cms/fulfillment/orders/{orderId}/items/{orderItemId}/manual-login-credentials`
+- `PUT /api/v1/cms/orders/{orderId}/items/{orderItemId}/fulfillment`
 
 Homepage:
 
@@ -165,5 +181,7 @@ At minimum for staging/production:
 - `Cors__AllowedOrigins__1` (CMS frontend)
 - `Payments__Provider`
 - `GameAccountValidation__Provider`
+- `ManualLogin__EncryptionKey` (base64-encoded 32-byte key)
+- `ManualLogin__RetentionHours` (defaults to 24, clamped to 1-168 hours)
 
 `mock` is intended only for development/staging provider configuration. Do not commit real credentials or production provider secrets.
