@@ -67,9 +67,7 @@ public sealed class CatalogService(ZetruvDbContext db)
         page = Math.Max(page, 1);
         pageSize = Math.Clamp(pageSize, 1, 50);
 
-        var query = db.Products
-            .AsNoTracking()
-            .Where(x => x.IsActive && x.Category.IsActive);
+        var query = PublicProductsQuery();
 
         if (!string.IsNullOrWhiteSpace(categorySlug))
         {
@@ -93,7 +91,8 @@ public sealed class CatalogService(ZetruvDbContext db)
             var term = search.Trim().ToLower();
             query = query.Where(x =>
                 x.Name.ToLower().Contains(term) ||
-                (x.Game != null && x.Game.Name.ToLower().Contains(term)));
+                (x.Game != null && x.Game.Name.ToLower().Contains(term)) ||
+                (x.Game != null && x.Game.Publisher != null && x.Game.Publisher.ToLower().Contains(term)));
         }
 
         var totalItems = await query.CountAsync(cancellationToken);
@@ -103,12 +102,15 @@ public sealed class CatalogService(ZetruvDbContext db)
 
         var orderedQuery = query
             .OrderByDescending(x => x.IsFeatured)
+            .ThenBy(x => x.SortOrder)
             .ThenBy(x => x.Name);
 
-        var items = await ProjectProductList(orderedQuery)
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .ToListAsync(cancellationToken);
+        var items = await GetProductListItemsAsync(
+            orderedQuery,
+            (page - 1) * pageSize,
+            pageSize,
+            DateTimeOffset.UtcNow,
+            cancellationToken);
 
         return new ProductPageResponse(items, page, pageSize, totalItems, totalPages);
     }
@@ -118,15 +120,18 @@ public sealed class CatalogService(ZetruvDbContext db)
         int limit,
         CancellationToken cancellationToken = default)
     {
-        var query = db.Products
-            .AsNoTracking()
-            .Where(x => x.IsActive && x.Category.IsActive && x.Kind == kind)
+        var query = PublicProductsQuery()
+            .Where(x => x.Kind == kind)
             .OrderByDescending(x => x.IsFeatured)
+            .ThenBy(x => x.SortOrder)
             .ThenBy(x => x.Name);
 
-        return await ProjectProductList(query)
-            .Take(Math.Clamp(limit, 1, 50))
-            .ToListAsync(cancellationToken);
+        return await GetProductListItemsAsync(
+            query,
+            0,
+            Math.Clamp(limit, 1, 50),
+            DateTimeOffset.UtcNow,
+            cancellationToken);
     }
 
     public async Task<ProductDetailResponse?> GetProductBySlugAsync(
@@ -135,20 +140,30 @@ public sealed class CatalogService(ZetruvDbContext db)
     {
         var normalized = CatalogText.NormalizeSlug(slug);
 
-        var product = await db.Products
-            .AsNoTracking()
+        var product = await PublicProductsQuery()
             .Include(x => x.Category)
             .Include(x => x.Game)
             .Include(x => x.Variants)
             .Include(x => x.Images)
-            .SingleOrDefaultAsync(
-                x => x.Slug == normalized && x.IsActive && x.Category.IsActive,
-                cancellationToken);
+            .SingleOrDefaultAsync(x => x.Slug == normalized, cancellationToken);
 
         if (product is null)
         {
             return null;
         }
+
+        var variants = product.Variants
+            .Where(x => x.IsActive)
+            .OrderBy(x => x.SortOrder)
+            .ThenBy(x => x.Name)
+            .ToList();
+        var offers = await LoadActiveSaleOffersAsync(
+            variants.Select(x => x.Id),
+            DateTimeOffset.UtcNow,
+            cancellationToken);
+        var variantResponses = variants
+            .Select(x => ToProductVariantResponse(x, offers))
+            .ToList();
 
         return new ProductDetailResponse(
             product.Id,
@@ -161,22 +176,11 @@ public sealed class CatalogService(ZetruvDbContext db)
             product.ThumbnailUrl,
             product.RequiresGameAccountValidation,
             product.IsFeatured,
+            variantResponses.Any(x => x.IsAvailable),
+            variantResponses.Any(x => x.IsOnSale),
             ToCategoryResponse(product.Category),
             product.Game is null ? null : ToGameResponse(product.Game),
-            product.Variants
-                .Where(x => x.IsActive)
-                .OrderBy(x => x.SortOrder)
-                .ThenBy(x => x.Name)
-                .Select(x => new ProductVariantResponse(
-                    x.Id,
-                    x.Name,
-                    x.Sku,
-                    x.Price,
-                    x.CompareAtPrice,
-                    x.StockQuantity,
-                    x.WeightGrams,
-                    x.SortOrder))
-                .ToList(),
+            variantResponses,
             product.Images
                 .OrderBy(x => x.SortOrder)
                 .Select(x => new ProductImageResponse(
@@ -215,6 +219,7 @@ public sealed class CatalogService(ZetruvDbContext db)
             .Where(x =>
                 x.ProductVariant.IsActive &&
                 x.ProductVariant.Product.IsActive &&
+                (x.ProductVariant.Product.Game == null || x.ProductVariant.Product.Game.IsActive) &&
                 x.SalePrice <= x.ProductVariant.Price)
             .OrderBy(x => x.SortOrder)
             .Take(Math.Clamp(limit, 1, 50))
@@ -240,20 +245,139 @@ public sealed class CatalogService(ZetruvDbContext db)
             items);
     }
 
-    private static IQueryable<ProductListItemResponse> ProjectProductList(
-        IQueryable<Product> query) =>
-        query.Select(x => new ProductListItemResponse(
-            x.Id,
-            x.Name,
-            x.Slug,
-            x.Kind,
-            x.FulfillmentMethod,
-            x.ThumbnailUrl,
-            x.Category.Slug,
-            x.Game == null ? null : x.Game.Name,
-            x.Variants.Where(v => v.IsActive).Select(v => (decimal?)v.Price).Min(),
-            x.Variants.Where(v => v.IsActive).Select(v => (decimal?)v.Price).Max(),
-            x.IsFeatured));
+    private IQueryable<Product> PublicProductsQuery() =>
+        db.Products
+            .AsNoTracking()
+            .Where(x =>
+                x.IsActive &&
+                x.Category.IsActive &&
+                (x.Game == null || x.Game.IsActive) &&
+                x.Variants.Any(v => v.IsActive));
+
+    private async Task<IReadOnlyList<ProductListItemResponse>> GetProductListItemsAsync(
+        IQueryable<Product> query,
+        int skip,
+        int take,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        var productIds = await query
+            .Select(x => x.Id)
+            .Skip(skip)
+            .Take(take)
+            .ToListAsync(cancellationToken);
+
+        if (productIds.Count == 0)
+        {
+            return [];
+        }
+
+        var products = await db.Products
+            .AsNoTracking()
+            .Include(x => x.Category)
+            .Include(x => x.Game)
+            .Include(x => x.Variants)
+            .Where(x => productIds.Contains(x.Id))
+            .ToListAsync(cancellationToken);
+        var productById = products.ToDictionary(x => x.Id);
+        var offers = await LoadActiveSaleOffersAsync(
+            products.SelectMany(x => x.Variants).Where(x => x.IsActive).Select(x => x.Id),
+            now,
+            cancellationToken);
+
+        return productIds
+            .Select(id => ToProductListItemResponse(productById[id], offers))
+            .ToList();
+    }
+
+    private async Task<IReadOnlyDictionary<Guid, ActiveSaleOffer>> LoadActiveSaleOffersAsync(
+        IEnumerable<Guid> variantIds,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        var ids = variantIds.Distinct().ToArray();
+        if (ids.Length == 0)
+        {
+            return new Dictionary<Guid, ActiveSaleOffer>();
+        }
+
+        var offers = await db.PromotionItems
+            .AsNoTracking()
+            .Where(x =>
+                ids.Contains(x.ProductVariantId) &&
+                x.Promotion.IsActive &&
+                x.Promotion.IsFlashSale &&
+                x.Promotion.StartsAt <= now &&
+                x.Promotion.EndsAt >= now &&
+                x.SalePrice <= x.ProductVariant.Price)
+            .Select(x => new ActiveSaleOffer(
+                x.ProductVariantId,
+                x.SalePrice,
+                x.Promotion.Name,
+                x.Promotion.EndsAt))
+            .ToListAsync(cancellationToken);
+
+        return offers
+            .GroupBy(x => x.VariantId)
+            .ToDictionary(
+                x => x.Key,
+                x => x.OrderBy(o => o.SalePrice).ThenBy(o => o.EndsAt).First());
+    }
+
+    private static ProductListItemResponse ToProductListItemResponse(
+        Product product,
+        IReadOnlyDictionary<Guid, ActiveSaleOffer> offers)
+    {
+        var variants = product.Variants.Where(x => x.IsActive).ToList();
+        var effectivePrices = variants
+            .Select(x => offers.TryGetValue(x.Id, out var offer) ? offer.SalePrice : x.Price)
+            .ToList();
+        var regularPrices = variants.Select(x => x.Price).ToList();
+
+        return new ProductListItemResponse(
+            product.Id,
+            product.Name,
+            product.Slug,
+            product.Kind,
+            product.FulfillmentMethod,
+            product.ThumbnailUrl,
+            product.Category.Slug,
+            product.Game?.Name,
+            product.Game?.Slug,
+            product.Game?.Publisher,
+            effectivePrices.Count == 0 ? null : effectivePrices.Min(),
+            effectivePrices.Count == 0 ? null : effectivePrices.Max(),
+            regularPrices.Count == 0 ? null : regularPrices.Min(),
+            regularPrices.Count == 0 ? null : regularPrices.Max(),
+            variants.Count,
+            variants.Any(IsVariantAvailable),
+            variants.Any(x => offers.ContainsKey(x.Id)),
+            product.IsFeatured);
+    }
+
+    private static ProductVariantResponse ToProductVariantResponse(
+        ProductVariant variant,
+        IReadOnlyDictionary<Guid, ActiveSaleOffer> offers)
+    {
+        var hasOffer = offers.TryGetValue(variant.Id, out var offer);
+        return new ProductVariantResponse(
+            variant.Id,
+            variant.Name,
+            variant.Sku,
+            variant.Price,
+            hasOffer ? offer!.SalePrice : variant.Price,
+            variant.CompareAtPrice,
+            variant.StockQuantity,
+            variant.WeightGrams,
+            IsVariantAvailable(variant),
+            hasOffer,
+            hasOffer ? offer!.PromotionName : null,
+            hasOffer ? offer!.EndsAt : null,
+            variant.SortOrder);
+    }
+
+    private static bool IsVariantAvailable(ProductVariant variant) =>
+        !variant.StockQuantity.HasValue || variant.StockQuantity.Value > 0;
 
     internal static CategoryResponse ToCategoryResponse(CatalogCategory category) =>
         new(
@@ -275,6 +399,12 @@ public sealed class CatalogService(ZetruvDbContext db)
             game.ImageUrl,
             game.IsPopular,
             game.SortOrder);
+
+    private sealed record ActiveSaleOffer(
+        Guid VariantId,
+        decimal SalePrice,
+        string PromotionName,
+        DateTimeOffset EndsAt);
 }
 
 public sealed class CatalogSeeder(

@@ -154,8 +154,15 @@ public sealed record ProductListItemResponse(
     string? ThumbnailUrl,
     string CategorySlug,
     string? GameName,
+    string? GameSlug,
+    string? Publisher,
     decimal? MinPrice,
     decimal? MaxPrice,
+    decimal? RegularMinPrice,
+    decimal? RegularMaxPrice,
+    int ActiveVariantCount,
+    bool IsAvailable,
+    bool IsOnSale,
     bool IsFeatured);
 
 public sealed record ProductVariantResponse(
@@ -163,9 +170,14 @@ public sealed record ProductVariantResponse(
     string Name,
     string Sku,
     decimal Price,
+    decimal EffectivePrice,
     decimal? CompareAtPrice,
     int? StockQuantity,
     int? WeightGrams,
+    bool IsAvailable,
+    bool IsOnSale,
+    string? PromotionName,
+    DateTimeOffset? PromotionEndsAt,
     int SortOrder);
 
 public sealed record ProductImageResponse(
@@ -185,6 +197,8 @@ public sealed record ProductDetailResponse(
     string? ThumbnailUrl,
     bool RequiresGameAccountValidation,
     bool IsFeatured,
+    bool IsAvailable,
+    bool IsOnSale,
     CategoryResponse Category,
     GameResponse? Game,
     IReadOnlyList<ProductVariantResponse> Variants,
