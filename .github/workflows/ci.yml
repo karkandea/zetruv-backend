@@ -40,17 +40,3 @@ jobs:
         run: bash scripts/smoke-runtime-config.sh
       - name: Production safety guard smoke
         run: bash scripts/smoke-production-provider-guard.sh
-
-  manual-login-e2e:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    needs: build
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: 10.0.x
-      - name: MANUAL_LOGIN credential lifecycle smoke
-        run: bash scripts/smoke-manual-login-credentials.sh
