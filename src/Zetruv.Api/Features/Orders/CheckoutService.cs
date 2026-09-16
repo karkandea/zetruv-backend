@@ -100,6 +100,17 @@ public sealed class CheckoutService(
         }
 
         var variantById = variants.ToDictionary(x => x.Id);
+        var productIds = variants.Select(x => x.ProductId).Distinct().ToArray();
+        var inputFields = await db.ProductInputFields
+            .AsNoTracking()
+            .Where(x => productIds.Contains(x.ProductId))
+            .OrderBy(x => x.SortOrder)
+            .ThenBy(x => x.Label)
+            .ToListAsync(cancellationToken);
+        var inputFieldsByProduct = inputFields
+            .GroupBy(x => x.ProductId)
+            .ToDictionary(x => x.Key, x => (IReadOnlyList<ProductInputField>)x.ToList());
+
         var requestedQuantityByVariant = groupedItems
             .GroupBy(x => x.ProductVariantId)
             .ToDictionary(x => x.Key, x => x.Sum(i => i.Quantity));
@@ -137,7 +148,18 @@ public sealed class CheckoutService(
 
             if (variant.ProductFulfillmentMethod == FulfillmentMethod.MANUAL_LOGIN)
             {
-                var normalized = manualLoginCredentials.Normalize(item.LoginCredentials);
+                inputFieldsByProduct.TryGetValue(variant.ProductId, out var schema);
+                var schemaResult = ProductInputFieldRules.NormalizePayload(
+                    schema ?? [],
+                    ProductInputFieldScope.LoginCredential,
+                    item.LoginCredentials);
+                if (schemaResult.Fields is null)
+                {
+                    return CreateCheckoutOrderResult.Failure(
+                        schemaResult.Error ?? "Login credentials do not match the product schema.");
+                }
+
+                var normalized = manualLoginCredentials.Normalize(schemaResult.Fields);
                 if (normalized.Error is not null)
                 {
                     return CreateCheckoutOrderResult.Failure(normalized.Error);
@@ -294,7 +316,18 @@ public sealed class CheckoutService(
 
             if (variant.ProductFulfillmentMethod == FulfillmentMethod.MANUAL_LOGIN)
             {
-                var normalized = manualLoginCredentials.Normalize(item.LoginCredentials);
+                inputFieldsByProduct.TryGetValue(variant.ProductId, out var schema);
+                var schemaResult = ProductInputFieldRules.NormalizePayload(
+                    schema ?? [],
+                    ProductInputFieldScope.LoginCredential,
+                    item.LoginCredentials);
+                if (schemaResult.Fields is null)
+                {
+                    return CreateCheckoutOrderResult.Failure(
+                        schemaResult.Error ?? "Login credentials do not match the product schema.");
+                }
+
+                var normalized = manualLoginCredentials.Normalize(schemaResult.Fields);
                 if (normalized.Fields is null)
                 {
                     return CreateCheckoutOrderResult.Failure(

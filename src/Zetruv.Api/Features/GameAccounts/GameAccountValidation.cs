@@ -210,33 +210,14 @@ public sealed class GameAccountValidationService(
         GameAccountValidationRequest request,
         CancellationToken cancellationToken = default)
     {
-        var fieldsResult = NormalizeFields(request.Fields);
-        if (fieldsResult.Error is not null)
-        {
-            return GameAccountValidationResult.Failure(
-                GameAccountValidationFailureKind.InvalidRequest,
-                fieldsResult.Error);
-        }
-
         var product = await db.Products
             .AsNoTracking()
-            .Where(x => x.Id == request.ProductId)
-            .Select(x => new
-            {
-                x.Id,
-                x.Name,
-                x.IsActive,
-                x.RequiresGameAccountValidation,
-                x.FulfillmentMethod,
-                CategoryIsActive = x.Category.IsActive,
-                GameId = x.GameId,
-                GameName = x.Game == null ? null : x.Game.Name,
-                GameSlug = x.Game == null ? null : x.Game.Slug,
-                GameIsActive = x.Game != null && x.Game.IsActive
-            })
-            .SingleOrDefaultAsync(cancellationToken);
+            .Include(x => x.Category)
+            .Include(x => x.Game)
+            .Include(x => x.InputFields)
+            .SingleOrDefaultAsync(x => x.Id == request.ProductId, cancellationToken);
 
-        if (product is null || !product.IsActive || !product.CategoryIsActive)
+        if (product is null || !product.IsActive || !product.Category.IsActive)
         {
             return GameAccountValidationResult.Failure(
                 GameAccountValidationFailureKind.ProductUnavailable,
@@ -252,13 +233,25 @@ public sealed class GameAccountValidationService(
         }
 
         if (!product.GameId.HasValue ||
-            string.IsNullOrWhiteSpace(product.GameName) ||
-            string.IsNullOrWhiteSpace(product.GameSlug) ||
-            !product.GameIsActive)
+            product.Game is null ||
+            string.IsNullOrWhiteSpace(product.Game.Name) ||
+            string.IsNullOrWhiteSpace(product.Game.Slug) ||
+            !product.Game.IsActive)
         {
             return GameAccountValidationResult.Failure(
                 GameAccountValidationFailureKind.ProductUnavailable,
                 "This product does not have an active game configured for account validation.");
+        }
+
+        var fieldsResult = ProductInputFieldRules.NormalizePayload(
+            product.InputFields,
+            ProductInputFieldScope.AccountValidation,
+            request.Fields);
+        if (fieldsResult.Error is not null)
+        {
+            return GameAccountValidationResult.Failure(
+                GameAccountValidationFailureKind.InvalidRequest,
+                fieldsResult.Error);
         }
 
         var validator = resolver.Resolve();
@@ -277,8 +270,8 @@ public sealed class GameAccountValidationService(
                     product.Id,
                     product.Name,
                     product.GameId.Value,
-                    product.GameName,
-                    product.GameSlug,
+                    product.Game.Name,
+                    product.Game.Slug,
                     fieldsResult.Fields!),
                 cancellationToken);
         }

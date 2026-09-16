@@ -145,6 +145,7 @@ public sealed class CatalogService(ZetruvDbContext db)
             .Include(x => x.Game)
             .Include(x => x.Variants)
             .Include(x => x.Images)
+            .Include(x => x.InputFields)
             .SingleOrDefaultAsync(x => x.Slug == normalized, cancellationToken);
 
         if (product is null)
@@ -176,7 +177,7 @@ public sealed class CatalogService(ZetruvDbContext db)
             product.ThumbnailUrl,
             product.RequiresGameAccountValidation,
             product.IsFeatured,
-            variantResponses.Any(x => x.IsAvailable),
+            HasReadyInputSchema(product) && variantResponses.Any(x => x.IsAvailable),
             variantResponses.Any(x => x.IsOnSale),
             ToCategoryResponse(product.Category),
             product.Game is null ? null : ToGameResponse(product.Game),
@@ -188,6 +189,11 @@ public sealed class CatalogService(ZetruvDbContext db)
                     x.Url,
                     x.AltText,
                     x.SortOrder))
+                .ToList(),
+            product.InputFields
+                .OrderBy(x => x.SortOrder)
+                .ThenBy(x => x.Label)
+                .Select(ProductInputFieldRules.ToResponse)
                 .ToList());
     }
 
@@ -277,6 +283,7 @@ public sealed class CatalogService(ZetruvDbContext db)
             .Include(x => x.Category)
             .Include(x => x.Game)
             .Include(x => x.Variants)
+            .Include(x => x.InputFields)
             .Where(x => productIds.Contains(x.Id))
             .ToListAsync(cancellationToken);
         var productById = products.ToDictionary(x => x.Id);
@@ -350,7 +357,7 @@ public sealed class CatalogService(ZetruvDbContext db)
             regularPrices.Count == 0 ? null : regularPrices.Min(),
             regularPrices.Count == 0 ? null : regularPrices.Max(),
             variants.Count,
-            variants.Any(IsVariantAvailable),
+            HasReadyInputSchema(product) && variants.Any(IsVariantAvailable),
             variants.Any(x => offers.ContainsKey(x.Id)),
             product.IsFeatured);
     }
@@ -378,6 +385,16 @@ public sealed class CatalogService(ZetruvDbContext db)
 
     private static bool IsVariantAvailable(ProductVariant variant) =>
         !variant.StockQuantity.HasValue || variant.StockQuantity.Value > 0;
+
+    private static bool HasReadyInputSchema(Product product) =>
+        product.FulfillmentMethod switch
+        {
+            FulfillmentMethod.AUTO_ID => product.InputFields.Any(x =>
+                x.Scope == ProductInputFieldScope.AccountValidation && x.IsRequired),
+            FulfillmentMethod.MANUAL_LOGIN => product.InputFields.Any(x =>
+                x.Scope == ProductInputFieldScope.LoginCredential && x.IsRequired),
+            _ => true
+        };
 
     internal static CategoryResponse ToCategoryResponse(CatalogCategory category) =>
         new(

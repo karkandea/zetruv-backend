@@ -72,6 +72,7 @@ public sealed class Product
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
     public ICollection<ProductVariant> Variants { get; set; } = [];
     public ICollection<ProductImage> Images { get; set; } = [];
+    public ICollection<ProductInputField> InputFields { get; set; } = [];
 }
 
 public sealed class ProductVariant
@@ -202,7 +203,8 @@ public sealed record ProductDetailResponse(
     CategoryResponse Category,
     GameResponse? Game,
     IReadOnlyList<ProductVariantResponse> Variants,
-    IReadOnlyList<ProductImageResponse> Images);
+    IReadOnlyList<ProductImageResponse> Images,
+    IReadOnlyList<ProductInputFieldResponse> InputFields);
 
 public sealed record ProductPageResponse(
     IReadOnlyList<ProductListItemResponse> Items,

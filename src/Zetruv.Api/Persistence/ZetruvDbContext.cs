@@ -19,6 +19,7 @@ public sealed class ZetruvDbContext(
     public DbSet<Product> Products => Set<Product>();
     public DbSet<ProductVariant> ProductVariants => Set<ProductVariant>();
     public DbSet<ProductImage> ProductImages => Set<ProductImage>();
+    public DbSet<ProductInputField> ProductInputFields => Set<ProductInputField>();
     public DbSet<Promotion> Promotions => Set<Promotion>();
     public DbSet<PromotionItem> PromotionItems => Set<PromotionItem>();
     public DbSet<ArticleCategory> ArticleCategories => Set<ArticleCategory>();
@@ -148,6 +149,25 @@ public sealed class ZetruvDbContext(
             entity.HasIndex(x => new { x.ProductId, x.SortOrder });
             entity.HasOne(x => x.Product)
                 .WithMany(x => x.Images)
+                .HasForeignKey(x => x.ProductId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<ProductInputField>(entity =>
+        {
+            entity.ToTable("product_input_fields");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Key).HasMaxLength(60).IsRequired();
+            entity.Property(x => x.Label).HasMaxLength(120).IsRequired();
+            entity.Property(x => x.Scope).HasConversion<string>().HasMaxLength(30).IsRequired();
+            entity.Property(x => x.Type).HasConversion<string>().HasMaxLength(30).IsRequired();
+            entity.Property(x => x.Placeholder).HasMaxLength(160);
+            entity.Property(x => x.HelpText).HasMaxLength(500);
+            entity.Property(x => x.OptionsJson).HasColumnType("jsonb");
+            entity.HasIndex(x => new { x.ProductId, x.Key }).IsUnique();
+            entity.HasIndex(x => new { x.ProductId, x.Scope, x.SortOrder });
+            entity.HasOne(x => x.Product)
+                .WithMany(x => x.InputFields)
                 .HasForeignKey(x => x.ProductId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
