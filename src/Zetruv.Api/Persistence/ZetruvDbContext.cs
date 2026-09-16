@@ -308,6 +308,8 @@ public sealed class ZetruvDbContext(
             entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(30).IsRequired();
             entity.Property(x => x.Amount).HasPrecision(18, 2);
             entity.Property(x => x.Currency).HasMaxLength(3).IsRequired();
+            entity.Property(x => x.PaymentUrl).HasMaxLength(2000);
+            entity.Property(x => x.QrString).HasColumnType("text");
             entity.HasIndex(x => new { x.OrderId, x.CreatedAt });
             entity.HasIndex(x => new { x.Provider, x.ProviderReference });
             entity.HasOne(x => x.Order)
