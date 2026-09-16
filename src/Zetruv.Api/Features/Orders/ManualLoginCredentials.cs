@@ -27,7 +27,8 @@ public sealed record ManualLoginCredentialRevealResponse(
     Guid OrderItemId,
     IReadOnlyDictionary<string, string> Fields,
     int RevealCount,
-    DateTimeOffset RevealedAt);
+    DateTimeOffset RevealedAt,
+    DateTimeOffset ExpiresAt);
 
 public sealed record ManualLoginCredentialRevealResult(
     ManualLoginCredentialRevealResponse? Credentials,
@@ -268,21 +269,58 @@ public sealed class ManualLoginCredentialService(
                 orderItemId,
                 fields,
                 credential.RevealCount,
-                now),
+                now,
+                credential.ExpiresAt),
             null);
     }
+
+    public static bool IsUsable(ManualLoginCredential? credential, DateTimeOffset now) =>
+        credential is not null &&
+        !string.IsNullOrWhiteSpace(credential.EncryptedPayload) &&
+        credential.ExpiresAt > now;
 
     public async Task<int> ClearExpiredAsync(
         CancellationToken cancellationToken = default)
     {
         var now = DateTimeOffset.UtcNow;
-        return await db.Set<ManualLoginCredential>()
+        var credentials = await db.Set<ManualLoginCredential>()
+            .Include(x => x.OrderItem)
+                .ThenInclude(x => x.Order)
             .Where(x => x.EncryptedPayload != null && x.ExpiresAt <= now)
-            .ExecuteUpdateAsync(setters => setters
-                .SetProperty(x => x.EncryptedPayload, (string?)null)
-                .SetProperty(x => x.ClearedAt, now)
-                .SetProperty(x => x.UpdatedAt, now),
-                cancellationToken);
+            .ToListAsync(cancellationToken);
+
+        foreach (var credential in credentials)
+        {
+            Clear(credential, now);
+
+            var item = credential.OrderItem;
+            var order = item.Order;
+            if (item.FulfillmentMethod != FulfillmentMethod.MANUAL_LOGIN ||
+                order.PaymentStatus != PaymentStatus.Paid ||
+                item.FulfillmentStatus is FulfillmentStatus.Completed or FulfillmentStatus.Cancelled)
+            {
+                continue;
+            }
+
+            item.FulfillmentStatus = FulfillmentStatus.Failed;
+            item.FulfillmentStartedAt ??= order.PaidAt ?? now;
+            item.FulfilledAt = null;
+            item.FulfillmentMessage = "Login credentials expired before fulfillment could be completed.";
+
+            if (order.Status != OrderStatus.Cancelled)
+            {
+                order.Status = OrderStatus.Processing;
+                order.CompletedAt = null;
+                order.UpdatedAt = now;
+            }
+        }
+
+        if (credentials.Count > 0)
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+
+        return credentials.Count;
     }
 
     public static void Clear(ManualLoginCredential? credential, DateTimeOffset now)

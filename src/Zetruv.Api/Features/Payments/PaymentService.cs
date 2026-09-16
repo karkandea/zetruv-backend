@@ -1,6 +1,7 @@
 using System.Data;
 using System.Data.Common;
 using Microsoft.EntityFrameworkCore;
+using Zetruv.Api.Features.Catalog;
 using Zetruv.Api.Features.Orders;
 using Zetruv.Api.Persistence;
 
@@ -118,6 +119,7 @@ public sealed class PaymentService(
     {
         var order = await db.Orders
             .Include(x => x.Items)
+                .ThenInclude(x => x.ManualLoginCredential)
             .Include(x => x.Transactions)
             .SingleOrDefaultAsync(x => x.Id == orderId, cancellationToken);
 
@@ -147,6 +149,15 @@ public sealed class PaymentService(
         }
 
         var now = DateTimeOffset.UtcNow;
+        var unavailableManualLogin = order.Items.FirstOrDefault(x =>
+            x.FulfillmentMethod == FulfillmentMethod.MANUAL_LOGIN &&
+            !ManualLoginCredentialService.IsUsable(x.ManualLoginCredential, now));
+        if (unavailableManualLogin is not null)
+        {
+            return InitiatePaymentResult.Failure(
+                $"Login credentials for {unavailableManualLogin.ProductName} expired or were cleared. Create a new order before paying.");
+        }
+
         var pendingPayments = order.Transactions
             .Where(x =>
                 x.Type == PaymentTransactionType.Payment &&
@@ -284,6 +295,7 @@ public sealed class PaymentService(
         var paymentTransaction = await db.PaymentTransactions
             .Include(x => x.Order)
                 .ThenInclude(x => x.Items)
+                    .ThenInclude(x => x.ManualLoginCredential)
             .SingleOrDefaultAsync(x =>
                 x.Provider == gateway.Name &&
                 x.ProviderReference == notification.ProviderReference &&

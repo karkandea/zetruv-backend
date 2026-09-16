@@ -85,7 +85,12 @@ public sealed class OrderTrackingService(
                 x.GrandTotal,
                 x.Currency,
                 x.Status != OrderStatus.Cancelled &&
-                    (x.PaymentStatus == PaymentStatus.Pending || x.PaymentStatus == PaymentStatus.Failed),
+                    (x.PaymentStatus == PaymentStatus.Pending || x.PaymentStatus == PaymentStatus.Failed) &&
+                    x.Items.All(i =>
+                        i.FulfillmentMethod != FulfillmentMethod.MANUAL_LOGIN ||
+                        (i.ManualLoginCredential != null &&
+                         i.ManualLoginCredential.EncryptedPayload != null &&
+                         i.ManualLoginCredential.ExpiresAt > now)),
                 x.Transactions.Any(t =>
                     t.Type == PaymentTransactionType.Payment &&
                     t.Status == PaymentTransactionStatus.Pending &&

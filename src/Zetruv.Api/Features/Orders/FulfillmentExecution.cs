@@ -335,6 +335,12 @@ public sealed class FulfillmentQueueService(ZetruvDbContext db)
                 ManualLoginCredentialFieldsJson = x.ManualLoginCredential == null
                     ? null
                     : x.ManualLoginCredential.FieldNamesJson,
+                ManualLoginCredentialExpiresAt = x.ManualLoginCredential == null
+                    ? null
+                    : (DateTimeOffset?)x.ManualLoginCredential.ExpiresAt,
+                ManualLoginCredentialLastRevealedAt = x.ManualLoginCredential == null
+                    ? null
+                    : x.ManualLoginCredential.LastRevealedAt,
                 x.FulfillmentReference,
                 x.FulfillmentMessage,
                 x.FulfillmentAttemptCount,
@@ -368,6 +374,8 @@ public sealed class FulfillmentQueueService(ZetruvDbContext db)
                 ? ManualLoginCredentialService.ParseFieldNames(
                     x.ManualLoginCredentialFieldsJson)
                 : null,
+            x.ManualLoginCredentialExpiresAt,
+            x.ManualLoginCredentialLastRevealedAt,
             x.FulfillmentReference,
             x.FulfillmentMessage,
             x.FulfillmentAttemptCount,

@@ -256,6 +256,8 @@ public sealed record FulfillmentQueueItemResponse(
     IReadOnlyDictionary<string, string>? DestinationFields,
     bool HasManualLoginCredentials,
     IReadOnlyList<string>? ManualLoginCredentialFields,
+    DateTimeOffset? ManualLoginCredentialExpiresAt,
+    DateTimeOffset? ManualLoginCredentialLastRevealedAt,
     string? FulfillmentReference,
     string? FulfillmentMessage,
     int FulfillmentAttemptCount,
