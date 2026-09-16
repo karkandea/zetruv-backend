@@ -51,6 +51,12 @@ INSERT INTO product_variants ("Id","ProductId","Name","Sku","Price","StockQuanti
 ('a3000000-0000-0000-0000-000000000004','a2000000-0000-0000-0000-000000000003','Hidden Pack','HIDDEN-1',10000,10,TRUE,0,NOW(),NOW()),
 ('a3000000-0000-0000-0000-000000000005','a2000000-0000-0000-0000-000000000004','Disabled Pack','DISABLED-1',10000,10,FALSE,0,NOW(),NOW());
 
+INSERT INTO product_input_fields ("Id","ProductId","Key","Label","Scope","Type","IsRequired","IsSensitive","MaxLength","SortOrder","CreatedAt","UpdatedAt") VALUES
+('a6000000-0000-0000-0000-000000000001','a2000000-0000-0000-0000-000000000001','email','Email / Username','LoginCredential','Text',TRUE,FALSE,200,0,NOW(),NOW()),
+('a6000000-0000-0000-0000-000000000002','a2000000-0000-0000-0000-000000000001','password','Password','LoginCredential','Password',TRUE,TRUE,1000,1,NOW(),NOW()),
+('a6000000-0000-0000-0000-000000000003','a2000000-0000-0000-0000-000000000002','userid','User ID','AccountValidation','Text',TRUE,FALSE,200,0,NOW(),NOW()),
+('a6000000-0000-0000-0000-000000000004','a2000000-0000-0000-0000-000000000002','zoneid','Zona','AccountValidation','Text',TRUE,FALSE,200,1,NOW(),NOW());
+
 INSERT INTO promotions ("Id","Name","Slug","IsFlashSale","IsActive","StartsAt","EndsAt","CreatedAt","UpdatedAt") VALUES
 ('a4000000-0000-0000-0000-000000000001','Genesis Flash Sale','genesis-flash-sale',TRUE,TRUE,NOW()-INTERVAL '1 hour',NOW()+INTERVAL '2 hours',NOW(),NOW());
 INSERT INTO promotion_items ("Id","PromotionId","ProductVariantId","SalePrice","SortOrder") VALUES
@@ -86,6 +92,8 @@ python3 - "$DETAIL" <<'PY'
 import json,sys
 p=json.loads(sys.argv[1]); assert p['isAvailable'] is True and p['isOnSale'] is True
 assert p['fulfillmentMethod']=='MANUAL_LOGIN' and p['game']['publisher']=='HoYoverse'
+assert [f['key'] for f in p['inputFields']]==['email','password']
+assert p['inputFields'][1]['type']=='Password' and p['inputFields'][1]['isSensitive'] is True
 assert len(p['variants'])==2
 v={x['sku']:x for x in p['variants']}
 assert v['GEN-60']['price']==16500 and v['GEN-60']['effectivePrice']==15000

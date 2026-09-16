@@ -34,6 +34,11 @@ docker exec -i "$C" psql -v ON_ERROR_STOP=1 -U zetruv -d "$DB" <<'SQL'
 INSERT INTO games ("Id","Name","Slug","IsActive","IsPopular","SortOrder","CreatedAt","UpdatedAt") VALUES ('81000000-0000-0000-0000-000000000001','Fulfillment Smoke Game','fulfillment-smoke-game',TRUE,FALSE,0,NOW(),NOW());
 INSERT INTO products ("Id","CategoryId","GameId","Name","Slug","Kind","FulfillmentMethod","RequiresGameAccountValidation","IsActive","IsFeatured","SortOrder","CreatedAt","UpdatedAt") VALUES ('82000000-0000-0000-0000-000000000001',(SELECT "Id" FROM catalog_categories WHERE "Key"='top_up_games'),'81000000-0000-0000-0000-000000000001','Fulfillment Smoke Product','fulfillment-smoke-product','TopUpGame','AUTO_ID',TRUE,TRUE,FALSE,0,NOW(),NOW());
 INSERT INTO product_variants ("Id","ProductId","Name","Sku","Price","StockQuantity","IsActive","SortOrder","CreatedAt","UpdatedAt") VALUES ('83000000-0000-0000-0000-000000000001','82000000-0000-0000-0000-000000000001','100 Diamonds','FULFILL-100',25000,50,TRUE,0,NOW(),NOW());
+INSERT INTO product_input_fields ("Id","ProductId","Key","Label","Scope","Type","IsRequired","IsSensitive","MaxLength","SortOrder","CreatedAt","UpdatedAt") VALUES
+('84000000-0000-0000-0000-000000000001','82000000-0000-0000-0000-000000000001','userid','User ID','AccountValidation','Text',TRUE,FALSE,200,0,NOW(),NOW()),
+('84000000-0000-0000-0000-000000000002','82000000-0000-0000-0000-000000000001','zoneid','Zone ID','AccountValidation','Text',TRUE,FALSE,200,1,NOW(),NOW()),
+('84000000-0000-0000-0000-000000000003','82000000-0000-0000-0000-000000000001','nickname','Nickname','AccountValidation','Text',FALSE,FALSE,200,2,NOW(),NOW()),
+('84000000-0000-0000-0000-000000000004','82000000-0000-0000-0000-000000000001','simulatefulfillmentfailure','Simulate Fulfillment Failure','AccountValidation','Text',FALSE,FALSE,20,3,NOW(),NOW());
 SQL
 
 validate(){ curl -fsS -X POST "http://127.0.0.1:$API/api/v1/game-account/validate" -H 'Content-Type: application/json' -d "{\"productId\":\"82000000-0000-0000-0000-000000000001\",\"fields\":$1}"; }
