@@ -1,0 +1,142 @@
+name: Temporary Client Catalog Seed
+
+on:
+  push:
+    branches:
+      - temp/client-catalog-seed
+
+permissions:
+  contents: read
+
+jobs:
+  seed:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 10
+    steps:
+      - name: Seed eFootball and COD Mobile into DEV
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if docker ps >/dev/null 2>&1; then
+            DOCKER=(docker)
+          elif sudo -n docker ps >/dev/null 2>&1; then
+            DOCKER=(sudo -n docker)
+          else
+            echo "Docker access unavailable on runner" >&2
+            exit 1
+          fi
+
+          DB=zetruv-dev-postgres-1
+          "${DOCKER[@]}" inspect "$DB" >/dev/null
+
+          cat <<'SQL' | "${DOCKER[@]}" exec -i "$DB" psql -U postgres -d zetruv_dev -v ON_ERROR_STOP=1
+          BEGIN;
+
+          INSERT INTO games ("Id","Name","Slug","Publisher","ImageUrl","IsActive","IsPopular","SortOrder","CreatedAt","UpdatedAt")
+          VALUES
+            ('c1000000-0000-0000-0000-000000000001','eFootball Mobile','efootball-mobile',NULL,NULL,true,false,20,now(),now()),
+            ('c1000000-0000-0000-0000-000000000002','Call of Duty Mobile','call-of-duty-mobile',NULL,NULL,true,false,21,now(),now())
+          ON CONFLICT ("Slug") DO UPDATE SET
+            "Name"=EXCLUDED."Name",
+            "IsActive"=true,
+            "UpdatedAt"=now();
+
+          INSERT INTO products ("Id","CategoryId","GameId","Name","Slug","ShortDescription","Description","ThumbnailUrl","Kind","FulfillmentMethod","RequiresGameAccountValidation","IsActive","IsFeatured","SortOrder","CreatedAt","UpdatedAt")
+          SELECT 'c2000000-0000-0000-0000-000000000001', c."Id", g."Id", 'eFootball Mobile', 'efootball-mobile',
+                 'Top Up eFootball Mobile via login akun.',
+                 'Manual login fulfillment. Data login dikirim saat checkout dan diproses oleh admin.',
+                 NULL, 'TopUpLogin', 'MANUAL_LOGIN', false, false, false, 20, now(), now()
+          FROM catalog_categories c
+          JOIN games g ON g."Slug"='efootball-mobile'
+          WHERE c."Kind"='TopUpLogin' AND c."IsActive"=true
+          ORDER BY c."SortOrder"
+          LIMIT 1
+          ON CONFLICT ("Slug") DO UPDATE SET
+            "CategoryId"=EXCLUDED."CategoryId",
+            "GameId"=EXCLUDED."GameId",
+            "Name"=EXCLUDED."Name",
+            "ShortDescription"=EXCLUDED."ShortDescription",
+            "Description"=EXCLUDED."Description",
+            "Kind"='TopUpLogin',
+            "FulfillmentMethod"='MANUAL_LOGIN',
+            "RequiresGameAccountValidation"=false,
+            "IsActive"=false,
+            "UpdatedAt"=now();
+
+          INSERT INTO products ("Id","CategoryId","GameId","Name","Slug","ShortDescription","Description","ThumbnailUrl","Kind","FulfillmentMethod","RequiresGameAccountValidation","IsActive","IsFeatured","SortOrder","CreatedAt","UpdatedAt")
+          SELECT 'c2000000-0000-0000-0000-000000000002', c."Id", g."Id", 'Call of Duty Mobile', 'call-of-duty-mobile',
+                 'Top Up Call of Duty Mobile via login akun.',
+                 'Manual login fulfillment. Data login dikirim saat checkout dan diproses oleh admin.',
+                 NULL, 'TopUpLogin', 'MANUAL_LOGIN', false, false, false, 21, now(), now()
+          FROM catalog_categories c
+          JOIN games g ON g."Slug"='call-of-duty-mobile'
+          WHERE c."Kind"='TopUpLogin' AND c."IsActive"=true
+          ORDER BY c."SortOrder"
+          LIMIT 1
+          ON CONFLICT ("Slug") DO UPDATE SET
+            "CategoryId"=EXCLUDED."CategoryId",
+            "GameId"=EXCLUDED."GameId",
+            "Name"=EXCLUDED."Name",
+            "ShortDescription"=EXCLUDED."ShortDescription",
+            "Description"=EXCLUDED."Description",
+            "Kind"='TopUpLogin',
+            "FulfillmentMethod"='MANUAL_LOGIN',
+            "RequiresGameAccountValidation"=false,
+            "IsActive"=false,
+            "UpdatedAt"=now();
+
+          INSERT INTO product_input_fields ("Id","ProductId","Key","Label","Scope","Type","Placeholder","HelpText","IsRequired","IsSensitive","MaxLength","OptionsJson","SortOrder","CreatedAt","UpdatedAt")
+          SELECT 'c3000000-0000-0000-0000-000000000001', p."Id", 'email', 'Email Konami', 'LoginCredential', 'Email', 'Masukkan Email Konami', 'Email KONAMI yang digunakan untuk login.', true, false, 200, NULL, 10, now(), now()
+          FROM products p WHERE p."Slug"='efootball-mobile'
+          ON CONFLICT ("ProductId","Key") DO UPDATE SET "Label"=EXCLUDED."Label", "Scope"=EXCLUDED."Scope", "Type"=EXCLUDED."Type", "Placeholder"=EXCLUDED."Placeholder", "HelpText"=EXCLUDED."HelpText", "IsRequired"=EXCLUDED."IsRequired", "IsSensitive"=EXCLUDED."IsSensitive", "MaxLength"=EXCLUDED."MaxLength", "OptionsJson"=EXCLUDED."OptionsJson", "SortOrder"=EXCLUDED."SortOrder", "UpdatedAt"=now();
+
+          INSERT INTO product_input_fields ("Id","ProductId","Key","Label","Scope","Type","Placeholder","HelpText","IsRequired","IsSensitive","MaxLength","OptionsJson","SortOrder","CreatedAt","UpdatedAt")
+          SELECT 'c3000000-0000-0000-0000-000000000002', p."Id", 'password', 'Password Konami', 'LoginCredential', 'Password', 'Masukkan Password Konami', 'Password hanya digunakan untuk proses fulfillment.', true, true, 200, NULL, 20, now(), now()
+          FROM products p WHERE p."Slug"='efootball-mobile'
+          ON CONFLICT ("ProductId","Key") DO UPDATE SET "Label"=EXCLUDED."Label", "Scope"=EXCLUDED."Scope", "Type"=EXCLUDED."Type", "Placeholder"=EXCLUDED."Placeholder", "HelpText"=EXCLUDED."HelpText", "IsRequired"=EXCLUDED."IsRequired", "IsSensitive"=EXCLUDED."IsSensitive", "MaxLength"=EXCLUDED."MaxLength", "OptionsJson"=EXCLUDED."OptionsJson", "SortOrder"=EXCLUDED."SortOrder", "UpdatedAt"=now();
+
+          INSERT INTO product_input_fields ("Id","ProductId","Key","Label","Scope","Type","Placeholder","HelpText","IsRequired","IsSensitive","MaxLength","OptionsJson","SortOrder","CreatedAt","UpdatedAt")
+          SELECT 'c3000000-0000-0000-0000-000000000003', p."Id", 'nickname', 'Nickname', 'LoginCredential', 'Text', 'Masukkan nickname akun', 'Nickname akun game untuk membantu admin memastikan akun yang benar.', true, false, 120, NULL, 30, now(), now()
+          FROM products p WHERE p."Slug"='efootball-mobile'
+          ON CONFLICT ("ProductId","Key") DO UPDATE SET "Label"=EXCLUDED."Label", "Scope"=EXCLUDED."Scope", "Type"=EXCLUDED."Type", "Placeholder"=EXCLUDED."Placeholder", "HelpText"=EXCLUDED."HelpText", "IsRequired"=EXCLUDED."IsRequired", "IsSensitive"=EXCLUDED."IsSensitive", "MaxLength"=EXCLUDED."MaxLength", "OptionsJson"=EXCLUDED."OptionsJson", "SortOrder"=EXCLUDED."SortOrder", "UpdatedAt"=now();
+
+          INSERT INTO product_input_fields ("Id","ProductId","Key","Label","Scope","Type","Placeholder","HelpText","IsRequired","IsSensitive","MaxLength","OptionsJson","SortOrder","CreatedAt","UpdatedAt")
+          SELECT 'c3000000-0000-0000-0000-000000000004', p."Id", 'email', 'Email', 'LoginCredential', 'Email', 'Masukkan email akun', 'Email akun Call of Duty Mobile yang digunakan untuk login.', true, false, 200, NULL, 10, now(), now()
+          FROM products p WHERE p."Slug"='call-of-duty-mobile'
+          ON CONFLICT ("ProductId","Key") DO UPDATE SET "Label"=EXCLUDED."Label", "Scope"=EXCLUDED."Scope", "Type"=EXCLUDED."Type", "Placeholder"=EXCLUDED."Placeholder", "HelpText"=EXCLUDED."HelpText", "IsRequired"=EXCLUDED."IsRequired", "IsSensitive"=EXCLUDED."IsSensitive", "MaxLength"=EXCLUDED."MaxLength", "OptionsJson"=EXCLUDED."OptionsJson", "SortOrder"=EXCLUDED."SortOrder", "UpdatedAt"=now();
+
+          INSERT INTO product_input_fields ("Id","ProductId","Key","Label","Scope","Type","Placeholder","HelpText","IsRequired","IsSensitive","MaxLength","OptionsJson","SortOrder","CreatedAt","UpdatedAt")
+          SELECT 'c3000000-0000-0000-0000-000000000005', p."Id", 'password', 'Password', 'LoginCredential', 'Password', 'Masukkan password akun', 'Password hanya digunakan untuk proses fulfillment.', true, true, 200, NULL, 20, now(), now()
+          FROM products p WHERE p."Slug"='call-of-duty-mobile'
+          ON CONFLICT ("ProductId","Key") DO UPDATE SET "Label"=EXCLUDED."Label", "Scope"=EXCLUDED."Scope", "Type"=EXCLUDED."Type", "Placeholder"=EXCLUDED."Placeholder", "HelpText"=EXCLUDED."HelpText", "IsRequired"=EXCLUDED."IsRequired", "IsSensitive"=EXCLUDED."IsSensitive", "MaxLength"=EXCLUDED."MaxLength", "OptionsJson"=EXCLUDED."OptionsJson", "SortOrder"=EXCLUDED."SortOrder", "UpdatedAt"=now();
+
+          INSERT INTO product_input_fields ("Id","ProductId","Key","Label","Scope","Type","Placeholder","HelpText","IsRequired","IsSensitive","MaxLength","OptionsJson","SortOrder","CreatedAt","UpdatedAt")
+          SELECT 'c3000000-0000-0000-0000-000000000006', p."Id", 'nickname', 'Nickname', 'LoginCredential', 'Text', 'Masukkan nickname akun', 'Nickname akun game untuk membantu admin memastikan akun yang benar.', true, false, 120, NULL, 30, now(), now()
+          FROM products p WHERE p."Slug"='call-of-duty-mobile'
+          ON CONFLICT ("ProductId","Key") DO UPDATE SET "Label"=EXCLUDED."Label", "Scope"=EXCLUDED."Scope", "Type"=EXCLUDED."Type", "Placeholder"=EXCLUDED."Placeholder", "HelpText"=EXCLUDED."HelpText", "IsRequired"=EXCLUDED."IsRequired", "IsSensitive"=EXCLUDED."IsSensitive", "MaxLength"=EXCLUDED."MaxLength", "OptionsJson"=EXCLUDED."OptionsJson", "SortOrder"=EXCLUDED."SortOrder", "UpdatedAt"=now();
+
+          COMMIT;
+
+          SELECT p."Name",p."Slug",p."Kind",p."FulfillmentMethod",p."IsActive",count(v."Id") AS variants
+          FROM products p LEFT JOIN product_variants v ON v."ProductId"=p."Id"
+          WHERE p."Slug" IN ('efootball-mobile','call-of-duty-mobile')
+          GROUP BY p."Id" ORDER BY p."Slug";
+
+          SELECT p."Slug",f."Key",f."Label",f."Scope",f."Type",f."IsRequired",f."IsSensitive",f."SortOrder"
+          FROM products p JOIN product_input_fields f ON f."ProductId"=p."Id"
+          WHERE p."Slug" IN ('efootball-mobile','call-of-duty-mobile')
+          ORDER BY p."Slug",f."SortOrder";
+          SQL
+
+          python3 - <<'PY'
+          import json, urllib.request, urllib.parse
+          base='https://api-dev.zetruv.com/api/v1/catalog/products'
+          for term in ['eFootball Mobile','Call of Duty Mobile']:
+              url=base+'?kind=TopUpLogin&search='+urllib.parse.quote(term)+'&pageSize=50'
+              with urllib.request.urlopen(url) as r:
+                  data=json.load(r)
+              hits=[x for x in data.get('items',[]) if x.get('name')==term]
+              assert not hits, f'{term} should stay hidden from public catalog until variants/prices are configured'
+              print(f'PUBLIC_HIDDEN_OK {term}')
+          PY
