@@ -29,6 +29,26 @@ namespace Zetruv.Api.Persistence.Migrations
                 table: "payment_transactions",
                 type: "text",
                 nullable: true);
+
+            // Legacy pending attempts did not persist their provider-session expiry.
+            // Give them the same conservative TTL as the current DEV mock gateway so
+            // they cannot become permanently recoverable after this migration.
+            migrationBuilder.Sql(
+                """
+                UPDATE payment_transactions
+                SET "ExpiresAt" = "CreatedAt" + INTERVAL '30 minutes'
+                WHERE "Type" = 'Payment'
+                  AND "Status" = 'Pending'
+                  AND "ExpiresAt" IS NULL;
+
+                UPDATE payment_transactions
+                SET "PaymentUrl" = 'mock://payment/' || "ProviderReference"
+                WHERE "Provider" = 'mock'
+                  AND "Type" = 'Payment'
+                  AND "Status" = 'Pending'
+                  AND "ProviderReference" IS NOT NULL
+                  AND "PaymentUrl" IS NULL;
+                """);
         }
 
         /// <inheritdoc />
