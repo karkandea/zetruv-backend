@@ -53,11 +53,15 @@ jobs:
 
           python3 - <<'PY'
           import json
+          from datetime import datetime
           a=json.load(open('/tmp/payment-1.json'))
           b=json.load(open('/tmp/payment-2.json'))
           assert a['providerReference'] and a['providerReference'] == b['providerReference'], (a,b)
           assert a['paymentUrl'] and a['paymentUrl'] == b['paymentUrl'], (a,b)
-          assert a['expiresAt'] and a['expiresAt'] == b['expiresAt'], (a,b)
+          assert a['expiresAt'] and b['expiresAt'], (a,b)
+          ta=datetime.fromisoformat(a['expiresAt'])
+          tb=datetime.fromisoformat(b['expiresAt'])
+          assert abs((ta-tb).total_seconds()) < 0.001, (a,b)
           assert sorted([a['isRecovery'], b['isRecovery']]) == [False, True], (a,b)
           assert a['paymentStatus'] == 'Pending' and b['paymentStatus'] == 'Pending', (a,b)
           PY
