@@ -4,6 +4,11 @@ from pathlib import Path
 # block a new/recovered payment when the credential payload is no longer usable.
 path = Path('src/Zetruv.Api/Features/Payments/PaymentService.cs')
 text = path.read_text()
+if 'using Zetruv.Api.Features.Catalog;' not in text:
+    text = text.replace(
+        'using Microsoft.EntityFrameworkCore;\nusing Zetruv.Api.Features.Orders;',
+        'using Microsoft.EntityFrameworkCore;\nusing Zetruv.Api.Features.Catalog;\nusing Zetruv.Api.Features.Orders;',
+        1)
 old = '''        var order = await db.Orders\n            .Include(x => x.Items)\n            .Include(x => x.Transactions)\n            .SingleOrDefaultAsync(x => x.Id == orderId, cancellationToken);\n'''
 new = '''        var order = await db.Orders\n            .Include(x => x.Items)\n                .ThenInclude(x => x.ManualLoginCredential)\n            .Include(x => x.Transactions)\n            .SingleOrDefaultAsync(x => x.Id == orderId, cancellationToken);\n'''
 if old not in text:
@@ -50,6 +55,11 @@ path.write_text(text)
 # its credential is already absent/expired (e.g. late provider webhook).
 path = Path('src/Zetruv.Api/Features/Orders/OrderFulfillmentService.cs')
 text = path.read_text()
+if 'using Zetruv.Api.Features.Catalog;' not in text:
+    text = text.replace(
+        'using Microsoft.EntityFrameworkCore;\nusing Zetruv.Api.Persistence;',
+        'using Microsoft.EntityFrameworkCore;\nusing Zetruv.Api.Features.Catalog;\nusing Zetruv.Api.Persistence;',
+        1)
 old = '''        foreach (var item in order.Items.Where(x => x.FulfillmentStatus == FulfillmentStatus.Pending))\n        {\n            item.FulfillmentStatus = FulfillmentStatus.Processing;\n            item.FulfillmentStartedAt ??= now;\n            item.FulfilledAt = null;\n            item.FulfillmentMessage = null;\n        }\n'''
 new = '''        foreach (var item in order.Items.Where(x => x.FulfillmentStatus == FulfillmentStatus.Pending))\n        {\n            item.FulfillmentStartedAt ??= now;\n            item.FulfilledAt = null;\n\n            if (item.FulfillmentMethod == FulfillmentMethod.MANUAL_LOGIN &&\n                !ManualLoginCredentialService.IsUsable(item.ManualLoginCredential, now))\n            {\n                item.FulfillmentStatus = FulfillmentStatus.Failed;\n                item.FulfillmentMessage = "Login credentials expired or were cleared before payment was confirmed.";\n                continue;\n            }\n\n            item.FulfillmentStatus = FulfillmentStatus.Processing;\n            item.FulfillmentMessage = null;\n        }\n'''
 if old not in text:
