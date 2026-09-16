@@ -20,7 +20,7 @@ public sealed record OrderItemFulfillmentResult(
         new(null, error, Conflict: conflict);
 }
 
-public sealed class OrderFulfillmentService(ZetruvDbContext db)
+public sealed class OrderFulfillmentService(ZetruvDbContext db, FulfillmentActivityService activities)
 {
     public void StartPaidOrder(Order order, DateTimeOffset now)
     {
@@ -44,15 +44,28 @@ public sealed class OrderFulfillmentService(ZetruvDbContext db)
         RecalculateOrder(order, now);
     }
 
-    public void CancelOrder(Order order, DateTimeOffset now)
+    public void CancelOrder(
+        Order order,
+        DateTimeOffset now,
+        FulfillmentExecutionContext? executionContext = null)
     {
+        var context = executionContext ?? FulfillmentExecutionContext.System;
         foreach (var item in order.Items.Where(x =>
                      x.FulfillmentStatus is not FulfillmentStatus.Completed and
                      not FulfillmentStatus.Cancelled))
         {
+            var previousStatus = item.FulfillmentStatus;
             item.FulfillmentStatus = FulfillmentStatus.Cancelled;
             item.FulfilledAt = null;
             ManualLoginCredentialService.Clear(item.ManualLoginCredential, now);
+            activities.Create(
+                item,
+                FulfillmentActivityType.OrderCancelled,
+                context.Source,
+                context.Actor,
+                now,
+                previousStatus,
+                FulfillmentStatus.Cancelled);
         }
 
         order.Status = OrderStatus.Cancelled;
@@ -64,6 +77,7 @@ public sealed class OrderFulfillmentService(ZetruvDbContext db)
         Guid orderId,
         Guid orderItemId,
         UpdateOrderItemFulfillmentRequest request,
+        FulfillmentExecutionContext? executionContext = null,
         CancellationToken cancellationToken = default)
     {
         var order = await db.Orders
@@ -110,6 +124,7 @@ public sealed class OrderFulfillmentService(ZetruvDbContext db)
         }
 
         var now = DateTimeOffset.UtcNow;
+        var previousStatus = item.FulfillmentStatus;
         item.FulfillmentStatus = request.Status;
         item.FulfillmentReference = Clean(request.Reference) ?? item.FulfillmentReference;
         item.FulfillmentMessage = Clean(request.Message);
@@ -133,6 +148,18 @@ public sealed class OrderFulfillmentService(ZetruvDbContext db)
                 item.FulfilledAt = null;
                 break;
         }
+
+        var context = executionContext ?? FulfillmentExecutionContext.System;
+        activities.Create(
+            item,
+            FulfillmentActivityType.ManualStatusChanged,
+            context.Source,
+            context.Actor,
+            now,
+            previousStatus,
+            item.FulfillmentStatus,
+            providerReference: item.FulfillmentReference,
+            message: item.FulfillmentMessage);
 
         RecalculateOrder(order, now);
         await db.SaveChangesAsync(cancellationToken);

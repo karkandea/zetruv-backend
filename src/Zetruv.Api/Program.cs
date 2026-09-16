@@ -181,6 +181,7 @@ builder.Services.AddScoped<ArticleService>();
 builder.Services.AddScoped<OrderService>();
 builder.Services.AddScoped<OrderFulfillmentService>();
 builder.Services.AddScoped<FulfillmentExecutionService>();
+builder.Services.AddScoped<FulfillmentActivityService>();
 builder.Services.AddScoped<FulfillmentQueueService>();
 builder.Services.AddSingleton<ManualLoginCredentialProtector>();
 builder.Services.AddScoped<ManualLoginCredentialService>();

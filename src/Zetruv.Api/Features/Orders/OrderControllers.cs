@@ -95,7 +95,10 @@ public sealed class CmsOrdersController(
             });
         }
 
-        fulfillmentService.CancelOrder(order, DateTimeOffset.UtcNow);
+        fulfillmentService.CancelOrder(
+            order,
+            DateTimeOffset.UtcNow,
+            FulfillmentExecutionContext.Admin(User));
         await db.SaveChangesAsync(cancellationToken);
 
         await inventoryReservations.ReleaseAsync(id, cancellationToken);
@@ -160,6 +163,7 @@ public sealed class CmsOrdersController(
 
             await executionService.ExecuteAutoItemsForOrderAsync(
                 order.Id,
+                FulfillmentExecutionContext.Admin(User),
                 cancellationToken);
 
             return NoContent();
@@ -194,6 +198,7 @@ public sealed class CmsOrdersController(
             orderId,
             orderItemId,
             request,
+            FulfillmentExecutionContext.Admin(User),
             cancellationToken);
 
         if (result.Fulfillment is not null)

@@ -406,6 +406,7 @@ public sealed class PaymentService(
                 {
                     await executionService.ExecuteAutoItemsForOrderAsync(
                         order.Id,
+                        FulfillmentExecutionContext.Payment,
                         cancellationToken);
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
