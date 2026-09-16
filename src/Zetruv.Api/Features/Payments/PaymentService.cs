@@ -1,4 +1,7 @@
+using System.Data;
+using System.Data.Common;
 using Microsoft.EntityFrameworkCore;
+using Zetruv.Api.Features.Catalog;
 using Zetruv.Api.Features.Orders;
 using Zetruv.Api.Persistence;
 
@@ -14,7 +17,8 @@ public sealed record InitiatePaymentResponse(
     string? PaymentUrl,
     string? QrString,
     DateTimeOffset? ExpiresAt,
-    PaymentStatus PaymentStatus);
+    PaymentStatus PaymentStatus,
+    bool IsRecovery);
 
 public sealed record InitiatePaymentResult(
     InitiatePaymentResponse? Payment,
@@ -69,16 +73,53 @@ public sealed class PaymentService(
         Guid orderId,
         CancellationToken cancellationToken = default)
     {
-        var gateway = gatewayResolver.Resolve();
-        if (gateway is null)
+        var connection = db.Database.GetDbConnection();
+        var openedHere = connection.State != ConnectionState.Open;
+        if (openedHere)
         {
-            return InitiatePaymentResult.Failure(
-                "Payment provider is not configured.",
-                isConfigurationError: true);
+            await db.Database.OpenConnectionAsync(cancellationToken);
         }
 
+        var (lockKey1, lockKey2) = PaymentLockKeys(orderId);
+        await SetPaymentLockAsync(
+            connection,
+            acquire: true,
+            lockKey1,
+            lockKey2,
+            cancellationToken);
+
+        try
+        {
+            return await InitiateLockedAsync(orderId, cancellationToken);
+        }
+        finally
+        {
+            try
+            {
+                await SetPaymentLockAsync(
+                    connection,
+                    acquire: false,
+                    lockKey1,
+                    lockKey2,
+                    CancellationToken.None);
+            }
+            finally
+            {
+                if (openedHere)
+                {
+                    await db.Database.CloseConnectionAsync();
+                }
+            }
+        }
+    }
+
+    private async Task<InitiatePaymentResult> InitiateLockedAsync(
+        Guid orderId,
+        CancellationToken cancellationToken)
+    {
         var order = await db.Orders
             .Include(x => x.Items)
+                .ThenInclude(x => x.ManualLoginCredential)
             .Include(x => x.Transactions)
             .SingleOrDefaultAsync(x => x.Id == orderId, cancellationToken);
 
@@ -107,6 +148,66 @@ public sealed class PaymentService(
             return InitiatePaymentResult.Failure("Order total must be greater than zero.");
         }
 
+        var now = DateTimeOffset.UtcNow;
+        var unavailableManualLogin = order.Items.FirstOrDefault(x =>
+            x.FulfillmentMethod == FulfillmentMethod.MANUAL_LOGIN &&
+            !ManualLoginCredentialService.IsUsable(x.ManualLoginCredential, now));
+        if (unavailableManualLogin is not null)
+        {
+            return InitiatePaymentResult.Failure(
+                $"Login credentials for {unavailableManualLogin.ProductName} expired or were cleared. Create a new order before paying.");
+        }
+
+        var pendingPayments = order.Transactions
+            .Where(x =>
+                x.Type == PaymentTransactionType.Payment &&
+                x.Status == PaymentTransactionStatus.Pending)
+            .OrderByDescending(x => x.CreatedAt)
+            .ToList();
+
+        var expiredPayments = pendingPayments
+            .Where(x => x.ExpiresAt.HasValue && x.ExpiresAt.Value <= now)
+            .ToList();
+
+        foreach (var expired in expiredPayments)
+        {
+            expired.Status = PaymentTransactionStatus.Failed;
+            expired.ProcessedAt ??= now;
+            expired.UpdatedAt = now;
+        }
+
+        var activePayment = pendingPayments.FirstOrDefault(x =>
+            x.Status == PaymentTransactionStatus.Pending &&
+            (!x.ExpiresAt.HasValue || x.ExpiresAt.Value > now));
+
+        if (activePayment is not null)
+        {
+            order.PaymentProvider = activePayment.Provider;
+            order.PaymentReference = activePayment.ProviderReference;
+            order.PaymentStatus = PaymentStatus.Pending;
+            order.UpdatedAt = now;
+            await db.SaveChangesAsync(cancellationToken);
+
+            return InitiatePaymentResult.Success(
+                ToInitiateResponse(order, activePayment, isRecovery: true));
+        }
+
+        if (expiredPayments.Count > 0 && order.PaymentStatus == PaymentStatus.Pending)
+        {
+            order.PaymentStatus = PaymentStatus.Failed;
+            order.UpdatedAt = now;
+            await db.SaveChangesAsync(cancellationToken);
+            await inventoryReservations.ReleaseAsync(order.Id, cancellationToken);
+        }
+
+        var gateway = gatewayResolver.Resolve();
+        if (gateway is null)
+        {
+            return InitiatePaymentResult.Failure(
+                "Payment provider is not configured.",
+                isConfigurationError: true);
+        }
+
         var reservation = await inventoryReservations.ReserveAsync(order, cancellationToken);
         if (!reservation.IsSuccess)
         {
@@ -133,44 +234,39 @@ public sealed class PaymentService(
                 gatewayResult.Error ?? "Payment provider failed to create a payment.");
         }
 
-        var now = DateTimeOffset.UtcNow;
+        if (gatewayResult.ExpiresAt.HasValue && gatewayResult.ExpiresAt.Value <= now)
+        {
+            await inventoryReservations.ReleaseAsync(order.Id, cancellationToken);
+            return InitiatePaymentResult.Failure(
+                "Payment provider returned an already expired payment session.");
+        }
+
         var paymentTransaction = new PaymentTransaction
         {
             OrderId = order.Id,
             Provider = gateway.Name,
-            ProviderReference = gatewayResult.ProviderReference,
+            ProviderReference = gatewayResult.ProviderReference.Trim(),
             Type = PaymentTransactionType.Payment,
             Status = PaymentTransactionStatus.Pending,
             Amount = order.GrandTotal,
             Currency = order.Currency,
+            PaymentUrl = Clean(gatewayResult.PaymentUrl),
+            QrString = Clean(gatewayResult.QrString, trim: false),
+            ExpiresAt = gatewayResult.ExpiresAt,
             CreatedAt = now,
             UpdatedAt = now
         };
 
         order.PaymentProvider = gateway.Name;
-        order.PaymentReference = gatewayResult.ProviderReference;
+        order.PaymentReference = paymentTransaction.ProviderReference;
         order.PaymentStatus = PaymentStatus.Pending;
         order.UpdatedAt = now;
 
-        // Explicitly mark the brand-new transaction as Added. Because IDs are assigned
-        // client-side, relying on navigation discovery can treat the entity as existing
-        // and issue an UPDATE instead of the required INSERT.
         db.PaymentTransactions.Add(paymentTransaction);
-
         await db.SaveChangesAsync(cancellationToken);
 
         return InitiatePaymentResult.Success(
-            new InitiatePaymentResponse(
-                order.Id,
-                order.OrderNumber,
-                gateway.Name,
-                gatewayResult.ProviderReference,
-                order.GrandTotal,
-                order.Currency,
-                gatewayResult.PaymentUrl,
-                gatewayResult.QrString,
-                gatewayResult.ExpiresAt,
-                order.PaymentStatus));
+            ToInitiateResponse(order, paymentTransaction, isRecovery: false));
     }
 
     public async Task<ReconcilePaymentResult> ReconcileWebhookAsync(
@@ -199,6 +295,7 @@ public sealed class PaymentService(
         var paymentTransaction = await db.PaymentTransactions
             .Include(x => x.Order)
                 .ThenInclude(x => x.Items)
+                    .ThenInclude(x => x.ManualLoginCredential)
             .SingleOrDefaultAsync(x =>
                 x.Provider == gateway.Name &&
                 x.ProviderReference == notification.ProviderReference &&
@@ -231,6 +328,20 @@ public sealed class PaymentService(
                 break;
 
             case PaymentWebhookStatus.Paid:
+                if (paymentTransaction.Status == PaymentTransactionStatus.Succeeded &&
+                    order.PaymentStatus == PaymentStatus.Paid)
+                {
+                    return ReconcilePaymentResult.Success(
+                        new ReconcilePaymentResponse(
+                            order.Id,
+                            order.OrderNumber,
+                            gateway.Name,
+                            notification.ProviderReference,
+                            notification.Status,
+                            order.PaymentStatus,
+                            order.Status));
+                }
+
                 if (order.PaymentStatus == PaymentStatus.Refunded)
                 {
                     return ReconcilePaymentResult.Failure(
@@ -241,6 +352,14 @@ public sealed class PaymentService(
                 {
                     return ReconcilePaymentResult.Failure(
                         "A cancelled order cannot transition to paid.",
+                        isConflict: true);
+                }
+
+                if (order.PaymentStatus == PaymentStatus.Paid &&
+                    paymentTransaction.Status != PaymentTransactionStatus.Succeeded)
+                {
+                    return ReconcilePaymentResult.Failure(
+                        "Order is already paid by another payment transaction. Manual reconciliation is required.",
                         isConflict: true);
                 }
 
@@ -262,8 +381,22 @@ public sealed class PaymentService(
                     paymentTransaction.ProcessedAt ??= now;
                     paymentTransaction.UpdatedAt = now;
                     order.PaymentStatus = PaymentStatus.Paid;
+                    order.PaymentProvider = paymentTransaction.Provider;
+                    order.PaymentReference = paymentTransaction.ProviderReference;
                     order.PaidAt ??= now;
                     fulfillmentService.StartPaidOrder(order, now);
+
+                    await db.PaymentTransactions
+                        .Where(x =>
+                            x.OrderId == order.Id &&
+                            x.Id != paymentTransaction.Id &&
+                            x.Type == PaymentTransactionType.Payment &&
+                            x.Status == PaymentTransactionStatus.Pending)
+                        .ExecuteUpdateAsync(setters => setters
+                            .SetProperty(x => x.Status, PaymentTransactionStatus.Failed)
+                            .SetProperty(x => x.ProcessedAt, now)
+                            .SetProperty(x => x.UpdatedAt, now),
+                            cancellationToken);
 
                     await db.SaveChangesAsync(cancellationToken);
                     await dbTransaction.CommitAsync(cancellationToken);
@@ -308,12 +441,15 @@ public sealed class PaymentService(
                         x.OrderId == order.Id &&
                         x.Id != paymentTransaction.Id &&
                         x.Type == PaymentTransactionType.Payment &&
-                        x.Status == PaymentTransactionStatus.Pending,
+                        x.Status == PaymentTransactionStatus.Pending &&
+                        (!x.ExpiresAt.HasValue || x.ExpiresAt > now),
                         cancellationToken);
 
                 if (!hasSucceededPayment)
                 {
-                    order.PaymentStatus = PaymentStatus.Failed;
+                    order.PaymentStatus = hasOtherPendingPayment
+                        ? PaymentStatus.Pending
+                        : PaymentStatus.Failed;
                     order.UpdatedAt = now;
                 }
 
@@ -347,5 +483,65 @@ public sealed class PaymentService(
                 notification.Status,
                 order.PaymentStatus,
                 order.Status));
+    }
+
+    private static InitiatePaymentResponse ToInitiateResponse(
+        Order order,
+        PaymentTransaction transaction,
+        bool isRecovery) =>
+        new(
+            order.Id,
+            order.OrderNumber,
+            transaction.Provider,
+            transaction.ProviderReference ?? string.Empty,
+            transaction.Amount,
+            transaction.Currency,
+            transaction.PaymentUrl,
+            transaction.QrString,
+            transaction.ExpiresAt,
+            order.PaymentStatus,
+            isRecovery);
+
+    private static (int Key1, int Key2) PaymentLockKeys(Guid orderId)
+    {
+        var bytes = orderId.ToByteArray();
+        return (
+            BitConverter.ToInt32(bytes, 0) ^ BitConverter.ToInt32(bytes, 8),
+            BitConverter.ToInt32(bytes, 4) ^ BitConverter.ToInt32(bytes, 12));
+    }
+
+    private static async Task SetPaymentLockAsync(
+        DbConnection connection,
+        bool acquire,
+        int key1,
+        int key2,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = acquire
+            ? "SELECT pg_advisory_lock(@key1, @key2)"
+            : "SELECT pg_advisory_unlock(@key1, @key2)";
+
+        var first = command.CreateParameter();
+        first.ParameterName = "@key1";
+        first.Value = key1;
+        command.Parameters.Add(first);
+
+        var second = command.CreateParameter();
+        second.ParameterName = "@key2";
+        second.Value = key2;
+        command.Parameters.Add(second);
+
+        await command.ExecuteScalarAsync(cancellationToken);
+    }
+
+    private static string? Clean(string? value, bool trim = true)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        return trim ? value.Trim() : value;
     }
 }

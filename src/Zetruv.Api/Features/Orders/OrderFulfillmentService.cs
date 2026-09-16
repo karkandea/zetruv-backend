@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Zetruv.Api.Features.Catalog;
 using Zetruv.Api.Persistence;
 
 namespace Zetruv.Api.Features.Orders;
@@ -25,9 +26,18 @@ public sealed class OrderFulfillmentService(ZetruvDbContext db)
     {
         foreach (var item in order.Items.Where(x => x.FulfillmentStatus == FulfillmentStatus.Pending))
         {
-            item.FulfillmentStatus = FulfillmentStatus.Processing;
             item.FulfillmentStartedAt ??= now;
             item.FulfilledAt = null;
+
+            if (item.FulfillmentMethod == FulfillmentMethod.MANUAL_LOGIN &&
+                !ManualLoginCredentialService.IsUsable(item.ManualLoginCredential, now))
+            {
+                item.FulfillmentStatus = FulfillmentStatus.Failed;
+                item.FulfillmentMessage = "Login credentials expired or were cleared before payment was confirmed.";
+                continue;
+            }
+
+            item.FulfillmentStatus = FulfillmentStatus.Processing;
             item.FulfillmentMessage = null;
         }
 

@@ -38,6 +38,8 @@ public sealed record TrackOrderResponse(
     decimal GrandTotal,
     string Currency,
     bool CanInitiatePayment,
+    bool HasActivePaymentSession,
+    DateTimeOffset? ActivePaymentExpiresAt,
     string? OrderAccessToken,
     DateTimeOffset? OrderAccessTokenExpiresAt,
     DateTimeOffset CreatedAt,
@@ -64,6 +66,7 @@ public sealed class OrderTrackingService(
             return null;
         }
 
+        var now = DateTimeOffset.UtcNow;
         var order = await db.Orders
             .AsNoTracking()
             .Where(x =>
@@ -82,7 +85,24 @@ public sealed class OrderTrackingService(
                 x.GrandTotal,
                 x.Currency,
                 x.Status != OrderStatus.Cancelled &&
-                    (x.PaymentStatus == PaymentStatus.Pending || x.PaymentStatus == PaymentStatus.Failed),
+                    (x.PaymentStatus == PaymentStatus.Pending || x.PaymentStatus == PaymentStatus.Failed) &&
+                    x.Items.All(i =>
+                        i.FulfillmentMethod != FulfillmentMethod.MANUAL_LOGIN ||
+                        (i.ManualLoginCredential != null &&
+                         i.ManualLoginCredential.EncryptedPayload != null &&
+                         i.ManualLoginCredential.ExpiresAt > now)),
+                x.Transactions.Any(t =>
+                    t.Type == PaymentTransactionType.Payment &&
+                    t.Status == PaymentTransactionStatus.Pending &&
+                    (!t.ExpiresAt.HasValue || t.ExpiresAt > now)),
+                x.Transactions
+                    .Where(t =>
+                        t.Type == PaymentTransactionType.Payment &&
+                        t.Status == PaymentTransactionStatus.Pending &&
+                        (!t.ExpiresAt.HasValue || t.ExpiresAt > now))
+                    .OrderByDescending(t => t.CreatedAt)
+                    .Select(t => t.ExpiresAt)
+                    .FirstOrDefault(),
                 null,
                 null,
                 x.CreatedAt,

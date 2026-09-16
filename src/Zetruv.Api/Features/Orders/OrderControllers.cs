@@ -112,6 +112,7 @@ public sealed class CmsOrdersController(
     {
         var order = await db.Orders
             .Include(x => x.Items)
+                .ThenInclude(x => x.ManualLoginCredential)
             .SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
 
         if (order is null)

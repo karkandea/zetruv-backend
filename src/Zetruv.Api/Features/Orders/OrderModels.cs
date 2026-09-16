@@ -114,6 +114,9 @@ public sealed class PaymentTransaction
     public PaymentTransactionStatus Status { get; set; } = PaymentTransactionStatus.Pending;
     public decimal Amount { get; set; }
     public string Currency { get; set; } = "IDR";
+    public string? PaymentUrl { get; set; }
+    public string? QrString { get; set; }
+    public DateTimeOffset? ExpiresAt { get; set; }
     public DateTimeOffset? ProcessedAt { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
@@ -253,6 +256,8 @@ public sealed record FulfillmentQueueItemResponse(
     IReadOnlyDictionary<string, string>? DestinationFields,
     bool HasManualLoginCredentials,
     IReadOnlyList<string>? ManualLoginCredentialFields,
+    DateTimeOffset? ManualLoginCredentialExpiresAt,
+    DateTimeOffset? ManualLoginCredentialLastRevealedAt,
     string? FulfillmentReference,
     string? FulfillmentMessage,
     int FulfillmentAttemptCount,
