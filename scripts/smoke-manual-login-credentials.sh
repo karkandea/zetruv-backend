@@ -40,6 +40,10 @@ INSERT INTO products ("Id","CategoryId","GameId","Name","Slug","Kind","Fulfillme
 VALUES ('92000000-0000-0000-0000-000000000001',(SELECT "Id" FROM catalog_categories WHERE "Key"='top_up_login'),'91000000-0000-0000-0000-000000000001','Manual Login Smoke Product','manual-login-smoke-product','TopUpLogin','MANUAL_LOGIN',FALSE,TRUE,FALSE,0,NOW(),NOW());
 INSERT INTO product_variants ("Id","ProductId","Name","Sku","Price","StockQuantity","IsActive","SortOrder","CreatedAt","UpdatedAt")
 VALUES ('93000000-0000-0000-0000-000000000001','92000000-0000-0000-0000-000000000001','60 Crystals','MANUAL-60',25000,50,TRUE,0,NOW(),NOW());
+INSERT INTO product_input_fields ("Id","ProductId","Key","Label","Scope","Type","IsRequired","IsSensitive","MaxLength","SortOrder","CreatedAt","UpdatedAt") VALUES
+('94000000-0000-0000-0000-000000000001','92000000-0000-0000-0000-000000000001','email','Email / Username','LoginCredential','Text',TRUE,FALSE,200,0,NOW(),NOW()),
+('94000000-0000-0000-0000-000000000002','92000000-0000-0000-0000-000000000001','password','Password','LoginCredential','Password',TRUE,TRUE,1000,1,NOW(),NOW()),
+('94000000-0000-0000-0000-000000000003','92000000-0000-0000-0000-000000000001','server','Server / Region','LoginCredential','Text',FALSE,FALSE,120,2,NOW(),NOW());
 SQL
 
 json(){ python3 -c "import json,sys; print(json.load(sys.stdin)$1)"; }
@@ -58,12 +62,12 @@ webhook(){
 echo '=== REQUIRED CREDENTIALS ==='
 CODE=$(curl -sS -o /tmp/manual-login-error.json -w '%{http_code}' -X POST "http://127.0.0.1:$API/api/v1/checkout/orders"   -H 'Content-Type: application/json'   -d '{"customerEmail":"missing@zetruv.local","items":[{"productVariantId":"93000000-0000-0000-0000-000000000001","quantity":1}]}')
 [[ "$CODE" == 400 ]]
-grep -Fq 'Login credentials are required' /tmp/manual-login-error.json
+grep -Fq "Field 'Email / Username' is required" /tmp/manual-login-error.json
 
 echo '=== BLOCK ONE-TIME SECRETS ==='
 CODE=$(curl -sS -o /tmp/manual-login-error.json -w '%{http_code}' -X POST "http://127.0.0.1:$API/api/v1/checkout/orders"   -H 'Content-Type: application/json'   -d '{"customerEmail":"otp@zetruv.local","items":[{"productVariantId":"93000000-0000-0000-0000-000000000001","quantity":1,"loginCredentials":{"email":"player@example.com","password":"demo-pass","otp":"123456"}}]}')
 [[ "$CODE" == 400 ]]
-grep -Fq 'not accepted at checkout' /tmp/manual-login-error.json
+grep -Fq "Unexpected input field 'otp'" /tmp/manual-login-error.json
 
 echo '=== ENCRYPTED CHECKOUT ==='
 CREDS='{"email":"player@example.com","password":"P@ssword-demo-123","server":"Asia"}'

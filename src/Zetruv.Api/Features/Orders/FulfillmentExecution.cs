@@ -248,7 +248,10 @@ public sealed class FulfillmentExecutionService(
     {
         try
         {
-            return JsonSerializer.Deserialize<Dictionary<string, string>>(inputJson);
+            var parsed = JsonSerializer.Deserialize<Dictionary<string, string>>(inputJson);
+            return parsed is null
+                ? null
+                : new Dictionary<string, string>(parsed, StringComparer.OrdinalIgnoreCase);
         }
         catch (JsonException)
         {
@@ -392,7 +395,10 @@ public sealed class FulfillmentQueueService(ZetruvDbContext db)
 
         try
         {
-            return JsonSerializer.Deserialize<Dictionary<string, string>>(inputJson);
+            var parsed = JsonSerializer.Deserialize<Dictionary<string, string>>(inputJson);
+            return parsed is null
+                ? null
+                : new Dictionary<string, string>(parsed, StringComparer.OrdinalIgnoreCase);
         }
         catch (JsonException)
         {

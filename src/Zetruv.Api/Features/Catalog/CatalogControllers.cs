@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -257,6 +258,7 @@ public sealed class CmsCatalogController(ZetruvDbContext db) : ControllerBase
             .AsNoTracking()
             .Include(x => x.Variants)
             .Include(x => x.Images)
+            .Include(x => x.InputFields)
             .SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
 
         return product is null ? NotFound() : Ok(product);
@@ -464,6 +466,124 @@ public sealed class CmsCatalogController(ZetruvDbContext db) : ControllerBase
         db.ProductImages.Remove(image);
         await db.SaveChangesAsync(cancellationToken);
         return NoContent();
+    }
+
+    [HttpPost("products/{productId:guid}/input-fields")]
+    public async Task<IActionResult> CreateInputField(
+        Guid productId,
+        UpsertProductInputFieldRequest request,
+        CancellationToken cancellationToken)
+    {
+        var product = await db.Products
+            .AsNoTracking()
+            .SingleOrDefaultAsync(x => x.Id == productId, cancellationToken);
+        if (product is null)
+        {
+            return NotFound();
+        }
+
+        var validation = ProductInputFieldRules.ValidateDefinition(product.FulfillmentMethod, request);
+        if (validation is not null)
+        {
+            return BadRequest(new { message = validation });
+        }
+
+        var key = ProductInputFieldRules.NormalizeKey(request.Key);
+        if (await db.ProductInputFields.AnyAsync(
+                x => x.ProductId == productId && x.Key == key,
+                cancellationToken))
+        {
+            return Conflict(new { message = "Input field key already exists for this product." });
+        }
+
+        var field = new ProductInputField { ProductId = productId };
+        ApplyInputField(field, request, key);
+        db.ProductInputFields.Add(field);
+        await db.SaveChangesAsync(cancellationToken);
+        return Created(
+            $"/api/v1/cms/catalog/products/{productId}/input-fields/{field.Id}",
+            ProductInputFieldRules.ToResponse(field));
+    }
+
+    [HttpPut("products/{productId:guid}/input-fields/{fieldId:guid}")]
+    public async Task<IActionResult> UpdateInputField(
+        Guid productId,
+        Guid fieldId,
+        UpsertProductInputFieldRequest request,
+        CancellationToken cancellationToken)
+    {
+        var product = await db.Products
+            .AsNoTracking()
+            .SingleOrDefaultAsync(x => x.Id == productId, cancellationToken);
+        if (product is null)
+        {
+            return NotFound();
+        }
+
+        var field = await db.ProductInputFields.SingleOrDefaultAsync(
+            x => x.Id == fieldId && x.ProductId == productId,
+            cancellationToken);
+        if (field is null)
+        {
+            return NotFound();
+        }
+
+        var validation = ProductInputFieldRules.ValidateDefinition(product.FulfillmentMethod, request);
+        if (validation is not null)
+        {
+            return BadRequest(new { message = validation });
+        }
+
+        var key = ProductInputFieldRules.NormalizeKey(request.Key);
+        if (await db.ProductInputFields.AnyAsync(
+                x => x.ProductId == productId && x.Id != fieldId && x.Key == key,
+                cancellationToken))
+        {
+            return Conflict(new { message = "Input field key already exists for this product." });
+        }
+
+        ApplyInputField(field, request, key);
+        await db.SaveChangesAsync(cancellationToken);
+        return NoContent();
+    }
+
+    [HttpDelete("products/{productId:guid}/input-fields/{fieldId:guid}")]
+    public async Task<IActionResult> DeleteInputField(
+        Guid productId,
+        Guid fieldId,
+        CancellationToken cancellationToken)
+    {
+        var field = await db.ProductInputFields.SingleOrDefaultAsync(
+            x => x.Id == fieldId && x.ProductId == productId,
+            cancellationToken);
+        if (field is null)
+        {
+            return NotFound();
+        }
+
+        db.ProductInputFields.Remove(field);
+        await db.SaveChangesAsync(cancellationToken);
+        return NoContent();
+    }
+
+    private static void ApplyInputField(
+        ProductInputField field,
+        UpsertProductInputFieldRequest request,
+        string key)
+    {
+        var options = ProductInputFieldRules.CleanOptions(request.Options);
+        field.Key = key;
+        field.Label = request.Label.Trim();
+        field.Scope = request.Scope;
+        field.Type = request.Type;
+        field.Placeholder = string.IsNullOrWhiteSpace(request.Placeholder) ? null : request.Placeholder.Trim();
+        field.HelpText = string.IsNullOrWhiteSpace(request.HelpText) ? null : request.HelpText.Trim();
+        field.IsRequired = request.IsRequired;
+        field.IsSensitive = request.IsSensitive;
+        field.MaxLength = request.MaxLength;
+        field.OptionsJson = options.Count == 0 ? null : JsonSerializer.Serialize(options);
+        field.SortOrder = request.SortOrder;
+        field.UpdatedAt = DateTimeOffset.UtcNow;
     }
 
     private async Task<IActionResult?> ValidateProductRequest(
