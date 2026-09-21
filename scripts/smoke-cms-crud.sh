@@ -311,7 +311,7 @@ CAT_DEL=$(curl -sS -o /dev/null -w '%{http_code}'   -X DELETE "$BASE/api/v1/cms/
 PUBLIC_PRODUCT_GONE=$(curl -sS -o /dev/null -w '%{http_code}' "$BASE/api/v1/catalog/products/cms-crud-product")
 [[ "$PUBLIC_PRODUCT_GONE" == 404 ]]
 
-DB_STATE=$(docker exec "$C" psql -At -F '|' -U zetruv -d "$DB" -c "
+DB_STATE=$(docker exec -i "$C" psql -At -F '|' -U zetruv -d "$DB" <<SQL
 SELECT
   (SELECT "IsActive" FROM catalog_categories WHERE "Id"='$CAT_ID'),
   (SELECT "IsActive" FROM games WHERE "Id"='$GAME_ID'),
@@ -320,7 +320,8 @@ SELECT
   (SELECT "IsActive" FROM promotions WHERE "Id"='$PROMO_ID'),
   (SELECT COUNT(*) FROM product_images WHERE "Id"='$IMAGE_ID'),
   (SELECT COUNT(*) FROM product_input_fields WHERE "ProductId"='$PRODUCT_ID');
-")
+SQL
+)
 [[ "$DB_STATE" == 'f|f|f|f|f|0|0' ]]
 echo 'PASS: catalog/promotion soft-delete + child hard-delete semantics'
 
