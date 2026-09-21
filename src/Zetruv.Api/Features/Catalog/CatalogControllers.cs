@@ -844,7 +844,8 @@ public sealed class CmsPromotionsController(ZetruvDbContext db) : ControllerBase
             .Where(x => x.PromotionId == id)
             .ExecuteDeleteAsync(cancellationToken);
 
-        ApplyPromotion(promotion, request);
+        ApplyPromotionHeader(promotion, request);
+        db.PromotionItems.AddRange(CreatePromotionItems(id, request));
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return NoContent();
@@ -912,6 +913,17 @@ public sealed class CmsPromotionsController(ZetruvDbContext db) : ControllerBase
 
     private static void ApplyPromotion(Promotion promotion, UpsertPromotionRequest request)
     {
+        ApplyPromotionHeader(promotion, request);
+        foreach (var item in CreatePromotionItems(promotion.Id, request))
+        {
+            promotion.Items.Add(item);
+        }
+    }
+
+    private static void ApplyPromotionHeader(
+        Promotion promotion,
+        UpsertPromotionRequest request)
+    {
         promotion.Name = request.Name.Trim();
         promotion.Slug = CatalogText.NormalizeSlug(request.Slug);
         promotion.IsFlashSale = request.IsFlashSale;
@@ -919,15 +931,19 @@ public sealed class CmsPromotionsController(ZetruvDbContext db) : ControllerBase
         promotion.StartsAt = request.StartsAt;
         promotion.EndsAt = request.EndsAt;
         promotion.UpdatedAt = DateTimeOffset.UtcNow;
-
-        foreach (var item in request.Items.OrderBy(x => x.SortOrder))
-        {
-            promotion.Items.Add(new PromotionItem
-            {
-                ProductVariantId = item.ProductVariantId,
-                SalePrice = item.SalePrice,
-                SortOrder = item.SortOrder
-            });
-        }
     }
+
+    private static IReadOnlyList<PromotionItem> CreatePromotionItems(
+        Guid promotionId,
+        UpsertPromotionRequest request) =>
+        request.Items
+            .OrderBy(x => x.SortOrder)
+            .Select(x => new PromotionItem
+            {
+                PromotionId = promotionId,
+                ProductVariantId = x.ProductVariantId,
+                SalePrice = x.SalePrice,
+                SortOrder = x.SortOrder
+            })
+            .ToList();
 }
