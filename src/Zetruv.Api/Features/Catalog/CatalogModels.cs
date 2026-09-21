@@ -213,6 +213,58 @@ public sealed record ProductPageResponse(
     int TotalItems,
     int TotalPages);
 
+public sealed record CmsProductVariantResponse(
+    Guid Id,
+    string Name,
+    string Sku,
+    decimal Price,
+    decimal? CompareAtPrice,
+    int? StockQuantity,
+    int? WeightGrams,
+    bool IsActive,
+    int SortOrder,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset UpdatedAt);
+
+public sealed record CmsProductDetailResponse(
+    Guid Id,
+    Guid CategoryId,
+    Guid? GameId,
+    string Name,
+    string Slug,
+    string? ShortDescription,
+    string? Description,
+    string? ThumbnailUrl,
+    ProductKind Kind,
+    FulfillmentMethod FulfillmentMethod,
+    bool RequiresGameAccountValidation,
+    bool IsActive,
+    bool IsFeatured,
+    int SortOrder,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset UpdatedAt,
+    IReadOnlyList<CmsProductVariantResponse> Variants,
+    IReadOnlyList<ProductImageResponse> Images,
+    IReadOnlyList<ProductInputFieldResponse> InputFields);
+
+public sealed record CmsPromotionItemResponse(
+    Guid Id,
+    Guid ProductVariantId,
+    decimal SalePrice,
+    int SortOrder);
+
+public sealed record CmsPromotionResponse(
+    Guid Id,
+    string Name,
+    string Slug,
+    bool IsFlashSale,
+    bool IsActive,
+    DateTimeOffset StartsAt,
+    DateTimeOffset EndsAt,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset UpdatedAt,
+    IReadOnlyList<CmsPromotionItemResponse> Items);
+
 public sealed record FlashSaleItemResponse(
     Guid PromotionItemId,
     Guid ProductId,
