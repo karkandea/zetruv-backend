@@ -40,3 +40,13 @@ jobs:
         run: bash scripts/smoke-runtime-config.sh
       - name: Production safety guard smoke
         run: bash scripts/smoke-production-provider-guard.sh
+
+  integration:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    needs: build
+    runs-on: [self-hosted, Linux, X64, zetruv-backend]
+    timeout-minutes: 20
+
+    steps:
+      - name: Backend integration suite
+        run: sudo /usr/local/bin/test-zetruv-backend-integration "${GITHUB_SHA}"
