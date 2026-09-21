@@ -17,6 +17,7 @@ using Zetruv.Api.Features.Payments;
 using Zetruv.Api.Features.Shipping;
 using Zetruv.Api.Features.Site;
 using Zetruv.Api.Persistence;
+using Zetruv.Api.OpenApi;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -55,7 +56,11 @@ builder.Services
     .AddJsonOptions(options =>
         options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddProblemDetails();
-builder.Services.AddOpenApi();
+builder.Services.AddOpenApi(options =>
+{
+    options.AddDocumentTransformer<BearerSecuritySchemeTransformer>();
+    options.AddOperationTransformer<BearerSecurityRequirementTransformer>();
+});
 builder.Services.AddHealthChecks();
 builder.Services.AddRateLimiter(options =>
 {
