@@ -48,7 +48,6 @@ Jwt__Key='0123456789abcdef0123456789abcdef' \
 Payments__Provider='real' \
 Shipping__Provider='real' \
 GameAccountValidation__Provider='real' \
-Fulfillment__AutoId__Provider='real' \
 dotnet run --project src/Zetruv.Api/Zetruv.Api.csproj \
   --configuration Release \
   --no-build \

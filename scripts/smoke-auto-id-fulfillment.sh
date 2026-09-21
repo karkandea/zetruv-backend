@@ -22,7 +22,6 @@ export CmsAdmin__Password='FulfillmentSmoke123!'
 export Payments__Provider=mock
 export Payments__Mock__WebhookSecret=smoke-secret
 export GameAccountValidation__Provider=mock
-export Fulfillment__AutoId__Provider=mock
 export Shipping__Provider=mock
 export ASPNETCORE_ENVIRONMENT=Staging
 
@@ -34,6 +33,8 @@ docker exec -i "$C" psql -v ON_ERROR_STOP=1 -U zetruv -d "$DB" <<'SQL'
 INSERT INTO games ("Id","Name","Slug","IsActive","IsPopular","SortOrder","CreatedAt","UpdatedAt") VALUES ('81000000-0000-0000-0000-000000000001','Fulfillment Smoke Game','fulfillment-smoke-game',TRUE,FALSE,0,NOW(),NOW());
 INSERT INTO products ("Id","CategoryId","GameId","Name","Slug","Kind","FulfillmentMethod","RequiresGameAccountValidation","IsActive","IsFeatured","SortOrder","CreatedAt","UpdatedAt") VALUES ('82000000-0000-0000-0000-000000000001',(SELECT "Id" FROM catalog_categories WHERE "Key"='top_up_games'),'81000000-0000-0000-0000-000000000001','Fulfillment Smoke Product','fulfillment-smoke-product','TopUpGame','AUTO_ID',TRUE,TRUE,FALSE,0,NOW(),NOW());
 INSERT INTO product_variants ("Id","ProductId","Name","Sku","Price","StockQuantity","IsActive","SortOrder","CreatedAt","UpdatedAt") VALUES ('83000000-0000-0000-0000-000000000001','82000000-0000-0000-0000-000000000001','100 Diamonds','FULFILL-100',25000,50,TRUE,0,NOW(),NOW());
+INSERT INTO provider_game_mappings ("Id","GameId","ProviderCode","NicknameCheckEnabled","IsActive","CreatedAt","UpdatedAt") VALUES ('85000000-0000-0000-0000-000000000001','81000000-0000-0000-0000-000000000001','mock',TRUE,TRUE,NOW(),NOW());
+INSERT INTO provider_sku_mappings ("Id","ProviderGameMappingId","ProductVariantId","ProviderSku","IsActive","CreatedAt","UpdatedAt") VALUES ('86000000-0000-0000-0000-000000000001','85000000-0000-0000-0000-000000000001','83000000-0000-0000-0000-000000000001','MOCK-PROVIDER-100',TRUE,NOW(),NOW());
 INSERT INTO product_input_fields ("Id","ProductId","Key","Label","Scope","Type","IsRequired","IsSensitive","MaxLength","SortOrder","CreatedAt","UpdatedAt") VALUES
 ('84000000-0000-0000-0000-000000000001','82000000-0000-0000-0000-000000000001','userid','User ID','AccountValidation','Text',TRUE,FALSE,200,0,NOW(),NOW()),
 ('84000000-0000-0000-0000-000000000002','82000000-0000-0000-0000-000000000001','zoneid','Zone ID','AccountValidation','Text',TRUE,FALSE,200,1,NOW(),NOW()),
@@ -52,6 +53,8 @@ CO=$(checkout "$VID" success@zetruv.local); OID=$(json '["id"]' <<<"$CO"); TOK=$
 P=$(pay "$OID" "$TOK"); REF=$(json '["providerReference"]' <<<"$P"); webhook "$REF" >/dev/null
 STATE=$(docker exec "$C" psql -At -F '|' -U zetruv -d "$DB" -c "SELECT o.\"PaymentStatus\",o.\"Status\",oi.\"FulfillmentStatus\",oi.\"FulfillmentAttemptCount\",(oi.\"FulfillmentReference\" IS NOT NULL) FROM orders o JOIN order_items oi ON oi.\"OrderId\"=o.\"Id\" WHERE o.\"Id\"='$OID';")
 [[ "$STATE" == 'Paid|Completed|Completed|1|t' ]]
+FULFILL_REF=$(docker exec "$C" psql -At -U zetruv -d "$DB" -c "SELECT \"FulfillmentReference\" FROM order_items WHERE \"OrderId\"='$OID';")
+[[ "$FULFILL_REF" == *'MOCK-PROVIDER-100'* ]]
 webhook "$REF" >/dev/null
 [[ "$(docker exec "$C" psql -At -U zetruv -d "$DB" -c "SELECT \"FulfillmentAttemptCount\" FROM order_items WHERE \"OrderId\"='$OID';")" == '1' ]]
 

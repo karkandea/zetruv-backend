@@ -22,7 +22,6 @@ export CmsAdmin__Password='ManualLoginSmoke123!'
 export Payments__Provider=mock
 export Payments__Mock__WebhookSecret=smoke-secret
 export GameAccountValidation__Provider=mock
-export Fulfillment__AutoId__Provider=mock
 export ManualLogin__EncryptionKey
 ManualLogin__EncryptionKey=$(printf '%s' '0123456789abcdef0123456789abcdef' | openssl base64 -A)
 export ManualLogin__RetentionHours=24

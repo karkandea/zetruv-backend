@@ -18,7 +18,8 @@ public sealed record AutoIdFulfillmentProviderRequest(
     string ProductName,
     string ProductSlug,
     string? VariantName,
-    string? Sku,
+    string? ZetruvSku,
+    string ProviderSku,
     string? GameName,
     int Quantity,
     string? ValidationProvider,
@@ -65,30 +66,22 @@ public sealed class MockAutoIdFulfillmentProvider : IAutoIdFulfillmentProvider
 
         return Task.FromResult(
             AutoIdFulfillmentProviderResult.Success(
-                $"MOCK-FULFILL-{request.OrderItemId:N}-{Guid.NewGuid():N}"));
+                $"MOCK-FULFILL-{request.ProviderSku}-{request.OrderItemId:N}"));
     }
 }
 
 public sealed class AutoIdFulfillmentProviderResolver(
-    IEnumerable<IAutoIdFulfillmentProvider> providers,
-    IConfiguration configuration)
+    IEnumerable<IAutoIdFulfillmentProvider> providers)
 {
-    public IAutoIdFulfillmentProvider? Resolve()
-    {
-        var configured = configuration["Fulfillment:AutoId:Provider"]?.Trim();
-        if (string.IsNullOrWhiteSpace(configured))
-        {
-            return null;
-        }
-
-        return providers.FirstOrDefault(x =>
-            string.Equals(x.Name, configured, StringComparison.OrdinalIgnoreCase));
-    }
+    public IAutoIdFulfillmentProvider? Resolve(string providerCode) =>
+        providers.FirstOrDefault(x =>
+            string.Equals(x.Name, providerCode, StringComparison.OrdinalIgnoreCase));
 }
 
 public sealed class FulfillmentExecutionService(
     ZetruvDbContext db,
     AutoIdFulfillmentProviderResolver resolver,
+    AutoIdRuntimeProviderMappingService providerMappings,
     OrderFulfillmentService fulfillmentService,
     FulfillmentActivityService activities,
     ILogger<FulfillmentExecutionService> logger)
@@ -211,7 +204,11 @@ public sealed class FulfillmentExecutionService(
         item.FulfillmentAttemptCount++;
         item.LastFulfillmentAttemptAt = now;
         var attemptNumber = item.FulfillmentAttemptCount;
-        var provider = resolver.Resolve();
+        var mappingResult = await providerMappings.ResolveAsync(
+            item.ProductVariantId,
+            cancellationToken);
+        var mapping = mappingResult.Mapping;
+        var provider = mapping is null ? null : resolver.Resolve(mapping.ProviderCode);
 
         activities.Create(
             item,
@@ -222,8 +219,20 @@ public sealed class FulfillmentExecutionService(
             previousStatus,
             FulfillmentStatus.Processing,
             attemptNumber,
-            provider?.Name);
+            mapping?.ProviderCode);
         await db.SaveChangesAsync(cancellationToken);
+
+        if (mapping is null)
+        {
+            return await FailAttemptAsync(
+                order,
+                item,
+                executionContext,
+                attemptNumber,
+                null,
+                mappingResult.Error ?? "AUTO_ID provider mapping is unavailable.",
+                cancellationToken);
+        }
 
         if (provider is null)
         {
@@ -232,8 +241,8 @@ public sealed class FulfillmentExecutionService(
                 item,
                 executionContext,
                 attemptNumber,
-                null,
-                "AUTO_ID fulfillment provider is not configured.",
+                mapping.ProviderCode,
+                $"AUTO_ID provider adapter '{mapping.ProviderCode}' is not configured.",
                 cancellationToken);
         }
 
@@ -274,6 +283,7 @@ public sealed class FulfillmentExecutionService(
                     item.ProductSlug,
                     item.VariantName,
                     item.Sku,
+                    mapping.ProviderSku,
                     item.GameName,
                     item.Quantity,
                     item.GameAccountValidation.Provider,
