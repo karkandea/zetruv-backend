@@ -26,8 +26,7 @@ if (builder.Environment.IsProduction())
     {
         "Payments:Provider",
         "Shipping:Provider",
-        "GameAccountValidation:Provider",
-        "Fulfillment:AutoId:Provider"
+        "GameAccountValidation:Provider"
     };
 
     var enabledMockProviders = mockProviderSettings
@@ -207,6 +206,7 @@ builder.Services.AddScoped<ShippingProviderResolver>();
 builder.Services.AddScoped<ShippingService>();
 builder.Services.AddScoped<ShipmentFulfillmentService>();
 builder.Services.AddScoped<PaymentGatewayResolver>();
+builder.Services.AddScoped<AutoIdRuntimeProviderMappingService>();
 builder.Services.AddScoped<AutoIdFulfillmentProviderResolver>();
 builder.Services.AddScoped<PaymentService>();
 builder.Services.AddScoped<SiteService>();
