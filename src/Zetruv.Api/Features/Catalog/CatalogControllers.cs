@@ -252,16 +252,56 @@ public sealed class CmsCatalogController(ZetruvDbContext db) : ControllerBase
             .ToListAsync(cancellationToken));
 
     [HttpGet("products/{id:guid}")]
-    public async Task<IActionResult> GetProduct(Guid id, CancellationToken cancellationToken)
+    public async Task<ActionResult<CmsProductDetailResponse>> GetProduct(
+        Guid id,
+        CancellationToken cancellationToken)
     {
         var product = await db.Products
             .AsNoTracking()
+            .AsSplitQuery()
             .Include(x => x.Variants)
             .Include(x => x.Images)
             .Include(x => x.InputFields)
             .SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
 
-        return product is null ? NotFound() : Ok(product);
+        if (product is null)
+        {
+            return NotFound();
+        }
+
+        return Ok(new CmsProductDetailResponse(
+            product.Id,
+            product.CategoryId,
+            product.GameId,
+            product.Name,
+            product.Slug,
+            product.ShortDescription,
+            product.Description,
+            product.ThumbnailUrl,
+            product.Kind,
+            product.FulfillmentMethod,
+            product.RequiresGameAccountValidation,
+            product.IsActive,
+            product.IsFeatured,
+            product.SortOrder,
+            product.CreatedAt,
+            product.UpdatedAt,
+            product.Variants
+                .OrderBy(x => x.SortOrder)
+                .ThenBy(x => x.Name)
+                .Select(x => new CmsProductVariantResponse(
+                    x.Id, x.Name, x.Sku, x.Price, x.CompareAtPrice, x.StockQuantity,
+                    x.WeightGrams, x.IsActive, x.SortOrder, x.CreatedAt, x.UpdatedAt))
+                .ToList(),
+            product.Images
+                .OrderBy(x => x.SortOrder)
+                .Select(x => new ProductImageResponse(x.Id, x.Url, x.AltText, x.SortOrder))
+                .ToList(),
+            product.InputFields
+                .OrderBy(x => x.SortOrder)
+                .ThenBy(x => x.Label)
+                .Select(ProductInputFieldRules.ToResponse)
+                .ToList()));
     }
 
     [HttpPost("products")]
@@ -734,12 +774,32 @@ public sealed class CmsCatalogController(ZetruvDbContext db) : ControllerBase
 public sealed class CmsPromotionsController(ZetruvDbContext db) : ControllerBase
 {
     [HttpGet]
-    public async Task<IActionResult> GetPromotions(CancellationToken cancellationToken) =>
-        Ok(await db.Promotions
+    public async Task<ActionResult<IReadOnlyList<CmsPromotionResponse>>> GetPromotions(
+        CancellationToken cancellationToken)
+    {
+        var promotions = await db.Promotions
             .AsNoTracking()
             .Include(x => x.Items)
             .OrderByDescending(x => x.StartsAt)
-            .ToListAsync(cancellationToken));
+            .ToListAsync(cancellationToken);
+
+        return Ok(promotions.Select(x => new CmsPromotionResponse(
+            x.Id,
+            x.Name,
+            x.Slug,
+            x.IsFlashSale,
+            x.IsActive,
+            x.StartsAt,
+            x.EndsAt,
+            x.CreatedAt,
+            x.UpdatedAt,
+            x.Items
+                .OrderBy(i => i.SortOrder)
+                .Select(i => new CmsPromotionItemResponse(
+                    i.Id, i.ProductVariantId, i.SalePrice, i.SortOrder))
+                .ToList()))
+            .ToList());
+    }
 
     [HttpPost]
     public async Task<IActionResult> CreatePromotion(
