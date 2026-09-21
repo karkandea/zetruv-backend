@@ -826,7 +826,6 @@ public sealed class CmsPromotionsController(ZetruvDbContext db) : ControllerBase
         CancellationToken cancellationToken)
     {
         var promotion = await db.Promotions
-            .Include(x => x.Items)
             .SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
         if (promotion is null)
         {
@@ -839,10 +838,15 @@ public sealed class CmsPromotionsController(ZetruvDbContext db) : ControllerBase
             return validation;
         }
 
-        db.PromotionItems.RemoveRange(promotion.Items);
-        promotion.Items.Clear();
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+
+        await db.PromotionItems
+            .Where(x => x.PromotionId == id)
+            .ExecuteDeleteAsync(cancellationToken);
+
         ApplyPromotion(promotion, request);
         await db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
         return NoContent();
     }
 
