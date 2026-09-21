@@ -1,3 +1,4 @@
+using Scalar.AspNetCore;
 using System.Text;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
@@ -181,6 +182,7 @@ builder.Services.AddScoped<ArticleService>();
 builder.Services.AddScoped<OrderService>();
 builder.Services.AddScoped<OrderFulfillmentService>();
 builder.Services.AddScoped<FulfillmentExecutionService>();
+builder.Services.AddScoped<FulfillmentActivityService>();
 builder.Services.AddScoped<FulfillmentQueueService>();
 builder.Services.AddSingleton<ManualLoginCredentialProtector>();
 builder.Services.AddScoped<ManualLoginCredentialService>();
@@ -225,6 +227,9 @@ app.UseForwardedHeaders(new ForwardedHeadersOptions
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
+    app.MapScalarApiReference("/scalar", options => options
+        .WithTitle("Zetruv API")
+        .DisableAgent());
 }
 
 app.UseCors("Frontend");

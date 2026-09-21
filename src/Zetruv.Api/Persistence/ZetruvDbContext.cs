@@ -26,6 +26,7 @@ public sealed class ZetruvDbContext(
     public DbSet<Article> Articles => Set<Article>();
     public DbSet<Order> Orders => Set<Order>();
     public DbSet<OrderItem> OrderItems => Set<OrderItem>();
+    public DbSet<FulfillmentActivity> FulfillmentActivities => Set<FulfillmentActivity>();
     public DbSet<ManualLoginCredential> ManualLoginCredentials => Set<ManualLoginCredential>();
     public DbSet<PaymentTransaction> PaymentTransactions => Set<PaymentTransaction>();
     public DbSet<InventoryReservation> InventoryReservations => Set<InventoryReservation>();
@@ -283,6 +284,32 @@ public sealed class ZetruvDbContext(
                 .WithMany()
                 .HasForeignKey(x => x.ProductVariantId)
                 .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<FulfillmentActivity>(entity =>
+        {
+            entity.ToTable("fulfillment_activities");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Type).HasConversion<string>().HasMaxLength(40).IsRequired();
+            entity.Property(x => x.Source).HasConversion<string>().HasMaxLength(30).IsRequired();
+            entity.Property(x => x.ActorId).HasMaxLength(100);
+            entity.Property(x => x.ActorEmail).HasMaxLength(320);
+            entity.Property(x => x.FulfillmentMethod).HasConversion<string>().HasMaxLength(30).IsRequired();
+            entity.Property(x => x.FromStatus).HasConversion<string>().HasMaxLength(30);
+            entity.Property(x => x.ToStatus).HasConversion<string>().HasMaxLength(30);
+            entity.Property(x => x.Provider).HasMaxLength(80);
+            entity.Property(x => x.ProviderReference).HasMaxLength(180);
+            entity.Property(x => x.Message).HasMaxLength(500);
+            entity.HasIndex(x => new { x.OrderItemId, x.CreatedAt });
+            entity.HasIndex(x => new { x.OrderId, x.CreatedAt });
+            entity.HasOne<OrderItem>()
+                .WithMany()
+                .HasForeignKey(x => x.OrderItemId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<Order>()
+                .WithMany()
+                .HasForeignKey(x => x.OrderId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<ManualLoginCredential>(entity =>
