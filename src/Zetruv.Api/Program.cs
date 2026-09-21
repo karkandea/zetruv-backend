@@ -1,3 +1,4 @@
+using Scalar.AspNetCore;
 using System.Text;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
@@ -226,6 +227,9 @@ app.UseForwardedHeaders(new ForwardedHeadersOptions
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
+    app.MapScalarApiReference("/scalar", options => options
+        .WithTitle("Zetruv API")
+        .DisableAgent());
 }
 
 app.UseCors("Frontend");
