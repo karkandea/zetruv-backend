@@ -7,6 +7,7 @@ scripts=(
   smoke-payment-recovery-concurrency.sh
   smoke-provider-mapping-runtime.sh
   smoke-cms-crud.sh
+  smoke-openapi-security.sh
   smoke-auto-id-fulfillment.sh
   smoke-manual-login-credentials.sh
   smoke-payment-inventory-hardening.sh
