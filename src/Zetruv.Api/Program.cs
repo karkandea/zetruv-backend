@@ -253,6 +253,11 @@ await using (var scope = app.Services.CreateAsyncScope())
     var db = scope.ServiceProvider.GetRequiredService<ZetruvDbContext>();
     await db.Database.MigrateAsync();
 
+    if (app.Environment.IsProduction())
+    {
+        await ProductionProviderSafety.EnsureAutoIdMappingsAreSafeAsync(db);
+    }
+
     await scope.ServiceProvider
         .GetRequiredService<AdminSeeder>()
         .SeedAsync();

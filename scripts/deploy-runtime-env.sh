@@ -15,11 +15,6 @@ command -v openssl >/dev/null 2>&1 || { echo 'openssl is required.' >&2; exit 1;
 CONFIG_ENV=$(get_env ZETRUV_ENVIRONMENT)
 [[ "$CONFIG_ENV" == "$ENVIRONMENT" ]] || { echo ".env belongs to '$CONFIG_ENV', not '$ENVIRONMENT'." >&2; exit 1; }
 
-if [[ -z "$(get_env FULFILLMENT_AUTO_ID_PROVIDER)" ]]; then
-  printf '\nFULFILLMENT_AUTO_ID_PROVIDER=mock\n' >> .env
-  chmod 600 .env
-fi
-
 if [[ -z "$(get_env MANUAL_LOGIN_ENCRYPTION_KEY)" ]]; then
   MANUAL_LOGIN_ENCRYPTION_KEY=$(openssl rand -base64 32 | tr -d '\n')
   printf '\nMANUAL_LOGIN_ENCRYPTION_KEY=%s\n' "$MANUAL_LOGIN_ENCRYPTION_KEY" >> .env
