@@ -278,6 +278,7 @@ LEFT JOIN shipments s ON s."OrderId" = o."Id";
 echo "=== ASSERTIONS ==="
 python3 - "$QUOTE_JSON" "$CHECKOUT_JSON" "$LOOKUP_JSON" <<'PY'
 import json
+import re
 import sys
 from datetime import datetime, timezone
 
@@ -291,7 +292,9 @@ assert regular["provider"] == "mock"
 assert regular["serviceCode"] == "REG"
 assert float(regular["amount"]) == 17000
 assert regular["totalWeightGrams"] == 1000
-expires_at = datetime.fromisoformat(regular["expiresAt"].replace("Z", "+00:00"))
+expires_raw = regular["expiresAt"].replace("Z", "+00:00")
+expires_raw = re.sub(r"(\.\d{6})\d+", r"\1", expires_raw)
+expires_at = datetime.fromisoformat(expires_raw)
 ttl_seconds = (expires_at - datetime.now(timezone.utc)).total_seconds()
 assert 360 <= ttl_seconds <= 450, f"expected ~7 minute quote TTL, got {ttl_seconds:.1f}s"
 
