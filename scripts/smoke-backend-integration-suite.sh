@@ -11,6 +11,7 @@ scripts=(
   smoke-production-auto-id-mapping-guard.sh
   smoke-cms-crud.sh
   smoke-openapi-security.sh
+  smoke-media-storage.sh
   smoke-auto-id-fulfillment.sh
   smoke-manual-login-credentials.sh
   smoke-payment-inventory-hardening.sh

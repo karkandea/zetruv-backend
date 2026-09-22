@@ -3,15 +3,19 @@ using System.Text;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.FileProviders;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using Zetruv.Api.Features.Articles;
 using Zetruv.Api.Features.Auth;
 using Zetruv.Api.Features.Catalog;
 using Zetruv.Api.Features.GameAccounts;
 using Zetruv.Api.Features.Home;
+using Zetruv.Api.Features.Media;
 using Zetruv.Api.Features.Orders;
 using Zetruv.Api.Features.Payments;
 using Zetruv.Api.Features.Shipping;
@@ -119,6 +123,19 @@ builder.Services.AddDbContext<ZetruvDbContext>(options =>
 
 builder.Services.Configure<JwtOptions>(
     builder.Configuration.GetSection(JwtOptions.SectionName));
+builder.Services.Configure<MediaOptions>(
+    builder.Configuration.GetSection(MediaOptions.SectionName));
+
+var configuredMediaOptions = builder.Configuration
+    .GetSection(MediaOptions.SectionName)
+    .Get<MediaOptions>() ?? new MediaOptions();
+var configuredMediaMaxBytes = Math.Clamp(
+    configuredMediaOptions.MaxFileSizeBytes,
+    64 * 1024,
+    10 * 1024 * 1024);
+builder.Services.Configure<FormOptions>(options =>
+    options.MultipartBodyLengthLimit =
+        configuredMediaMaxBytes + (1024 * 1024));
 
 var jwtOptions = builder.Configuration
     .GetSection(JwtOptions.SectionName)
@@ -196,6 +213,9 @@ builder.Services.AddScoped<OrderTrackingService>();
 builder.Services.AddScoped<CheckoutService>();
 builder.Services.AddScoped<InventoryReservationService>();
 builder.Services.AddHostedService<InventoryReservationCleanupService>();
+builder.Services.AddScoped<IMediaStorage, LocalMediaStorage>();
+builder.Services.AddScoped<MediaStorageResolver>();
+builder.Services.AddScoped<MediaService>();
 
 if (!builder.Environment.IsProduction())
 {
@@ -232,6 +252,31 @@ app.UseForwardedHeaders(new ForwardedHeadersOptions
     ForwardedHeaders = ForwardedHeaders.XForwardedFor |
                        ForwardedHeaders.XForwardedProto
 });
+
+var mediaOptions = app.Services
+    .GetRequiredService<IOptions<MediaOptions>>()
+    .Value;
+
+if (string.Equals(
+        mediaOptions.Provider,
+        "local",
+        StringComparison.OrdinalIgnoreCase))
+{
+    var mediaRoot = MediaPaths.ResolveLocalRoot(mediaOptions, app.Environment);
+    Directory.CreateDirectory(mediaRoot);
+
+    app.UseStaticFiles(new StaticFileOptions
+    {
+        FileProvider = new PhysicalFileProvider(mediaRoot),
+        RequestPath = MediaPaths.NormalizePublicPath(mediaOptions.PublicPath),
+        OnPrepareResponse = context =>
+        {
+            context.Context.Response.Headers.CacheControl =
+                "public,max-age=31536000,immutable";
+            context.Context.Response.Headers.XContentTypeOptions = "nosniff";
+        }
+    });
+}
 
 if (app.Environment.IsDevelopment())
 {

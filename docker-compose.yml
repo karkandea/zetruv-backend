@@ -39,6 +39,12 @@ services:
       ManualLogin__RetentionHours: ${MANUAL_LOGIN_RETENTION_HOURS:-24}
       Shipping__Provider: ${SHIPPING_PROVIDER:-mock}
       OrderAccess__TokenLifetimeMinutes: ${ORDER_ACCESS_TOKEN_LIFETIME_MINUTES:-1440}
+      Media__Provider: ${MEDIA_PROVIDER:-local}
+      Media__LocalPath: ${MEDIA_LOCAL_PATH:-/app/media}
+      Media__PublicPath: ${MEDIA_PUBLIC_PATH:-/media}
+      Media__MaxFileSizeBytes: ${MEDIA_MAX_FILE_SIZE_BYTES:-5242880}
+    volumes:
+      - media_data:/app/media
     depends_on:
       postgres:
         condition: service_healthy
@@ -47,3 +53,4 @@ services:
 
 volumes:
   postgres_data:
+  media_data:
