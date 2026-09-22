@@ -4,6 +4,7 @@ cd "$(dirname "$0")/.."
 
 for script in \
   scripts/bootstrap-runtime-env.sh \
+  scripts/normalize-runtime-env.sh \
   scripts/deploy-runtime-env.sh \
   scripts/install-runtime-nginx.sh \
   scripts/bootstrap-vps-runtime-layout.sh \
@@ -17,6 +18,7 @@ trap 'rm -rf "$TMP"' EXIT
 mkdir -p "$TMP/scripts"
 cp docker-compose.yml "$TMP/docker-compose.yml"
 cp scripts/bootstrap-runtime-env.sh "$TMP/scripts/bootstrap-runtime-env.sh"
+cp scripts/normalize-runtime-env.sh "$TMP/scripts/normalize-runtime-env.sh"
 
 file_mode() {
   stat -c '%a' "$1" 2>/dev/null || stat -f '%Lp' "$1"
@@ -35,6 +37,11 @@ check_env() {
   grep -Fxq "PAYMENTS_RECONCILIATION_ENABLED=true" "$TMP/.env"
   ! grep -q '^FULFILLMENT_AUTO_ID_PROVIDER=' "$TMP/.env"
   grep -Eq '^MANUAL_LOGIN_ENCRYPTION_KEY=.+$' "$TMP/.env"
+  [[ "$(file_mode "$TMP/.env")" == 600 ]]
+
+  printf '\nFULFILLMENT_AUTO_ID_PROVIDER=mock\n' >> "$TMP/.env"
+  (cd "$TMP" && bash scripts/normalize-runtime-env.sh .env >/dev/null)
+  ! grep -q '^FULFILLMENT_AUTO_ID_PROVIDER=' "$TMP/.env"
   [[ "$(file_mode "$TMP/.env")" == 600 ]]
 
   local key key_bytes
@@ -59,4 +66,4 @@ STAGING_MANUAL_LOGIN_KEY=$(sed -n 's/^MANUAL_LOGIN_ENCRYPTION_KEY=//p' "$TMP/.en
 [[ "$DEV_DB_PASSWORD" != "$STAGING_DB_PASSWORD" ]]
 [[ "$DEV_MANUAL_LOGIN_KEY" != "$STAGING_MANUAL_LOGIN_KEY" ]]
 
-echo 'PASS: DEV/STAGING runtime configs are valid, isolated, mode 600, and use distinct 32-byte manual-login keys.'
+echo 'PASS: DEV/STAGING runtime configs are valid, isolated, remove legacy AUTO_ID env config, mode 600, and use distinct 32-byte manual-login keys.'
