@@ -43,6 +43,7 @@ def bearer(method,path):
 assert bearer('get','/api/v1/cms/catalog/products')
 assert bearer('get','/api/v1/cms/orders')
 assert bearer('get','/api/v1/cms/fulfillment/queue')
+assert bearer('post','/api/v1/cms/media')
 assert not bearer('post','/api/v1/cms/auth/login')
 assert not bearer('get','/api/v1/catalog/products')
 assert not bearer('get','/api/v1/homepage')

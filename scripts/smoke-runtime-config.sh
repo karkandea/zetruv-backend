@@ -35,6 +35,10 @@ check_env() {
   grep -Fxq "POSTGRES_DB=$expected_db" "$TMP/.env"
   grep -Fxq "ASPNETCORE_ENVIRONMENT=$expected_aspnet" "$TMP/.env"
   grep -Fxq "PAYMENTS_RECONCILIATION_ENABLED=true" "$TMP/.env"
+  grep -Fxq "MEDIA_PROVIDER=local" "$TMP/.env"
+  grep -Fxq "MEDIA_LOCAL_PATH=/app/media" "$TMP/.env"
+  grep -Fxq "MEDIA_PUBLIC_PATH=/media" "$TMP/.env"
+  grep -Fxq "MEDIA_MAX_FILE_SIZE_BYTES=5242880" "$TMP/.env"
   ! grep -q '^FULFILLMENT_AUTO_ID_PROVIDER=' "$TMP/.env"
   grep -Eq '^MANUAL_LOGIN_ENCRYPTION_KEY=.+$' "$TMP/.env"
   [[ "$(file_mode "$TMP/.env")" == 600 ]]
@@ -50,6 +54,7 @@ check_env() {
   [[ "$key_bytes" == 32 ]]
 
   (cd "$TMP" && docker compose --project-name "$expected_project" --env-file .env config >/dev/null)
+  (cd "$TMP" && docker compose --project-name "$expected_project" --env-file .env config --volumes | grep -Fxq media_data)
 }
 
 check_env dev zetruv-dev 8081 zetruv_dev Development
@@ -66,4 +71,4 @@ STAGING_MANUAL_LOGIN_KEY=$(sed -n 's/^MANUAL_LOGIN_ENCRYPTION_KEY=//p' "$TMP/.en
 [[ "$DEV_DB_PASSWORD" != "$STAGING_DB_PASSWORD" ]]
 [[ "$DEV_MANUAL_LOGIN_KEY" != "$STAGING_MANUAL_LOGIN_KEY" ]]
 
-echo 'PASS: DEV/STAGING runtime configs are valid, isolated, remove legacy AUTO_ID env config, mode 600, and use distinct 32-byte manual-login keys.'
+echo 'PASS: DEV/STAGING runtime configs are valid, isolated, include persistent media storage, remove legacy AUTO_ID env config, mode 600, and use distinct 32-byte manual-login keys.'

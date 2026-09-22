@@ -3,6 +3,7 @@ using Zetruv.Api.Features.Articles;
 using Zetruv.Api.Features.Auth;
 using Zetruv.Api.Features.Catalog;
 using Zetruv.Api.Features.Home;
+using Zetruv.Api.Features.Media;
 using Zetruv.Api.Features.Orders;
 using Zetruv.Api.Features.Payments;
 using Zetruv.Api.Features.Site;
@@ -25,6 +26,7 @@ public sealed class ZetruvDbContext(
     public DbSet<PromotionItem> PromotionItems => Set<PromotionItem>();
     public DbSet<ArticleCategory> ArticleCategories => Set<ArticleCategory>();
     public DbSet<Article> Articles => Set<Article>();
+    public DbSet<MediaAsset> MediaAssets => Set<MediaAsset>();
     public DbSet<Order> Orders => Set<Order>();
     public DbSet<OrderItem> OrderItems => Set<OrderItem>();
     public DbSet<FulfillmentActivity> FulfillmentActivities => Set<FulfillmentActivity>();
@@ -229,6 +231,18 @@ public sealed class ZetruvDbContext(
                 .WithMany(x => x.Articles)
                 .HasForeignKey(x => x.CategoryId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<MediaAsset>(entity =>
+        {
+            entity.ToTable("media_assets");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Provider).HasMaxLength(80).IsRequired();
+            entity.Property(x => x.StorageKey).HasMaxLength(500).IsRequired();
+            entity.Property(x => x.OriginalFileName).HasMaxLength(255).IsRequired();
+            entity.Property(x => x.ContentType).HasMaxLength(100).IsRequired();
+            entity.HasIndex(x => x.StorageKey).IsUnique();
+            entity.HasIndex(x => new { x.DeletedAt, x.CreatedAt });
         });
 
         modelBuilder.Entity<Order>(entity =>

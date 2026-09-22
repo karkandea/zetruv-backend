@@ -104,9 +104,11 @@ BIND=$(docker port "$API_CONTAINER" 8080/tcp)
 [[ "$BIND" == "127.0.0.1:$API_PORT" ]] || { echo "Unsafe/unexpected API bind: $BIND" >&2; exit 1; }
 
 VOLUME="${PROJECT}_postgres_data"
+MEDIA_VOLUME="${PROJECT}_media_data"
 docker volume inspect "$VOLUME" >/dev/null 2>&1 || { echo "Expected isolated volume missing: $VOLUME" >&2; exit 1; }
+docker volume inspect "$MEDIA_VOLUME" >/dev/null 2>&1 || { echo "Expected isolated media volume missing: $MEDIA_VOLUME" >&2; exit 1; }
 
 curl -fsS "http://127.0.0.1:$API_PORT/health"; echo
 docker compose --project-name "$PROJECT" --env-file .env ps
 
-echo "PASS: $ENVIRONMENT is healthy, branch-gated, localhost-only, and uses isolated PostgreSQL volume $VOLUME"
+echo "PASS: $ENVIRONMENT is healthy, branch-gated, localhost-only, and uses isolated PostgreSQL/media volumes $VOLUME and $MEDIA_VOLUME"
