@@ -37,7 +37,7 @@ docker exec -i "$C" psql -v ON_ERROR_STOP=1 -U zetruv -d "$DB" <<'SQL'
 INSERT INTO products ("Id","CategoryId","Name","Slug","Kind","FulfillmentMethod","RequiresGameAccountValidation","IsActive","IsFeatured","SortOrder","CreatedAt","UpdatedAt")
 VALUES ('c1000000-0000-0000-0000-000000000001',(SELECT "Id" FROM catalog_categories WHERE "Key"='top_up_games'),'Webhook Ledger Product','webhook-ledger-product','TopUpGame','MANUAL',FALSE,TRUE,FALSE,0,NOW(),NOW());
 INSERT INTO product_variants ("Id","ProductId","Name","Sku","Price","StockQuantity","IsActive","SortOrder","CreatedAt","UpdatedAt")
-VALUES ('c2000000-0000-0000-0000-000000000001','c1000000-0000-0000-0000-000000000001','Default','WEBHOOK-LEDGER',100000,1,TRUE,0,NOW(),NOW());
+VALUES ('c2000000-0000-0000-0000-000000000001','c1000000-0000-0000-0000-000000000001','Default','WEBHOOK-LEDGER',100000,0,TRUE,0,NOW(),NOW());
 INSERT INTO orders ("Id","OrderNumber","Status","PaymentStatus","Subtotal","DiscountAmount","ShippingAmount","GrandTotal","Currency","PaymentProvider","PaymentReference","CreatedAt","UpdatedAt")
 VALUES ('c3000000-0000-0000-0000-000000000001','ZTR-WEBHOOK-001','Pending','Pending',100000,0,0,100000,'IDR','mock','REF-WEBHOOK-001',NOW(),NOW());
 INSERT INTO order_items ("Id","OrderId","ProductId","ProductVariantId","ProductName","ProductSlug","ProductKind","FulfillmentMethod","FulfillmentStatus","VariantName","Sku","UnitPrice","Quantity","LineTotal","CreatedAt")
@@ -53,7 +53,11 @@ send_webhook(){
   local sig code
   sig=$(python3 -c 'import hmac,hashlib,sys; print(hmac.new(b"smoke-secret",sys.argv[1].encode(),hashlib.sha256).hexdigest())' "$body")
   code=$(curl -sS -o "$out" -w '%{http_code}' -X POST "http://127.0.0.1:$API/api/v1/payments/webhooks/mock" -H 'Content-Type: application/json' -H "X-Mock-Signature: $sig" -d "$body")
-  [[ "$code" == "$expected" ]]
+  if [[ "$code" != "$expected" ]]; then
+    echo "Expected HTTP $expected but got $code"
+    cat "$out"; echo
+    return 1
+  fi
 }
 echo '=== FIRST EVENT ==='
 BODY1='{"providerReference":"REF-WEBHOOK-001","status":"Paid","amount":100000,"currency":"IDR","eventId":"evt-paid-001"}'
@@ -69,8 +73,10 @@ send_webhook "$BODY3" 409 /tmp/zetruv-webhook-ledger-conflict.json
 python3 -c 'import json,sys; x=json.load(open(sys.argv[1])); assert "different payload" in x["message"]' /tmp/zetruv-webhook-ledger-conflict.json
 
 STATE=$(docker exec "$C" psql -At -F '|' -U zetruv -d "$DB" -c "SELECT o.\"PaymentStatus\",pt.\"Status\",ir.\"Status\",pv.\"StockQuantity\",we.\"Outcome\",we.\"DeliveryCount\",length(we.\"EventFingerprintSha256\"),we.\"CompletedAt\" IS NOT NULL FROM orders o JOIN payment_transactions pt ON pt.\"OrderId\"=o.\"Id\" JOIN inventory_reservations ir ON ir.\"OrderId\"=o.\"Id\" JOIN product_variants pv ON pv.\"Id\"=ir.\"ProductVariantId\" JOIN payment_webhook_events we ON we.\"OrderId\"=o.\"Id\" WHERE o.\"Id\"='c3000000-0000-0000-0000-000000000001';")
+echo "STATE=$STATE"
 [[ "$STATE" == 'Paid|Succeeded|Consumed|0|Applied|3|64|t' ]]
 COUNT=$(docker exec "$C" psql -At -U zetruv -d "$DB" -c 'SELECT count(*) FROM payment_webhook_events;')
+echo "LEDGER_COUNT=$COUNT"
 [[ "$COUNT" == 1 ]]
 
 echo 'PASS: provider event ledger applies once, deduplicates replay, and rejects semantic event-ID reuse'
