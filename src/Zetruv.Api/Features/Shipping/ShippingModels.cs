@@ -1,9 +1,19 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Zetruv.Api.Features.Orders;
 
 namespace Zetruv.Api.Features.Shipping;
+
+public sealed class ShippingOptions
+{
+    public const string SectionName = "Shipping";
+
+    public string Provider { get; init; } = "mock";
+    public int QuoteTtlMinutes { get; init; } = 15;
+    public int QuotePiiCleanupIntervalSeconds { get; init; } = 60;
+}
 
 public enum ShipmentStatus
 {
@@ -50,28 +60,30 @@ public sealed class ShippingQuote
     public int? EtaMaxDays { get; set; }
 
     [MaxLength(120)]
-    public string RecipientName { get; set; } = string.Empty;
+    public string? RecipientName { get; set; }
 
     [MaxLength(50)]
-    public string Phone { get; set; } = string.Empty;
+    public string? Phone { get; set; }
 
     [MaxLength(250)]
-    public string AddressLine1 { get; set; } = string.Empty;
+    public string? AddressLine1 { get; set; }
 
     [MaxLength(250)]
     public string? AddressLine2 { get; set; }
 
     [MaxLength(120)]
-    public string District { get; set; } = string.Empty;
+    public string? District { get; set; }
 
     [MaxLength(120)]
-    public string City { get; set; } = string.Empty;
+    public string? City { get; set; }
 
     [MaxLength(120)]
-    public string Province { get; set; } = string.Empty;
+    public string? Province { get; set; }
 
     [MaxLength(10)]
-    public string PostalCode { get; set; } = string.Empty;
+    public string? PostalCode { get; set; }
+
+    public DateTimeOffset? PiiClearedAt { get; set; }
 
     [MaxLength(64)]
     public string CartFingerprint { get; set; } = string.Empty;
@@ -240,11 +252,11 @@ public sealed class MockShippingProvider : IShippingProvider
 
 public sealed class ShippingProviderResolver(
     IEnumerable<IShippingProvider> providers,
-    IConfiguration configuration)
+    IOptions<ShippingOptions> options)
 {
     public IShippingProvider? Resolve()
     {
-        var configuredProvider = configuration["Shipping:Provider"]?.Trim();
+        var configuredProvider = options.Value.Provider?.Trim();
         if (string.IsNullOrWhiteSpace(configuredProvider))
         {
             return null;

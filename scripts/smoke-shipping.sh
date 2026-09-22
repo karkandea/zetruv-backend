@@ -5,7 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
 CONTAINER=zetruv-pg-shipping
-PORT=55433
+PORT=57433
 API_PORT=18081
 DB=zetruv_shipping_test
 LOG=/tmp/zetruv-shipping-test.log
@@ -45,6 +45,8 @@ done
 export ConnectionStrings__Postgres="Host=127.0.0.1;Port=${PORT};Database=${DB};Username=zetruv;Password=zetruvtest"
 export Jwt__Key='0123456789abcdef0123456789abcdef'
 export Shipping__Provider='mock'
+export Shipping__QuoteTtlMinutes='7'
+export Shipping__QuotePiiCleanupIntervalSeconds='5'
 export GameAccountValidation__Provider='mock'
 export Payments__Provider='mock'
 export Payments__Mock__WebhookSecret='test-webhook-secret'
@@ -174,6 +176,7 @@ QUOTE_JSON=$(request_json \
 echo "=== SHIPPING QUOTES ==="
 echo "$QUOTE_JSON" | python3 -m json.tool
 QUOTE_ID=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["rates"][0]["quoteId"])' <<< "$QUOTE_JSON")
+EXPIRED_QUOTE_ID=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["rates"][1]["quoteId"])' <<< "$QUOTE_JSON")
 
 CHECKOUT_JSON=$(request_json \
   "checkout" \
@@ -191,6 +194,7 @@ CHECKOUT_JSON=$(request_json \
 echo "=== CHECKOUT ==="
 echo "$CHECKOUT_JSON" | python3 -m json.tool
 ORDER_NUMBER=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["orderNumber"])' <<< "$CHECKOUT_JSON")
+ORDER_ID=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])' <<< "$CHECKOUT_JSON")
 
 LOOKUP_JSON=$(request_json \
   "order lookup" \
@@ -202,6 +206,57 @@ LOOKUP_JSON=$(request_json \
 
 echo "=== ORDER LOOKUP ==="
 echo "$LOOKUP_JSON" | python3 -m json.tool
+
+echo "=== CONSUMED QUOTE PII SCRUB ==="
+CLAIMED_PII_SCRUBBED=$(docker exec "$CONTAINER" psql -At -U zetruv -d "$DB" -c "
+SELECT (
+  \"RecipientName\" IS NULL AND
+  \"Phone\" IS NULL AND
+  \"AddressLine1\" IS NULL AND
+  \"AddressLine2\" IS NULL AND
+  \"District\" IS NULL AND
+  \"City\" IS NULL AND
+  \"Province\" IS NULL AND
+  \"PostalCode\" IS NULL AND
+  \"PiiClearedAt\" IS NOT NULL
+)::text
+FROM shipping_quotes
+WHERE \"Id\"='$QUOTE_ID';")
+[[ "$CLAIMED_PII_SCRUBBED" == "true" || "$CLAIMED_PII_SCRUBBED" == "t" ]]
+
+SHIPMENT_PII=$(docker exec "$CONTAINER" psql -At -F '|' -U zetruv -d "$DB" -c "
+SELECT \"RecipientName\",\"Phone\",\"AddressLine1\",\"District\",\"City\",\"Province\",\"PostalCode\"
+FROM shipments
+WHERE \"OrderId\"='$ORDER_ID';")
+[[ "$SHIPMENT_PII" == 'Smoke Test|08123456789|Jl. Test No. 1|Pesanggrahan|Jakarta Selatan|DKI Jakarta|12320' ]]
+echo "PASS: consumed quote PII is scrubbed after shipment copy"
+
+echo "=== EXPIRED QUOTE PII CLEANUP ==="
+docker exec "$CONTAINER" psql -U zetruv -d "$DB" -c "
+UPDATE shipping_quotes
+SET \"ExpiresAt\" = NOW() - INTERVAL '1 second'
+WHERE \"Id\"='$EXPIRED_QUOTE_ID';" >/dev/null
+
+EXPIRED_PII_SCRUBBED=false
+for _ in $(seq 1 12); do
+  EXPIRED_PII_SCRUBBED=$(docker exec "$CONTAINER" psql -At -U zetruv -d "$DB" -c "
+  SELECT (
+    \"RecipientName\" IS NULL AND
+    \"Phone\" IS NULL AND
+    \"AddressLine1\" IS NULL AND
+    \"District\" IS NULL AND
+    \"City\" IS NULL AND
+    \"Province\" IS NULL AND
+    \"PostalCode\" IS NULL AND
+    \"PiiClearedAt\" IS NOT NULL
+  )::text
+  FROM shipping_quotes
+  WHERE \"Id\"='$EXPIRED_QUOTE_ID';")
+  [[ "$EXPIRED_PII_SCRUBBED" == "true" || "$EXPIRED_PII_SCRUBBED" == "t" ]] && break
+  sleep 1
+done
+[[ "$EXPIRED_PII_SCRUBBED" == "true" || "$EXPIRED_PII_SCRUBBED" == "t" ]]
+echo "PASS: expired unconsumed quote PII is scrubbed by background cleanup"
 
 echo "=== DATABASE CHECK ==="
 docker exec "$CONTAINER" psql -U zetruv -d "$DB" -c '
@@ -224,6 +279,7 @@ echo "=== ASSERTIONS ==="
 python3 - "$QUOTE_JSON" "$CHECKOUT_JSON" "$LOOKUP_JSON" <<'PY'
 import json
 import sys
+from datetime import datetime, timezone
 
 quotes = json.loads(sys.argv[1])
 checkout = json.loads(sys.argv[2])
@@ -235,6 +291,9 @@ assert regular["provider"] == "mock"
 assert regular["serviceCode"] == "REG"
 assert float(regular["amount"]) == 17000
 assert regular["totalWeightGrams"] == 1000
+expires_at = datetime.fromisoformat(regular["expiresAt"].replace("Z", "+00:00"))
+ttl_seconds = (expires_at - datetime.now(timezone.utc)).total_seconds()
+assert 360 <= ttl_seconds <= 450, f"expected ~7 minute quote TTL, got {ttl_seconds:.1f}s"
 
 assert float(checkout["subtotal"]) == 200000
 assert float(checkout["shippingAmount"]) == 17000
@@ -244,6 +303,17 @@ shipment = lookup.get("shipment")
 assert shipment is not None, "guest lookup must expose shipment metadata"
 assert shipment["provider"] == "mock"
 assert shipment["serviceCode"] == "REG"
+for pii_key in (
+    "recipientName",
+    "phone",
+    "addressLine1",
+    "addressLine2",
+    "district",
+    "city",
+    "province",
+    "postalCode",
+):
+    assert pii_key not in shipment, f"guest tracking must not expose {pii_key}"
 
-print("PASS: shipping quote -> checkout -> shipment -> guest lookup")
+print("PASS: configurable quote TTL + PII-safe shipping quote -> checkout -> guest lookup")
 PY

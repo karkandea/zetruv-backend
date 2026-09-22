@@ -38,6 +38,8 @@ services:
       ManualLogin__EncryptionKey: ${MANUAL_LOGIN_ENCRYPTION_KEY}
       ManualLogin__RetentionHours: ${MANUAL_LOGIN_RETENTION_HOURS:-24}
       Shipping__Provider: ${SHIPPING_PROVIDER:-mock}
+      Shipping__QuoteTtlMinutes: ${SHIPPING_QUOTE_TTL_MINUTES:-15}
+      Shipping__QuotePiiCleanupIntervalSeconds: ${SHIPPING_QUOTE_PII_CLEANUP_INTERVAL_SECONDS:-60}
       OrderAccess__TokenLifetimeMinutes: ${ORDER_ACCESS_TOKEN_LIFETIME_MINUTES:-1440}
       Media__Provider: ${MEDIA_PROVIDER:-local}
       Media__LocalPath: ${MEDIA_LOCAL_PATH:-/app/media}

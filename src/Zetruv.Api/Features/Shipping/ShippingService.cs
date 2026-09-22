@@ -3,6 +3,7 @@ using System.Text;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Zetruv.Api.Features.Catalog;
 using Zetruv.Api.Persistence;
 
@@ -24,8 +25,11 @@ public sealed record CreateShippingQuotesResult(
 
 public sealed class ShippingService(
     ZetruvDbContext db,
-    ShippingProviderResolver resolver)
+    ShippingProviderResolver resolver,
+    IOptions<ShippingOptions> options)
 {
+    private readonly TimeSpan _quoteTtl = TimeSpan.FromMinutes(
+        Math.Clamp(options.Value.QuoteTtlMinutes, 1, 60));
     public async Task<CreateShippingQuotesResult> CreateQuotesAsync(
         CreateShippingQuotesRequest request,
         CancellationToken cancellationToken = default)
@@ -139,7 +143,7 @@ public sealed class ShippingService(
         }
 
         var now = DateTimeOffset.UtcNow;
-        var expiresAt = now.AddMinutes(15);
+        var expiresAt = now.Add(_quoteTtl);
         var fingerprint = CreateCartFingerprint(groupedItems);
         var quotes = new List<ShippingQuote>(providerRates.Count);
 
@@ -216,8 +220,16 @@ public sealed class ShippingService(
                 x.Id == quoteId &&
                 x.OrderId == null &&
                 x.ConsumedAt == null &&
+                x.PiiClearedAt == null &&
                 x.ExpiresAt > now &&
-                x.CartFingerprint == fingerprint)
+                x.CartFingerprint == fingerprint &&
+                x.RecipientName != null &&
+                x.Phone != null &&
+                x.AddressLine1 != null &&
+                x.District != null &&
+                x.City != null &&
+                x.Province != null &&
+                x.PostalCode != null)
             .Select(x => new CheckoutShippingQuote(
                 x.Id,
                 x.Provider,
@@ -229,14 +241,14 @@ public sealed class ShippingService(
                 x.TotalWeightGrams,
                 x.EtaMinDays,
                 x.EtaMaxDays,
-                x.RecipientName,
-                x.Phone,
-                x.AddressLine1,
+                x.RecipientName!,
+                x.Phone!,
+                x.AddressLine1!,
                 x.AddressLine2,
-                x.District,
-                x.City,
-                x.Province,
-                x.PostalCode))
+                x.District!,
+                x.City!,
+                x.Province!,
+                x.PostalCode!))
             .SingleOrDefaultAsync(cancellationToken);
     }
 
@@ -254,11 +266,40 @@ public sealed class ShippingService(
                 x.ExpiresAt > now)
             .ExecuteUpdateAsync(setters => setters
                 .SetProperty(x => x.OrderId, orderId)
-                .SetProperty(x => x.ConsumedAt, now),
+                .SetProperty(x => x.ConsumedAt, now)
+                .SetProperty(x => x.RecipientName, (string?)null)
+                .SetProperty(x => x.Phone, (string?)null)
+                .SetProperty(x => x.AddressLine1, (string?)null)
+                .SetProperty(x => x.AddressLine2, (string?)null)
+                .SetProperty(x => x.District, (string?)null)
+                .SetProperty(x => x.City, (string?)null)
+                .SetProperty(x => x.Province, (string?)null)
+                .SetProperty(x => x.PostalCode, (string?)null)
+                .SetProperty(x => x.PiiClearedAt, now),
                 cancellationToken);
 
         return affected == 1;
     }
+
+    public async Task<int> ScrubExpiredQuotePiiAsync(
+        DateTimeOffset now,
+        CancellationToken cancellationToken = default) =>
+        await db.Set<ShippingQuote>()
+            .Where(x =>
+                x.PiiClearedAt == null &&
+                x.ConsumedAt == null &&
+                x.ExpiresAt <= now)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(x => x.RecipientName, (string?)null)
+                .SetProperty(x => x.Phone, (string?)null)
+                .SetProperty(x => x.AddressLine1, (string?)null)
+                .SetProperty(x => x.AddressLine2, (string?)null)
+                .SetProperty(x => x.District, (string?)null)
+                .SetProperty(x => x.City, (string?)null)
+                .SetProperty(x => x.Province, (string?)null)
+                .SetProperty(x => x.PostalCode, (string?)null)
+                .SetProperty(x => x.PiiClearedAt, now),
+                cancellationToken);
 
     public static string CreateCartFingerprint(
         IEnumerable<ShippingQuoteItemRequest> items)

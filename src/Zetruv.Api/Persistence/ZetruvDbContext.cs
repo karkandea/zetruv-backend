@@ -6,6 +6,7 @@ using Zetruv.Api.Features.Home;
 using Zetruv.Api.Features.Media;
 using Zetruv.Api.Features.Orders;
 using Zetruv.Api.Features.Payments;
+using Zetruv.Api.Features.Shipping;
 using Zetruv.Api.Features.Site;
 
 namespace Zetruv.Api.Persistence;
@@ -339,6 +340,41 @@ public sealed class ZetruvDbContext(
                 .WithOne(x => x.ManualLoginCredential)
                 .HasForeignKey<ManualLoginCredential>(x => x.OrderItemId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<ShippingQuote>(entity =>
+        {
+            entity.Property(x => x.Provider).HasMaxLength(80).IsRequired();
+            entity.Property(x => x.ProviderReference).HasMaxLength(180);
+            entity.Property(x => x.ServiceCode).HasMaxLength(80).IsRequired();
+            entity.Property(x => x.ServiceName).HasMaxLength(120).IsRequired();
+            entity.Property(x => x.Amount).HasPrecision(18, 2);
+            entity.Property(x => x.Currency).HasMaxLength(3).IsRequired();
+            entity.Property(x => x.RecipientName).HasMaxLength(120);
+            entity.Property(x => x.Phone).HasMaxLength(50);
+            entity.Property(x => x.AddressLine1).HasMaxLength(250);
+            entity.Property(x => x.AddressLine2).HasMaxLength(250);
+            entity.Property(x => x.District).HasMaxLength(120);
+            entity.Property(x => x.City).HasMaxLength(120);
+            entity.Property(x => x.Province).HasMaxLength(120);
+            entity.Property(x => x.PostalCode).HasMaxLength(10);
+            entity.Property(x => x.CartFingerprint).HasMaxLength(64).IsRequired();
+            entity.HasIndex(x => x.PiiClearedAt);
+        });
+
+        modelBuilder.Entity<Shipment>(entity =>
+        {
+            entity.Property(x => x.Status)
+                .HasConversion<string>()
+                .HasMaxLength(30)
+                .IsRequired();
+            entity.Property(x => x.Provider).HasMaxLength(80).IsRequired();
+            entity.Property(x => x.ProviderReference).HasMaxLength(180);
+            entity.Property(x => x.ServiceCode).HasMaxLength(80).IsRequired();
+            entity.Property(x => x.ServiceName).HasMaxLength(120).IsRequired();
+            entity.Property(x => x.TrackingNumber).HasMaxLength(180);
+            entity.Property(x => x.Cost).HasPrecision(18, 2);
+            entity.Property(x => x.Currency).HasMaxLength(3).IsRequired();
         });
 
         modelBuilder.Entity<PaymentTransaction>(entity =>
