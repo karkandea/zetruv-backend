@@ -33,6 +33,7 @@ services:
       Cors__AllowedOrigins__3: ${CMS_ORIGIN_LEGACY:-}
       Payments__Provider: ${PAYMENTS_PROVIDER:-mock}
       Payments__Mock__WebhookSecret: ${PAYMENTS_MOCK_WEBHOOK_SECRET}
+      Payments__Reconciliation__Enabled: ${PAYMENTS_RECONCILIATION_ENABLED:-true}
       GameAccountValidation__Provider: ${GAME_ACCOUNT_VALIDATION_PROVIDER:-mock}
       ManualLogin__EncryptionKey: ${MANUAL_LOGIN_ENCRYPTION_KEY}
       ManualLogin__RetentionHours: ${MANUAL_LOGIN_RETENTION_HOURS:-24}

@@ -5,6 +5,7 @@ cd "$(dirname "$0")/.."
 scripts=(
   smoke-catalog-pdp-contract.sh
   smoke-payment-recovery-concurrency.sh
+  smoke-payment-reconciliation.sh
   smoke-provider-mapping-runtime.sh
   smoke-cms-crud.sh
   smoke-openapi-security.sh

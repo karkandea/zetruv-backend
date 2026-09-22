@@ -1,6 +1,7 @@
 using System.Data;
 using System.Data.Common;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Zetruv.Api.Features.Catalog;
 using Zetruv.Api.Features.Orders;
 using Zetruv.Api.Persistence;
@@ -67,6 +68,7 @@ public sealed class PaymentService(
     InventoryReservationService inventoryReservations,
     OrderFulfillmentService fulfillmentService,
     FulfillmentExecutionService executionService,
+    IOptions<PaymentReconciliationOptions> reconciliationOptions,
     ILogger<PaymentService> logger)
 {
     public async Task<InitiatePaymentResult> InitiateAsync(
@@ -253,6 +255,8 @@ public sealed class PaymentService(
             PaymentUrl = Clean(gatewayResult.PaymentUrl),
             QrString = Clean(gatewayResult.QrString, trim: false),
             ExpiresAt = gatewayResult.ExpiresAt,
+            NextReconciliationAt = now.AddSeconds(
+                Math.Clamp(reconciliationOptions.Value.InitialDelaySeconds, 5, 3600)),
             CreatedAt = now,
             UpdatedAt = now
         };
@@ -291,13 +295,88 @@ public sealed class PaymentService(
                 parsed.IsConfigurationError);
         }
 
-        var notification = parsed.Notification;
+        return await ApplyNotificationWithOrderLockAsync(
+            gateway.Name,
+            parsed.Notification,
+            cancellationToken);
+    }
+
+    private async Task<ReconcilePaymentResult> ApplyNotificationWithOrderLockAsync(
+        string gatewayName,
+        PaymentWebhookNotification notification,
+        CancellationToken cancellationToken)
+    {
+        var orderId = await db.PaymentTransactions
+            .AsNoTracking()
+            .Where(x =>
+                x.Provider == gatewayName &&
+                x.ProviderReference == notification.ProviderReference &&
+                x.Type == PaymentTransactionType.Payment)
+            .Select(x => (Guid?)x.OrderId)
+            .SingleOrDefaultAsync(cancellationToken);
+
+        if (!orderId.HasValue)
+        {
+            return ReconcilePaymentResult.Failure(
+                "Payment transaction was not found.",
+                isNotFound: true);
+        }
+
+        var connection = db.Database.GetDbConnection();
+        var openedHere = connection.State != ConnectionState.Open;
+        if (openedHere)
+        {
+            await db.Database.OpenConnectionAsync(cancellationToken);
+        }
+
+        var (lockKey1, lockKey2) = PaymentLockKeys(orderId.Value);
+        await SetPaymentLockAsync(
+            connection,
+            acquire: true,
+            lockKey1,
+            lockKey2,
+            cancellationToken);
+
+        try
+        {
+            db.ChangeTracker.Clear();
+            return await ApplyNotificationAsync(
+                gatewayName,
+                notification,
+                cancellationToken);
+        }
+        finally
+        {
+            try
+            {
+                await SetPaymentLockAsync(
+                    connection,
+                    acquire: false,
+                    lockKey1,
+                    lockKey2,
+                    CancellationToken.None);
+            }
+            finally
+            {
+                if (openedHere)
+                {
+                    await db.Database.CloseConnectionAsync();
+                }
+            }
+        }
+    }
+
+    private async Task<ReconcilePaymentResult> ApplyNotificationAsync(
+        string gatewayName,
+        PaymentWebhookNotification notification,
+        CancellationToken cancellationToken)
+    {
         var paymentTransaction = await db.PaymentTransactions
             .Include(x => x.Order)
                 .ThenInclude(x => x.Items)
                     .ThenInclude(x => x.ManualLoginCredential)
             .SingleOrDefaultAsync(x =>
-                x.Provider == gateway.Name &&
+                x.Provider == gatewayName &&
                 x.ProviderReference == notification.ProviderReference &&
                 x.Type == PaymentTransactionType.Payment,
                 cancellationToken);
@@ -317,7 +396,7 @@ public sealed class PaymentService(
                 StringComparison.OrdinalIgnoreCase))
         {
             return ReconcilePaymentResult.Failure(
-                "Webhook amount or currency does not match the payment transaction.");
+                "Provider amount or currency does not match the payment transaction.");
         }
 
         var now = DateTimeOffset.UtcNow;
@@ -331,11 +410,14 @@ public sealed class PaymentService(
                 if (paymentTransaction.Status == PaymentTransactionStatus.Succeeded &&
                     order.PaymentStatus == PaymentStatus.Paid)
                 {
+                    paymentTransaction.NextReconciliationAt = null;
+                    paymentTransaction.ReconciliationMessage = null;
+                    await db.SaveChangesAsync(cancellationToken);
                     return ReconcilePaymentResult.Success(
                         new ReconcilePaymentResponse(
                             order.Id,
                             order.OrderNumber,
-                            gateway.Name,
+                            gatewayName,
                             notification.ProviderReference,
                             notification.Status,
                             order.PaymentStatus,
@@ -379,6 +461,8 @@ public sealed class PaymentService(
 
                     paymentTransaction.Status = PaymentTransactionStatus.Succeeded;
                     paymentTransaction.ProcessedAt ??= now;
+                    paymentTransaction.NextReconciliationAt = null;
+                    paymentTransaction.ReconciliationMessage = null;
                     paymentTransaction.UpdatedAt = now;
                     order.PaymentStatus = PaymentStatus.Paid;
                     order.PaymentProvider = paymentTransaction.Provider;
@@ -395,6 +479,9 @@ public sealed class PaymentService(
                         .ExecuteUpdateAsync(setters => setters
                             .SetProperty(x => x.Status, PaymentTransactionStatus.Failed)
                             .SetProperty(x => x.ProcessedAt, now)
+                            .SetProperty(x => x.NextReconciliationAt, (DateTimeOffset?)null)
+                            .SetProperty(x => x.ReconciliationMessage,
+                                "Superseded by another succeeded payment transaction.")
                             .SetProperty(x => x.UpdatedAt, now),
                             cancellationToken);
 
@@ -427,6 +514,8 @@ public sealed class PaymentService(
                 {
                     paymentTransaction.Status = PaymentTransactionStatus.Failed;
                     paymentTransaction.ProcessedAt ??= now;
+                    paymentTransaction.NextReconciliationAt = null;
+                    paymentTransaction.ReconciliationMessage = null;
                     paymentTransaction.UpdatedAt = now;
                 }
 
@@ -469,6 +558,8 @@ public sealed class PaymentService(
                         "Only a paid order can be marked as refunded.");
                 }
 
+                paymentTransaction.NextReconciliationAt = null;
+                paymentTransaction.ReconciliationMessage = null;
                 order.PaymentStatus = PaymentStatus.Refunded;
                 order.UpdatedAt = now;
                 await db.SaveChangesAsync(cancellationToken);
@@ -479,11 +570,353 @@ public sealed class PaymentService(
             new ReconcilePaymentResponse(
                 order.Id,
                 order.OrderNumber,
-                gateway.Name,
+                gatewayName,
                 notification.ProviderReference,
                 notification.Status,
                 order.PaymentStatus,
                 order.Status));
+    }
+
+    public async Task<int> ReconcileDueAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var settings = reconciliationOptions.Value;
+        if (!settings.Enabled)
+        {
+            return 0;
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        var initialDelay = TimeSpan.FromSeconds(
+            Math.Clamp(settings.InitialDelaySeconds, 5, 3600));
+        var batchSize = Math.Clamp(settings.MaxBatchSize, 1, 200);
+
+        var dueIds = await db.PaymentTransactions
+            .AsNoTracking()
+            .Where(x =>
+                x.Type == PaymentTransactionType.Payment &&
+                x.Status == PaymentTransactionStatus.Pending &&
+                x.ProviderReference != null &&
+                ((x.NextReconciliationAt.HasValue && x.NextReconciliationAt <= now) ||
+                 (!x.NextReconciliationAt.HasValue && x.CreatedAt <= now - initialDelay)))
+            .OrderBy(x => x.NextReconciliationAt ?? x.CreatedAt)
+            .ThenBy(x => x.CreatedAt)
+            .Select(x => x.Id)
+            .Take(batchSize)
+            .ToListAsync(cancellationToken);
+
+        foreach (var transactionId in dueIds)
+        {
+            try
+            {
+                var result = await ReconcileTransactionAsync(transactionId, cancellationToken);
+                if (result.Reconciliation is null)
+                {
+                    logger.LogWarning(
+                        "Payment reconciliation failed for transaction {TransactionId}: {Error}",
+                        transactionId,
+                        result.Error);
+                }
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                logger.LogError(
+                    exception,
+                    "Payment reconciliation crashed for transaction {TransactionId}.",
+                    transactionId);
+            }
+        }
+
+        return dueIds.Count;
+    }
+
+    public async Task<PaymentReconciliationAttemptResult> ReconcileTransactionAsync(
+        Guid transactionId,
+        CancellationToken cancellationToken = default)
+    {
+        var orderId = await db.PaymentTransactions
+            .AsNoTracking()
+            .Where(x => x.Id == transactionId)
+            .Select(x => (Guid?)x.OrderId)
+            .SingleOrDefaultAsync(cancellationToken);
+
+        if (!orderId.HasValue)
+        {
+            return PaymentReconciliationAttemptResult.Failure(
+                "Payment transaction was not found.",
+                isNotFound: true);
+        }
+
+        var connection = db.Database.GetDbConnection();
+        var openedHere = connection.State != ConnectionState.Open;
+        if (openedHere)
+        {
+            await db.Database.OpenConnectionAsync(cancellationToken);
+        }
+
+        var (lockKey1, lockKey2) = PaymentLockKeys(orderId.Value);
+        await SetPaymentLockAsync(
+            connection,
+            acquire: true,
+            lockKey1,
+            lockKey2,
+            cancellationToken);
+
+        try
+        {
+            db.ChangeTracker.Clear();
+            return await ReconcileTransactionLockedAsync(transactionId, cancellationToken);
+        }
+        finally
+        {
+            try
+            {
+                await SetPaymentLockAsync(
+                    connection,
+                    acquire: false,
+                    lockKey1,
+                    lockKey2,
+                    CancellationToken.None);
+            }
+            finally
+            {
+                if (openedHere)
+                {
+                    await db.Database.CloseConnectionAsync();
+                }
+            }
+        }
+    }
+
+    private async Task<PaymentReconciliationAttemptResult> ReconcileTransactionLockedAsync(
+        Guid transactionId,
+        CancellationToken cancellationToken)
+    {
+        var snapshot = await db.PaymentTransactions
+            .AsNoTracking()
+            .Where(x => x.Id == transactionId)
+            .Select(x => new
+            {
+                x.Id,
+                x.OrderId,
+                x.Order.OrderNumber,
+                x.Provider,
+                x.ProviderReference,
+                x.Type,
+                x.Status,
+                x.Amount,
+                x.Currency,
+                x.ReconciliationAttemptCount
+            })
+            .SingleOrDefaultAsync(cancellationToken);
+
+        if (snapshot is null)
+        {
+            return PaymentReconciliationAttemptResult.Failure(
+                "Payment transaction was not found.",
+                isNotFound: true);
+        }
+
+        if (snapshot.Type != PaymentTransactionType.Payment)
+        {
+            return PaymentReconciliationAttemptResult.Failure(
+                "Only payment transactions can be reconciled with the provider.",
+                isConflict: true);
+        }
+
+        if (snapshot.Status != PaymentTransactionStatus.Pending)
+        {
+            return PaymentReconciliationAttemptResult.Failure(
+                "Only pending payment transactions require provider reconciliation.",
+                isConflict: true);
+        }
+
+        if (string.IsNullOrWhiteSpace(snapshot.ProviderReference))
+        {
+            return PaymentReconciliationAttemptResult.Failure(
+                "Payment transaction does not have a provider reference.",
+                isConflict: true);
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        var gateway = gatewayResolver.ResolveByName(snapshot.Provider);
+        if (gateway is null)
+        {
+            const string error = "Payment provider adapter is not configured for reconciliation.";
+            await RecordReconciliationAttemptAsync(
+                snapshot.Id,
+                now,
+                NextReconciliationAt(now, snapshot.ReconciliationAttemptCount + 1),
+                error,
+                cancellationToken);
+            return PaymentReconciliationAttemptResult.Failure(
+                error,
+                isConfigurationError: true);
+        }
+
+        PaymentGatewayStatusResult providerResult;
+        try
+        {
+            providerResult = await gateway.GetPaymentStatusAsync(
+                new PaymentGatewayStatusRequest(
+                    snapshot.OrderId,
+                    snapshot.OrderNumber,
+                    snapshot.ProviderReference,
+                    snapshot.Amount,
+                    snapshot.Currency),
+                cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            logger.LogError(
+                exception,
+                "Payment provider {Provider} status query failed for transaction {TransactionId}.",
+                gateway.Name,
+                snapshot.Id);
+
+            const string error = "Payment provider status query is temporarily unavailable.";
+            await RecordReconciliationAttemptAsync(
+                snapshot.Id,
+                now,
+                NextReconciliationAt(now, snapshot.ReconciliationAttemptCount + 1),
+                error,
+                cancellationToken);
+            return PaymentReconciliationAttemptResult.Failure(error);
+        }
+
+        if (providerResult.Notification is null)
+        {
+            var error = providerResult.Error ?? "Payment provider did not return a transaction status.";
+            await RecordReconciliationAttemptAsync(
+                snapshot.Id,
+                now,
+                NextReconciliationAt(now, snapshot.ReconciliationAttemptCount + 1),
+                error,
+                cancellationToken);
+            return PaymentReconciliationAttemptResult.Failure(
+                error,
+                providerResult.IsConfigurationError);
+        }
+
+        var notification = providerResult.Notification;
+        if (!string.Equals(
+                notification.ProviderReference,
+                snapshot.ProviderReference,
+                StringComparison.Ordinal) ||
+            notification.Amount != snapshot.Amount ||
+            !string.Equals(notification.Currency, snapshot.Currency, StringComparison.OrdinalIgnoreCase))
+        {
+            const string error = "Payment provider status response does not match the payment transaction.";
+            await RecordReconciliationAttemptAsync(
+                snapshot.Id,
+                now,
+                nextAttemptAt: null,
+                error,
+                cancellationToken);
+            return PaymentReconciliationAttemptResult.Failure(error, isConflict: true);
+        }
+
+        var application = await ApplyNotificationAsync(
+            gateway.Name,
+            notification,
+            cancellationToken);
+
+        var terminal = notification.Status != PaymentWebhookStatus.Pending;
+        var applicationFailed = application.Payment is null;
+        var message = application.Error ?? $"Provider status: {notification.Status}.";
+        DateTimeOffset? nextAttemptAt = terminal || applicationFailed
+            ? null
+            : NextReconciliationAt(now, snapshot.ReconciliationAttemptCount + 1);
+
+        await RecordReconciliationAttemptAsync(
+            snapshot.Id,
+            now,
+            nextAttemptAt,
+            message,
+            cancellationToken);
+
+        if (applicationFailed)
+        {
+            return PaymentReconciliationAttemptResult.Failure(
+                application.Error ?? "Payment provider status could not be applied.",
+                application.IsConfigurationError,
+                application.IsNotFound,
+                application.IsConflict);
+        }
+
+        var response = await BuildReconciliationResponseAsync(
+            snapshot.Id,
+            notification.Status,
+            cancellationToken);
+
+        return response is null
+            ? PaymentReconciliationAttemptResult.Failure(
+                "Payment transaction was not found after reconciliation.",
+                isNotFound: true)
+            : PaymentReconciliationAttemptResult.Success(response);
+    }
+
+    private async Task RecordReconciliationAttemptAsync(
+        Guid transactionId,
+        DateTimeOffset attemptedAt,
+        DateTimeOffset? nextAttemptAt,
+        string? message,
+        CancellationToken cancellationToken)
+    {
+        var safeMessage = string.IsNullOrWhiteSpace(message)
+            ? null
+            : message.Trim()[..Math.Min(message.Trim().Length, 500)];
+
+        await db.PaymentTransactions
+            .Where(x => x.Id == transactionId)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(x => x.ReconciliationAttemptCount, x => x.ReconciliationAttemptCount + 1)
+                .SetProperty(x => x.LastReconciliationAttemptAt, attemptedAt)
+                .SetProperty(x => x.NextReconciliationAt, nextAttemptAt)
+                .SetProperty(x => x.ReconciliationMessage, safeMessage)
+                .SetProperty(x => x.UpdatedAt, attemptedAt),
+                cancellationToken);
+    }
+
+    private async Task<PaymentReconciliationAttemptResponse?> BuildReconciliationResponseAsync(
+        Guid transactionId,
+        PaymentWebhookStatus providerStatus,
+        CancellationToken cancellationToken) =>
+        await db.PaymentTransactions
+            .AsNoTracking()
+            .Where(x => x.Id == transactionId)
+            .Select(x => new PaymentReconciliationAttemptResponse(
+                x.Id,
+                x.OrderId,
+                x.Order.OrderNumber,
+                x.Provider,
+                x.ProviderReference!,
+                providerStatus,
+                x.Status,
+                x.Order.PaymentStatus,
+                x.Order.Status,
+                x.ReconciliationAttemptCount,
+                x.LastReconciliationAttemptAt!.Value,
+                x.NextReconciliationAt,
+                x.ReconciliationMessage))
+            .SingleOrDefaultAsync(cancellationToken);
+
+    private DateTimeOffset NextReconciliationAt(DateTimeOffset now, int attemptNumber)
+    {
+        var settings = reconciliationOptions.Value;
+        var baseSeconds = Math.Clamp(settings.BaseBackoffSeconds, 5, 3600);
+        var maxSeconds = Math.Clamp(settings.MaxBackoffSeconds, baseSeconds, 86400);
+        var exponent = Math.Clamp(attemptNumber - 1, 0, 8);
+        var delaySeconds = Math.Min(maxSeconds, baseSeconds * (1 << exponent));
+        return now.AddSeconds(delaySeconds);
     }
 
     private static InitiatePaymentResponse ToInitiateResponse(

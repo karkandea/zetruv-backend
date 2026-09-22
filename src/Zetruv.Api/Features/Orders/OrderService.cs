@@ -184,6 +184,10 @@ public sealed class OrderService(ZetruvDbContext db)
                         t.Amount,
                         t.Currency,
                         t.ProcessedAt,
+                        t.ReconciliationAttemptCount,
+                        t.LastReconciliationAttemptAt,
+                        t.NextReconciliationAt,
+                        t.ReconciliationMessage,
                         t.CreatedAt))
                     .ToList()))
             .SingleOrDefaultAsync(cancellationToken);

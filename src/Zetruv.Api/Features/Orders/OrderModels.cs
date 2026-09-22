@@ -118,6 +118,10 @@ public sealed class PaymentTransaction
     public string? QrString { get; set; }
     public DateTimeOffset? ExpiresAt { get; set; }
     public DateTimeOffset? ProcessedAt { get; set; }
+    public int ReconciliationAttemptCount { get; set; }
+    public DateTimeOffset? LastReconciliationAttemptAt { get; set; }
+    public DateTimeOffset? NextReconciliationAt { get; set; }
+    public string? ReconciliationMessage { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 }
@@ -183,6 +187,10 @@ public sealed record PaymentTransactionResponse(
     decimal Amount,
     string Currency,
     DateTimeOffset? ProcessedAt,
+    int ReconciliationAttemptCount,
+    DateTimeOffset? LastReconciliationAttemptAt,
+    DateTimeOffset? NextReconciliationAt,
+    string? ReconciliationMessage,
     DateTimeOffset CreatedAt);
 
 public sealed record OrderDetailResponse(
