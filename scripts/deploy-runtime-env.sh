@@ -9,6 +9,7 @@ case "$ENVIRONMENT" in
 esac
 
 [[ -f .env ]] || { echo 'Missing .env. Run bootstrap-runtime-env.sh first.' >&2; exit 1; }
+bash scripts/normalize-runtime-env.sh .env
 get_env() { sed -n "s/^${1}=//p" .env | tail -n 1; }
 command -v openssl >/dev/null 2>&1 || { echo 'openssl is required.' >&2; exit 1; }
 

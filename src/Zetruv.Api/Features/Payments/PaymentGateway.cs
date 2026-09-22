@@ -65,7 +65,8 @@ public sealed record PaymentWebhookNotification(
     string ProviderReference,
     PaymentWebhookStatus Status,
     decimal Amount,
-    string Currency);
+    string Currency,
+    string? EventId = null);
 
 public sealed record PaymentWebhookParseResult(
     PaymentWebhookNotification? Notification,
@@ -180,12 +181,23 @@ public sealed class MockPaymentGateway(IConfiguration configuration) : IPaymentG
                 "Webhook payload is incomplete or invalid."));
         }
 
+        var eventId = string.IsNullOrWhiteSpace(payload.EventId)
+            ? null
+            : payload.EventId.Trim();
+
+        if (eventId is { Length: > 200 })
+        {
+            return Task.FromResult(PaymentWebhookParseResult.Failure(
+                "Webhook event ID is too long."));
+        }
+
         return Task.FromResult(PaymentWebhookParseResult.Success(
             new PaymentWebhookNotification(
                 payload.ProviderReference.Trim(),
                 status,
                 payload.Amount,
-                payload.Currency.Trim().ToUpperInvariant())));
+                payload.Currency.Trim().ToUpperInvariant(),
+                eventId)));
     }
 
     private static bool VerifySignature(string rawBody, string signature, string secret)
@@ -210,7 +222,8 @@ public sealed class MockPaymentGateway(IConfiguration configuration) : IPaymentG
         string ProviderReference,
         string Status,
         decimal Amount,
-        string Currency);
+        string Currency,
+        string? EventId = null);
 }
 
 public sealed class PaymentGatewayResolver(

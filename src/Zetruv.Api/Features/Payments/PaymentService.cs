@@ -68,6 +68,7 @@ public sealed class PaymentService(
     InventoryReservationService inventoryReservations,
     OrderFulfillmentService fulfillmentService,
     FulfillmentExecutionService executionService,
+    PaymentWebhookEventLedger webhookEventLedger,
     IOptions<PaymentReconciliationOptions> reconciliationOptions,
     ILogger<PaymentService> logger)
 {
@@ -295,15 +296,74 @@ public sealed class PaymentService(
                 parsed.IsConfigurationError);
         }
 
-        return await ApplyNotificationWithOrderLockAsync(
-            gateway.Name,
-            parsed.Notification,
+        var notification = parsed.Notification;
+        if (string.IsNullOrWhiteSpace(notification.EventId))
+        {
+            return await ApplyNotificationWithOrderLockAsync(
+                gateway.Name,
+                notification,
+                providerEventId: null,
+                eventFingerprint: null,
+                cancellationToken);
+        }
+
+        var eventId = notification.EventId.Trim();
+        if (eventId.Length > 200)
+        {
+            return ReconcilePaymentResult.Failure("Webhook event ID is too long.");
+        }
+
+        notification = notification with { EventId = eventId };
+        var connection = db.Database.GetDbConnection();
+        var openedHere = connection.State != ConnectionState.Open;
+        if (openedHere)
+        {
+            await db.Database.OpenConnectionAsync(cancellationToken);
+        }
+
+        var (eventKey1, eventKey2) = PaymentWebhookEventLedger.LockKeys(gateway.Name, eventId);
+        await SetPaymentLockAsync(
+            connection,
+            acquire: true,
+            eventKey1,
+            eventKey2,
             cancellationToken);
+
+        try
+        {
+            return await ApplyNotificationWithOrderLockAsync(
+                gateway.Name,
+                notification,
+                eventId,
+                PaymentWebhookEventLedger.Fingerprint(notification),
+                cancellationToken);
+        }
+        finally
+        {
+            try
+            {
+                await SetPaymentLockAsync(
+                    connection,
+                    acquire: false,
+                    eventKey1,
+                    eventKey2,
+                    CancellationToken.None);
+            }
+            finally
+            {
+                if (openedHere)
+                {
+                    await db.Database.CloseConnectionAsync();
+                }
+            }
+        }
     }
 
     private async Task<ReconcilePaymentResult> ApplyNotificationWithOrderLockAsync(
         string gatewayName,
         PaymentWebhookNotification notification,
+        string? providerEventId,
+        string? eventFingerprint,
         CancellationToken cancellationToken)
     {
         var orderId = await db.PaymentTransactions
@@ -340,10 +400,39 @@ public sealed class PaymentService(
         try
         {
             db.ChangeTracker.Clear();
-            return await ApplyNotificationAsync(
+
+            PaymentWebhookEvent? webhookEvent = null;
+            if (providerEventId is not null && eventFingerprint is not null)
+            {
+                var begin = await webhookEventLedger.BeginAsync(
+                    orderId.Value,
+                    gatewayName,
+                    notification,
+                    eventFingerprint,
+                    cancellationToken);
+
+                if (begin.Replay is not null)
+                {
+                    return begin.Replay;
+                }
+
+                webhookEvent = begin.Event;
+            }
+
+            var result = await ApplyNotificationAsync(
                 gatewayName,
                 notification,
                 cancellationToken);
+
+            if (webhookEvent is not null)
+            {
+                await webhookEventLedger.CompleteAsync(
+                    webhookEvent,
+                    result,
+                    cancellationToken);
+            }
+
+            return result;
         }
         finally
         {

@@ -6,6 +6,7 @@ scripts=(
   smoke-catalog-pdp-contract.sh
   smoke-payment-recovery-concurrency.sh
   smoke-payment-reconciliation.sh
+  smoke-payment-webhook-event-ledger.sh
   smoke-provider-mapping-runtime.sh
   smoke-production-auto-id-mapping-guard.sh
   smoke-cms-crud.sh
