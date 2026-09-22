@@ -4,6 +4,7 @@ using Zetruv.Api.Features.Auth;
 using Zetruv.Api.Features.Catalog;
 using Zetruv.Api.Features.Home;
 using Zetruv.Api.Features.Orders;
+using Zetruv.Api.Features.Payments;
 using Zetruv.Api.Features.Site;
 
 namespace Zetruv.Api.Persistence;
@@ -29,6 +30,7 @@ public sealed class ZetruvDbContext(
     public DbSet<FulfillmentActivity> FulfillmentActivities => Set<FulfillmentActivity>();
     public DbSet<ManualLoginCredential> ManualLoginCredentials => Set<ManualLoginCredential>();
     public DbSet<PaymentTransaction> PaymentTransactions => Set<PaymentTransaction>();
+    public DbSet<PaymentWebhookEvent> PaymentWebhookEvents => Set<PaymentWebhookEvent>();
     public DbSet<InventoryReservation> InventoryReservations => Set<InventoryReservation>();
     public DbSet<SiteSetting> SiteSettings => Set<SiteSetting>();
     public DbSet<SiteFooterLink> SiteFooterLinks => Set<SiteFooterLink>();
@@ -345,6 +347,21 @@ public sealed class ZetruvDbContext(
                 .WithMany(x => x.Transactions)
                 .HasForeignKey(x => x.OrderId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<PaymentWebhookEvent>(entity =>
+        {
+            entity.ToTable("payment_webhook_events");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Provider).HasMaxLength(80).IsRequired();
+            entity.Property(x => x.ProviderEventId).HasMaxLength(200).IsRequired();
+            entity.Property(x => x.ProviderReference).HasMaxLength(180).IsRequired();
+            entity.Property(x => x.EventFingerprintSha256).HasMaxLength(64).IsRequired();
+            entity.Property(x => x.WebhookStatus).HasConversion<string>().HasMaxLength(30).IsRequired();
+            entity.Property(x => x.Outcome).HasConversion<string>().HasMaxLength(30).IsRequired();
+            entity.Property(x => x.ResultMessage).HasMaxLength(500);
+            entity.HasIndex(x => new { x.Provider, x.ProviderEventId }).IsUnique();
+            entity.HasIndex(x => new { x.OrderId, x.ReceivedAt });
         });
 
         modelBuilder.Entity<InventoryReservation>(entity =>
