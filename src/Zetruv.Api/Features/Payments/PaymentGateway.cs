@@ -13,6 +13,27 @@ public sealed record PaymentGatewayCreateRequest(
     string? CustomerEmail,
     string? CustomerPhone);
 
+public sealed record PaymentGatewayStatusRequest(
+    Guid OrderId,
+    string OrderNumber,
+    string ProviderReference,
+    decimal Amount,
+    string Currency);
+
+public sealed record PaymentGatewayStatusResult(
+    PaymentWebhookNotification? Notification,
+    string? Error,
+    bool IsConfigurationError = false)
+{
+    public static PaymentGatewayStatusResult Success(PaymentWebhookNotification notification) =>
+        new(notification, null);
+
+    public static PaymentGatewayStatusResult Failure(
+        string error,
+        bool isConfigurationError = false) =>
+        new(null, error, isConfigurationError);
+}
+
 public sealed record PaymentGatewayCreateResult(
     bool IsSuccess,
     string? ProviderReference,
@@ -72,6 +93,10 @@ public interface IPaymentGateway
         string rawBody,
         IReadOnlyDictionary<string, string> headers,
         CancellationToken cancellationToken = default);
+
+    Task<PaymentGatewayStatusResult> GetPaymentStatusAsync(
+        PaymentGatewayStatusRequest request,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed class MockPaymentGateway(IConfiguration configuration) : IPaymentGateway
@@ -89,6 +114,26 @@ public sealed class MockPaymentGateway(IConfiguration configuration) : IPaymentG
             reference,
             paymentUrl: $"mock://payment/{reference}",
             expiresAt: expiresAt));
+    }
+
+    public Task<PaymentGatewayStatusResult> GetPaymentStatusAsync(
+        PaymentGatewayStatusRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var status = request.ProviderReference.Contains("RECON-PAID", StringComparison.OrdinalIgnoreCase)
+            ? PaymentWebhookStatus.Paid
+            : request.ProviderReference.Contains("RECON-FAILED", StringComparison.OrdinalIgnoreCase)
+                ? PaymentWebhookStatus.Failed
+                : request.ProviderReference.Contains("RECON-REFUNDED", StringComparison.OrdinalIgnoreCase)
+                    ? PaymentWebhookStatus.Refunded
+                    : PaymentWebhookStatus.Pending;
+
+        return Task.FromResult(PaymentGatewayStatusResult.Success(
+            new PaymentWebhookNotification(
+                request.ProviderReference,
+                status,
+                request.Amount,
+                request.Currency)));
     }
 
     public Task<PaymentWebhookParseResult> ParseWebhookAsync(

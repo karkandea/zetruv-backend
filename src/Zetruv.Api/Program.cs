@@ -210,7 +210,10 @@ builder.Services.AddScoped<GameAccountValidationService>();
 builder.Services.AddScoped<ShippingProviderResolver>();
 builder.Services.AddScoped<ShippingService>();
 builder.Services.AddScoped<ShipmentFulfillmentService>();
+builder.Services.Configure<PaymentReconciliationOptions>(
+    builder.Configuration.GetSection(PaymentReconciliationOptions.SectionName));
 builder.Services.AddScoped<PaymentGatewayResolver>();
+builder.Services.AddHostedService<PaymentReconciliationBackgroundService>();
 builder.Services.AddScoped<AutoIdRuntimeProviderMappingService>();
 builder.Services.AddScoped<AutoIdFulfillmentProviderResolver>();
 builder.Services.AddScoped<PaymentService>();

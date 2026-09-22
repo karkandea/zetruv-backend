@@ -33,6 +33,7 @@ check_env() {
   grep -Fxq "POSTGRES_DB=$expected_db" "$TMP/.env"
   grep -Fxq "ASPNETCORE_ENVIRONMENT=$expected_aspnet" "$TMP/.env"
   grep -Fxq "FULFILLMENT_AUTO_ID_PROVIDER=mock" "$TMP/.env"
+  grep -Fxq "PAYMENTS_RECONCILIATION_ENABLED=true" "$TMP/.env"
   grep -Eq '^MANUAL_LOGIN_ENCRYPTION_KEY=.+$' "$TMP/.env"
   [[ "$(file_mode "$TMP/.env")" == 600 ]]
 
