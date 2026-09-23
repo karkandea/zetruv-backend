@@ -11,16 +11,10 @@ public sealed class GameAccountDetails
     public string Region { get; set; } = "";
     public int? Level { get; set; }
     public string? AdditionalInfo { get; set; }
+    // Legacy scalar columns are retained for backwards-safe data migration.
+    // New updates and reads use schema-validated JSON attributes.
+    public string AttributesJson { get; set; } = "{}";
 }
-
-public sealed record GameAccountDetailsResponse(
-    string Rank, int? SkinCount, string Region, int? Level, string? AdditionalInfo);
-public sealed record UpdateGameAccountDetailsRequest(
-    [Required, MaxLength(100)] string Rank,
-    [Range(0, 100000)] int? SkinCount,
-    [Required, MaxLength(120)] string Region,
-    [Range(1, 100000)] int? Level,
-    [MaxLength(1000)] string? AdditionalInfo);
 
 public sealed class ProductReview
 {

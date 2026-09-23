@@ -678,6 +678,16 @@ public sealed class CmsCatalogController(ZetruvDbContext db) : ControllerBase
             });
         }
 
+        if (request.Kind == ProductKind.GameAccount && !request.GameId.HasValue)
+            return BadRequest(new { message = "Game account listings require a game selection." });
+
+        if (request.Kind == ProductKind.GameAccount && currentProductId.HasValue &&
+            await db.Products.AnyAsync(x => x.Id == currentProductId.Value &&
+                x.GameId != request.GameId, cancellationToken) &&
+            await db.GameAccountDetails.AnyAsync(x => x.ProductId == currentProductId.Value,
+                cancellationToken))
+            return Conflict(new { message = "Cannot change a game after account attributes have been saved. Create a new listing." });
+
         if (request.GameId.HasValue &&
             !await db.Games.AnyAsync(x => x.Id == request.GameId.Value, cancellationToken))
         {

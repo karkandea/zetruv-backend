@@ -168,11 +168,17 @@ public sealed class CatalogService(ZetruvDbContext db)
 
         var metrics = await GetProductMetricsAsync([product.Id], cancellationToken);
         metrics.TryGetValue(product.Id, out var metric);
-        var account = await db.GameAccountDetails.AsNoTracking()
+        var accountJson = await db.GameAccountDetails.AsNoTracking()
             .Where(x => x.ProductId == product.Id)
-            .Select(x => new GameAccountDetailsResponse(
-                x.Rank, x.SkinCount, x.Region, x.Level, x.AdditionalInfo))
+            .Select(x => x.AttributesJson)
             .SingleOrDefaultAsync(cancellationToken);
+        var accountSchema = product.GameId.HasValue
+            ? await db.GameAccountAttributeDefinitions.AsNoTracking()
+                .Where(x => x.GameId == product.GameId.Value)
+                .ToListAsync(cancellationToken)
+            : [];
+        var account = accountJson is null ? null :
+            GameAccountAttributeRules.ToPublic(product.GameId, accountJson, accountSchema);
 
         return new ProductDetailResponse(
             product.Id,
@@ -312,9 +318,15 @@ public sealed class CatalogService(ZetruvDbContext db)
         var metrics = await GetProductMetricsAsync(productIds, cancellationToken);
         var accounts = await db.GameAccountDetails.AsNoTracking()
             .Where(x => productIds.Contains(x.ProductId))
-            .Select(x => new { x.ProductId, x.Rank, x.SkinCount,
-                x.Region, x.Level, x.AdditionalInfo })
+            .Select(x => new { x.ProductId, x.AttributesJson })
             .ToDictionaryAsync(x => x.ProductId, cancellationToken);
+        var gameIds = products.Where(x => x.Kind == ProductKind.GameAccount &&
+                x.GameId.HasValue)
+            .Select(x => x.GameId.GetValueOrDefault()).Distinct().ToArray();
+        var schemas = (await db.GameAccountAttributeDefinitions.AsNoTracking()
+            .Where(x => gameIds.Contains(x.GameId))
+            .ToListAsync(cancellationToken))
+            .GroupBy(x => x.GameId).ToDictionary(x => x.Key, x => x.ToList());
 
         return productIds.Select(id =>
         {
@@ -325,9 +337,12 @@ public sealed class CatalogService(ZetruvDbContext db)
                 SoldQuantity = metric?.SoldQuantity ?? 0,
                 Rating = metric?.Rating,
                 ReviewCount = metric?.ReviewCount ?? 0,
-                AccountDetails = account is null ? null : new GameAccountDetailsResponse(
-                    account.Rank, account.SkinCount, account.Region,
-                    account.Level, account.AdditionalInfo)
+                AccountDetails = account is null ? null :
+                    GameAccountAttributeRules.ToPublic(
+                        productById[id].GameId, account.AttributesJson,
+                        productById[id].GameId is Guid gameId &&
+                            schemas.TryGetValue(gameId, out var schema)
+                                ? schema : [], cardOnly: true)
             };
         }).ToList();
     }

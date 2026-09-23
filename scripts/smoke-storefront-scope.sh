@@ -143,32 +143,113 @@ assert check(api('GET','/api/v1/me/cart',token=first),200)['items']==[]
 search=check(api('GET','/api/v1/search/suggestions?q=storefront'),200)
 assert search['totalMatches']>=1 and 'Joki' in search['groups']
 assert check(api('GET','/api/v1/search/suggestions?q=st'),200)['totalMatches']==0
-# Product-specific game account teaser content is structured and CMS-managed.
+# Game account attributes are admin-configurable per GAME and stored per listing.
 account_cat=next(x for x in cats if x['kind']=='GameAccount')
-account=check(api('POST','/api/v1/cms/catalog/products',{
-    'categoryId':account_cat['id'],'gameId':None,'name':'Real Account',
-    'slug':'real-account','shortDescription':'Real account','description':'Account details',
-    'thumbnailUrl':'https://example.test/account.png','kind':'GameAccount',
+unlinked=check(api('POST','/api/v1/cms/catalog/products',{
+    'categoryId':account_cat['id'],'gameId':None,'name':'Invalid unlinked account',
+    'slug':'invalid-unlinked-account','kind':'GameAccount',
     'fulfillmentMethod':'MANUAL','requiresGameAccountValidation':False,
-    'isActive':True,'isFeatured':True,'sortOrder':1},admin),201)
-aid=account if isinstance(account,str) else account['id']
-check(api('POST',f'/api/v1/cms/catalog/products/{aid}/variants',{
-    'name':'Invalid unlimited account','sku':'STOREFRONT-ACCOUNT-B',
-    'price':1850000,'compareAtPrice':None,'stockQuantity':None,
-    'weightGrams':None,'isActive':True,'sortOrder':2},admin),400)
-check(api('POST',f'/api/v1/cms/catalog/products/{aid}/variants',{
-    'name':'Unique account','sku':'STOREFRONT-ACCOUNT-A','price':1850000,
-    'compareAtPrice':None,'stockQuantity':1,'weightGrams':None,
-    'isActive':True,'sortOrder':1},admin),201)
-check(api('PUT',f'/api/v1/cms/catalog/products/{aid}/game-account-details',{
-    'rank':'Mythic','skinCount':119,'region':'Indonesia/Jawa Barat',
-    'level':61,'additionalInfo':'Verified inventory'},admin),200)
-account_detail=check(api('GET','/api/v1/catalog/products/real-account'),200)
-assert account_detail['accountDetails']['rank']=='Mythic'
-assert account_detail['accountDetails']['skinCount']==119
-assert account_detail['accountDetails']['level']==61
-homepage=check(api('GET','/api/v1/homepage'),200)
-assert any(x['accountDetails'] and x['accountDetails']['region']=='Indonesia/Jawa Barat' for x in homepage['gameAccounts'])
+    'isActive':True,'isFeatured':False,'sortOrder':1},admin),400)
+def game(name,slug):
+    value=check(api('POST','/api/v1/cms/catalog/games',{
+        'name':name,'slug':slug,'publisher':'Test','imageUrl':None,
+        'isActive':True,'isPopular':False,'sortOrder':1},admin),201)
+    return value if isinstance(value,str) else value['id']
+ml=game('Mobile Legends','storefront-mobile-legends')
+dota=game('Dota 2','storefront-dota-2')
+def definition(game_id,key,label,typ,options=None,required=False,card=False):
+    value={'key':key,'label':label,'type':typ,'options':options or [],
+       'isRequired':required,'isActive':True,'showOnCard':card,'sortOrder':len(keys)}
+    result=check(api('POST',f'/api/v1/cms/catalog/games/{game_id}/account-attributes',value,admin),201)
+    keys.append(key)
+    return result,value
+keys=[]
+rank,rank_request=definition(ml,'rank','Rank','Select',['Mythic','Legend'],True,True)
+skin,skin_request=definition(ml,'skinCount','Jumlah Skin','Number',required=False,card=True)
+starlight,starlight_request=definition(ml,'starlight','Starlight','Boolean',card=True)
+hero_count,hero_request=definition(ml,'hero_count','Total Hero','Number')
+favorites,_=definition(ml,'favoriteHeroes','Favorite Heroes','MultiSelect',['Miya','Layla','Alucard'])
+keys=[]
+mmr,_=definition(dota,'mmr','MMR','Number',required=True,card=True)
+medal,_=definition(dota,'medal','Medal','Select',['Ancient','Divine','Immortal'],card=True)
+arcana,_=definition(dota,'arcana','Arcana','Number')
+ml_schema=check(api('GET',f'/api/v1/cms/catalog/games/{ml}/account-attributes',token=admin),200)
+dota_schema=check(api('GET',f'/api/v1/cms/catalog/games/{dota}/account-attributes',token=admin),200)
+assert len(ml_schema)==5 and len(dota_schema)==3
+assert not {x['key'] for x in ml_schema}.intersection({x['key'] for x in dota_schema})
+check(api('POST',f'/api/v1/cms/catalog/games/{ml}/account-attributes',rank_request,admin),409)
+check(api('POST',f'/api/v1/cms/catalog/games/{ml}/account-attributes',
+    {**rank_request,'key':'bad value'},admin),400)
+check(api('POST',f'/api/v1/cms/catalog/games/{ml}/account-attributes',
+    {**rank_request,'key':'dupe_options','options':['A','a']},admin),400)
+def listing(game_id,name,slug,sku):
+    prod=check(api('POST','/api/v1/cms/catalog/products',{
+        'categoryId':account_cat['id'],'gameId':game_id,'name':name,
+        'slug':slug,'shortDescription':'Real account','description':'Account details',
+        'thumbnailUrl':'https://example.test/account.png','kind':'GameAccount',
+        'fulfillmentMethod':'MANUAL','requiresGameAccountValidation':False,
+        'isActive':True,'isFeatured':True,'sortOrder':1},admin),201)
+    pid=prod if isinstance(prod,str) else prod['id']
+    check(api('POST',f'/api/v1/cms/catalog/products/{pid}/variants',{
+        'name':'Invalid unlimited account','sku':sku+'-BAD',
+        'price':1850000,'compareAtPrice':None,'stockQuantity':None,
+        'weightGrams':None,'isActive':True,'sortOrder':2},admin),400)
+    check(api('POST',f'/api/v1/cms/catalog/products/{pid}/variants',{
+        'name':'Unique account','sku':sku,'price':1850000,'compareAtPrice':None,
+        'stockQuantity':1,'weightGrams':None,'isActive':True,'sortOrder':1},admin),201)
+    return pid
+aid=listing(ml,'Real ML Account','real-ml-account','STOREFRONT-ML-A')
+dota_id=listing(dota,'Real Dota Account','real-dota-account','STOREFRONT-DOTA-A')
+other_ml=listing(ml,'Another ML Account','other-ml-account','STOREFRONT-ML-B')
+url=f'/api/v1/cms/catalog/products/{aid}/game-account-details'
+check(api('PUT',url,{'attributes':{'starlight':True}},admin),400)
+check(api('PUT',url,{'attributes':{'rank':'Wrong Tier'}},admin),400)
+check(api('PUT',url,{'attributes':{'rank':123}},admin),400)
+check(api('PUT',url,{'attributes':{'rank':'Mythic','mmr':5000}},admin),400)
+check(api('PUT',url,{'attributes':{'rank':'Mythic','skinCount':-1}},admin),400)
+check(api('PUT',url,{'attributes':{'rank':'Mythic','favoriteHeroes':['Layla','Layla']}},admin),400)
+check(api('PUT',url,{'attributes':{'rank':'Mythic','skinCount':119,
+    'starlight':True,'hero_count':125,'favoriteHeroes':['Miya','Layla']}},admin),200)
+check(api('PUT',f'/api/v1/cms/catalog/products/{other_ml}/game-account-details',
+    {'attributes':{'rank':'Legend','skinCount':52,'starlight':False}},admin),200)
+check(api('PUT',f'/api/v1/cms/catalog/products/{dota_id}/game-account-details',
+    {'attributes':{'mmr':6200,'medal':'Immortal','arcana':3}},admin),200)
+editor=check(api('GET',url,token=admin),200)
+assert editor['values']['starlight'] is True and editor['gameId']==ml
+assert len(editor['schema'])==5 and not editor['isLegacyUnlinked']
+ml_detail=check(api('GET','/api/v1/catalog/products/real-ml-account'),200)
+ml_attrs={x['key']:x['value'] for x in ml_detail['accountDetails']['attributes']}
+assert ml_attrs=={'rank':'Mythic','skinCount':119,'starlight':True,
+    'hero_count':125,'favoriteHeroes':['Miya','Layla']}
+assert {x['key']:x['value'] for x in check(api('GET','/api/v1/catalog/products/other-ml-account'),200)['accountDetails']['attributes']}['rank']=='Legend'
+dota_detail=check(api('GET','/api/v1/catalog/products/real-dota-account'),200)
+assert {x['key']:x['value'] for x in dota_detail['accountDetails']['attributes']}=={
+    'mmr':6200,'medal':'Immortal','arcana':3}
+home=check(api('GET','/api/v1/homepage'),200)
+ml_home=next(x for x in home['gameAccounts'] if x['slug']=='real-ml-account')
+dota_home=next(x for x in home['gameAccounts'] if x['slug']=='real-dota-account')
+assert {x['key'] for x in ml_home['accountDetails']['attributes']}=={'rank','skinCount','starlight'}
+assert {x['key'] for x in dota_home['accountDetails']['attributes']}=={'mmr','medal'}
+# Schema changes cannot silently invalidate existing values; labels can change.
+check(api('PUT',f"/api/v1/cms/catalog/games/{ml}/account-attributes/{rank['id']}",
+    {**rank_request,'type':'Number','options':[]},admin),409)
+check(api('PUT',f"/api/v1/cms/catalog/games/{ml}/account-attributes/{rank['id']}",
+    {**rank_request,'options':['Legend']},admin),409)
+check(api('PUT',f"/api/v1/cms/catalog/games/{ml}/account-attributes/{hero_count['id']}",
+    {**hero_request,'isRequired':True},admin),409)
+check(api('PUT',f"/api/v1/cms/catalog/games/{ml}/account-attributes/{starlight['id']}",
+    {**starlight_request,'label':'Status Starlight'},admin),200)
+assert next(x for x in check(api('GET','/api/v1/catalog/products/real-ml-account'),200)['accountDetails']['attributes'] if x['key']=='starlight')['label']=='Status Starlight'
+check(api('DELETE',f"/api/v1/cms/catalog/games/{ml}/account-attributes/{starlight['id']}",token=admin),204)
+assert 'starlight' not in {x['key'] for x in check(api('GET','/api/v1/catalog/products/real-ml-account'),200)['accountDetails']['attributes']}
+check(api('PUT',f"/api/v1/cms/catalog/games/{ml}/account-attributes/{starlight['id']}",
+    {**starlight_request,'label':'Status Starlight'},admin),200)
+assert next(x for x in check(api('GET','/api/v1/catalog/products/real-ml-account'),200)['accountDetails']['attributes'] if x['key']=='starlight')['value'] is True
+# Updating a listing replaces active fields and preserves its unrelated account's values.
+check(api('PUT',url,{'attributes':{'rank':'Legend','starlight':False}},admin),200)
+updated={x['key']:x['value'] for x in check(api('GET','/api/v1/catalog/products/real-ml-account'),200)['accountDetails']['attributes']}
+assert updated=={'rank':'Legend','starlight':False}
+assert next(x for x in check(api('GET','/api/v1/catalog/products/other-ml-account'),200)['accountDetails']['attributes'] if x['key']=='rank')['value']=='Legend'
 # Only the owner of an actual paid item can review it, and refund removes sold quantity.
 check(api('POST','/api/v1/me/reviews',{'orderItemId':raw,'rating':1},second),400)
 sql('UPDATE orders SET "PaymentStatus"=\'Refunded\' WHERE "Id"=\''+guest['id']+'\';')
@@ -180,5 +261,5 @@ check(api('PUT','/api/v1/cms/homepage/heroes/'+first_hero['id'],{
     **hero,'title':'Future banner','isActive':True,'startsAt':'2099-01-01T00:00:00Z',
     'endsAt':'2099-01-02T00:00:00Z'},admin),200)
 assert check(api('GET','/api/v1/homepage'),200)['heroes']==[]
-print('PASS: 10 total heroes, CTA safety, personal purchase isolation, customer cart, checkout owner, spend leaderboard, paid sales, verified moderated rating, search, account details, refunds, hero scheduling')
+print('PASS: 10 total heroes, CTA safety, personal purchase isolation, customer cart, checkout owner, spend leaderboard, paid sales, verified moderated rating, search, dynamic per-game/per-listing account attributes, refunds, hero scheduling')
 PY

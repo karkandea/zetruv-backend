@@ -73,10 +73,41 @@ Since the scope is **top spenders**, FE must not retain misleading heading
   guest purchases. Rating is the average of approved ratings **from completed,
   paid purchases tied to the reviewing account**, rounded to one decimal.
   No approved reviews = `rating: null`; never display an invented 4.9.
-- `PUT /api/v1/cms/catalog/products/{productId}/game-account-details`
-  manages rank, skin count, region, level, extra info. Only GameAccount products.
-  These appear on public detail and homepage cards; availability is determined
-  from real variant stock/visibility. Unique game account listings require exactly one stock unit; quantity greater than one or unlimited stock is rejected by CMS, cart and checkout.
+- Game Account metadata is **fully configurable per game** (not fixed Rank/Skin/Region/Level):
+  `GET /api/v1/cms/catalog/games/{gameId}/account-attributes`,
+  `POST /api/v1/cms/catalog/games/{gameId}/account-attributes`,
+  `PUT /api/v1/cms/catalog/games/{gameId}/account-attributes/{attributeId}`, and
+  `DELETE /api/v1/cms/catalog/games/{gameId}/account-attributes/{attributeId}`.
+  The last route **deactivates** the definition without destroying saved listing values;
+  update with `isActive: true` restores it. Maximum 30 definitions per game,
+  including inactive; keys are unique and immutable per game. Admin can change
+  labels, required/active state, sort order and card visibility. Existing values
+  block incompatible type/option or required-flag changes.
+- Definition request example for Mobile Legends:
+  `{"key":"starlight","label":"Starlight","type":"Boolean","options":[],"isRequired":false,"isActive":true,"showOnCard":true,"sortOrder":20}`.
+  Types: `Text` (250 characters), `Number` (0–999999999.99, two decimals),
+  `Boolean`, `Select`, `MultiSelect` (up to 20 CMS-defined options).
+  Dota 2 can independently define `mmr`, `medal`, and `arcana` without
+  changing backend code or exposing unrelated ML fields.
+- New account listings require a selected `gameId`. Admin fills values **per product
+  listing**, not per game, at `GET/PUT /api/v1/cms/catalog/products/{productId}/game-account-details`.
+  PUT body: `{"attributes":{"rank":"Mythic","skinCount":119,"starlight":true}}`
+  (assuming that game's schema defines those keys). Unknown keys, wrong types,
+  missing required values, and invalid options return 400. Active values are replaced
+  on update; deactivated values remain archived. A listing's game cannot be reassigned
+  after saving attributes, preventing cross-game metadata leaks.
+- Public PDP and card responses contain
+  `accountDetails: { "gameId": "...", "attributes": [{ "key": "starlight", "label": "Starlight", "type": "Boolean", "value": true, "showOnCard": true, "sortOrder": 20 }] }`.
+  PDP returns all *active, populated* attributes; homepage/catalog cards return
+  only those marked `showOnCard`. FE should render by each attribute's type/label,
+  **never hardcode rank, skin count or region**, and omit absent values.
+- Migration `AddDynamicGameAccountAttributes` copies legacy fixed values to JSON
+  and seeds editable templates **only for games with existing account listings**.
+  Historical records without a game retain read-only fallback attributes; they are
+  not silently assigned to a different game. New games start without a forced schema.
+  The existing columns remain as legacy compatibility storage. Unique account
+  listings still require stock quantity exactly 1; CMS/cart/checkout reject
+  quantities greater than one or unlimited stock.
 - `POST /api/v1/me/reviews` requires purchased order item; one review per
   order item. New reviews are unapproved. CMS lists/moderates under
   `/api/v1/cms/catalog/reviews`; only approved reviews contribute to rating.
@@ -85,5 +116,7 @@ Since the scope is **top spenders**, FE must not retain misleading heading
 
 **Remaining FE integration:** Existing Hero, ServiceCategories, LatestArticles,
 GameAccounts, Footer and Leaderboard currently have static/fallback content.
-FE needs to consume the documented APIs and show truthful empty states.
+FE needs to consume the documented APIs, add per-game attribute schema editor
+and per-listing typed form in CMS, and show truthful empty states.
+The backend CMS API exists in this PR; the **CMS visual editor is not yet wired**.
 The client-owned email provider is intentionally not configured here.

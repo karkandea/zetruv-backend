@@ -16,34 +16,63 @@ public sealed class CmsGameAccountDetailsController(ZetruvDbContext db) : Contro
     [HttpGet("products/{productId:guid}/game-account-details")]
     public async Task<IActionResult> Get(Guid productId, CancellationToken ct)
     {
+        var product = await db.Products.AsNoTracking()
+            .Where(x => x.Id == productId && x.Kind == ProductKind.GameAccount)
+            .Select(x => new { x.Id, x.GameId }).SingleOrDefaultAsync(ct);
+        if (product is null) return NotFound();
         var details = await db.GameAccountDetails.AsNoTracking()
             .SingleOrDefaultAsync(x => x.ProductId == productId, ct);
-        return details is null ? NotFound() : Ok(details);
+        var schema = product.GameId.HasValue
+            ? await db.GameAccountAttributeDefinitions.AsNoTracking()
+                .Where(x => x.GameId == product.GameId.Value)
+                .OrderBy(x => x.SortOrder).ThenBy(x => x.Key).ToListAsync(ct)
+            : [];
+        return Ok(new GameAccountDetailsEditorResponse(productId, product.GameId,
+            details is null ? [] : GameAccountAttributeRules.ParseValues(details.AttributesJson),
+            schema.Select(GameAccountAttributeRules.ToResponse).ToList(),
+            product.GameId is null));
     }
 
     [HttpPut("products/{productId:guid}/game-account-details")]
     public async Task<IActionResult> Upsert(
         Guid productId, UpdateGameAccountDetailsRequest request, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(request.Rank) || string.IsNullOrWhiteSpace(request.Region))
-            return BadRequest(new { message = "Rank and region are required." });
-        var valid = await db.Products.AnyAsync(x =>
-            x.Id == productId && x.Kind == ProductKind.GameAccount, ct);
-        if (!valid) return BadRequest(new { message = "Product must be a game account." });
-        var details = await db.GameAccountDetails
-            .SingleOrDefaultAsync(x => x.ProductId == productId, ct);
+        var product = await db.Products.AsNoTracking()
+            .Where(x => x.Id == productId && x.Kind == ProductKind.GameAccount)
+            .Select(x => new { x.Id, x.GameId }).SingleOrDefaultAsync(ct);
+        if (product is null) return NotFound();
+        if (!product.GameId.HasValue)
+            return Conflict(new { message = "Legacy account listing has no game; create a game-linked listing to edit attributes." });
+        if (request.Attributes is null)
+            return BadRequest(new { message = "Attributes object is required." });
+
+        var schema = await db.GameAccountAttributeDefinitions.AsNoTracking()
+            .Where(x => x.GameId == product.GameId.Value).ToListAsync(ct);
+        var error = GameAccountAttributeRules.NormalizeValues(
+            schema, request.Attributes, out var normalizedJson);
+        if (error is not null) return BadRequest(new { message = error });
+
+        var details = await db.GameAccountDetails.SingleOrDefaultAsync(
+            x => x.ProductId == productId, ct);
         if (details is null)
         {
             details = new GameAccountDetails { ProductId = productId };
             db.GameAccountDetails.Add(details);
         }
-        details.Rank = request.Rank.Trim();
-        details.SkinCount = request.SkinCount;
-        details.Region = request.Region.Trim();
-        details.Level = request.Level;
-        details.AdditionalInfo = request.AdditionalInfo?.Trim();
+        // The submitted active fields replace the active portion of a listing.
+        // Inactive values stay archived for a possible CMS reactivation.
+        var activeKeys = schema.Where(x => x.IsActive).Select(x => x.Key).ToHashSet();
+        var retained = GameAccountAttributeRules.ParseValues(details.AttributesJson)
+            .Where(x => !activeKeys.Contains(x.Key))
+            .ToDictionary(x => x.Key, x => x.Value);
+        foreach (var (key, value) in GameAccountAttributeRules.ParseValues(normalizedJson))
+            retained[key] = value;
+        details.AttributesJson = System.Text.Json.JsonSerializer.Serialize(retained);
         await db.SaveChangesAsync(ct);
-        return Ok(details);
+        return Ok(new GameAccountDetailsEditorResponse(productId, product.GameId,
+            GameAccountAttributeRules.ParseValues(details.AttributesJson),
+            schema.OrderBy(x => x.SortOrder).ThenBy(x => x.Key)
+                .Select(GameAccountAttributeRules.ToResponse).ToList(), false));
     }
 
     [HttpGet("reviews")]

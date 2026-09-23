@@ -23,6 +23,8 @@ public sealed class ZetruvDbContext(
     public DbSet<Game> Games => Set<Game>();
     public DbSet<Product> Products => Set<Product>();
     public DbSet<GameAccountDetails> GameAccountDetails => Set<GameAccountDetails>();
+    public DbSet<GameAccountAttributeDefinition> GameAccountAttributeDefinitions =>
+        Set<GameAccountAttributeDefinition>();
     public DbSet<ProductReview> ProductReviews => Set<ProductReview>();
     public DbSet<ProductVariant> ProductVariants => Set<ProductVariant>();
     public DbSet<ProductImage> ProductImages => Set<ProductImage>();
@@ -170,6 +172,20 @@ public sealed class ZetruvDbContext(
                 .OnDelete(DeleteBehavior.Restrict);
         });
 
+        modelBuilder.Entity<GameAccountAttributeDefinition>(entity =>
+        {
+            entity.ToTable("game_account_attribute_definitions");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Key).HasMaxLength(50).IsRequired();
+            entity.Property(x => x.Label).HasMaxLength(100).IsRequired();
+            entity.Property(x => x.Type).HasConversion<string>().HasMaxLength(20).IsRequired();
+            entity.Property(x => x.OptionsJson).HasColumnType("jsonb").IsRequired();
+            entity.HasIndex(x => new { x.GameId, x.Key }).IsUnique();
+            entity.HasIndex(x => new { x.GameId, x.IsActive, x.SortOrder });
+            entity.HasOne(x => x.Game).WithMany()
+                .HasForeignKey(x => x.GameId).OnDelete(DeleteBehavior.Cascade);
+        });
+
         modelBuilder.Entity<GameAccountDetails>(entity =>
         {
             entity.ToTable("game_account_details");
@@ -177,6 +193,8 @@ public sealed class ZetruvDbContext(
             entity.Property(x => x.Rank).HasMaxLength(100).IsRequired();
             entity.Property(x => x.Region).HasMaxLength(120).IsRequired();
             entity.Property(x => x.AdditionalInfo).HasMaxLength(1000);
+            entity.Property(x => x.AttributesJson).HasColumnType("jsonb").IsRequired()
+                .HasDefaultValueSql("'{}'::jsonb");
             entity.HasOne(x => x.Product).WithOne()
                 .HasForeignKey<GameAccountDetails>(x => x.ProductId)
                 .OnDelete(DeleteBehavior.Cascade);
