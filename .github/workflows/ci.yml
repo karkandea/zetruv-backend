@@ -21,11 +21,10 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
-        env:
-          DOTNET_INSTALL_DIR: ${{ runner.temp }}/dotnet
-        with:
-          dotnet-version: 10.0.x
+      - name: Verify preinstalled .NET 10 SDK
+        run: |
+          dotnet --version
+          dotnet --version | grep -Eq '^10\.'
       - name: Restore
         run: dotnet restore src/Zetruv.Api/Zetruv.Api.csproj
       - name: Restore dotnet tools
