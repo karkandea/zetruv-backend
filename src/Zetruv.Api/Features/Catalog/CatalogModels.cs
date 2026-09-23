@@ -164,7 +164,13 @@ public sealed record ProductListItemResponse(
     int ActiveVariantCount,
     bool IsAvailable,
     bool IsOnSale,
-    bool IsFeatured);
+    bool IsFeatured)
+{
+    public int SoldQuantity { get; init; }
+    public decimal? Rating { get; init; }
+    public int ReviewCount { get; init; }
+    public GameAccountDetailsResponse? AccountDetails { get; init; }
+}
 
 public sealed record ProductVariantResponse(
     Guid Id,
@@ -204,7 +210,13 @@ public sealed record ProductDetailResponse(
     GameResponse? Game,
     IReadOnlyList<ProductVariantResponse> Variants,
     IReadOnlyList<ProductImageResponse> Images,
-    IReadOnlyList<ProductInputFieldResponse> InputFields);
+    IReadOnlyList<ProductInputFieldResponse> InputFields)
+{
+    public int SoldQuantity { get; init; }
+    public decimal? Rating { get; init; }
+    public int ReviewCount { get; init; }
+    public GameAccountDetailsResponse? AccountDetails { get; init; }
+}
 
 public sealed record ProductPageResponse(
     IReadOnlyList<ProductListItemResponse> Items,

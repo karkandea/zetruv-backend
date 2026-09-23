@@ -42,7 +42,8 @@ public sealed record ArticleListItemResponse(
     string ThumbnailUrl,
     string? AuthorName,
     ArticleCategoryResponse Category,
-    DateTimeOffset PublishedAt);
+    DateTimeOffset PublishedAt,
+    int ReadTimeMinutes);
 
 public sealed record ArticleDetailResponse(
     Guid Id,
@@ -53,7 +54,8 @@ public sealed record ArticleDetailResponse(
     string ThumbnailUrl,
     string? AuthorName,
     ArticleCategoryResponse Category,
-    DateTimeOffset PublishedAt);
+    DateTimeOffset PublishedAt,
+    int ReadTimeMinutes);
 
 public sealed record ArticlePageResponse(
     IReadOnlyList<ArticleListItemResponse> Items,

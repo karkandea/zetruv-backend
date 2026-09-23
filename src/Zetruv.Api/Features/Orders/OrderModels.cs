@@ -53,6 +53,7 @@ public sealed class Order
     public string? CustomerName { get; set; }
     public string? CustomerEmail { get; set; }
     public string? CustomerPhone { get; set; }
+    public Guid? CustomerUserId { get; set; }
     public decimal Subtotal { get; set; }
     public decimal DiscountAmount { get; set; }
     public decimal ShippingAmount { get; set; }

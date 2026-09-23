@@ -366,10 +366,11 @@ public sealed class CmsCatalogController(ZetruvDbContext db) : ControllerBase
         UpsertVariantRequest request,
         CancellationToken cancellationToken)
     {
-        if (!await db.Products.AnyAsync(x => x.Id == productId, cancellationToken))
-        {
-            return NotFound();
-        }
+        var kind = await db.Products.Where(x => x.Id == productId)
+            .Select(x => (ProductKind?)x.Kind).SingleOrDefaultAsync(cancellationToken);
+        if (kind is null) return NotFound();
+        if (kind == ProductKind.GameAccount && request.StockQuantity != 1)
+            return BadRequest(new { message = "A unique game account listing must have stock quantity exactly 1." });
 
         var sku = CatalogText.NormalizeSku(request.Sku);
         if (await db.ProductVariants.AnyAsync(x => x.Sku == sku, cancellationToken))
@@ -404,6 +405,10 @@ public sealed class CmsCatalogController(ZetruvDbContext db) : ControllerBase
         {
             return NotFound();
         }
+        if (await db.Products.AnyAsync(x => x.Id == productId &&
+            x.Kind == ProductKind.GameAccount, cancellationToken) &&
+            request.StockQuantity != 1)
+            return BadRequest(new { message = "A unique game account listing must have stock quantity exactly 1." });
 
         var sku = CatalogText.NormalizeSku(request.Sku);
         if (await db.ProductVariants.AnyAsync(

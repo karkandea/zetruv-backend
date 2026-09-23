@@ -163,8 +163,16 @@ public sealed class CatalogService(ZetruvDbContext db)
             DateTimeOffset.UtcNow,
             cancellationToken);
         var variantResponses = variants
-            .Select(x => ToProductVariantResponse(x, offers))
+            .Select(x => ToProductVariantResponse(x, offers, product.Kind))
             .ToList();
+
+        var metrics = await GetProductMetricsAsync([product.Id], cancellationToken);
+        metrics.TryGetValue(product.Id, out var metric);
+        var account = await db.GameAccountDetails.AsNoTracking()
+            .Where(x => x.ProductId == product.Id)
+            .Select(x => new GameAccountDetailsResponse(
+                x.Rank, x.SkinCount, x.Region, x.Level, x.AdditionalInfo))
+            .SingleOrDefaultAsync(cancellationToken);
 
         return new ProductDetailResponse(
             product.Id,
@@ -177,7 +185,9 @@ public sealed class CatalogService(ZetruvDbContext db)
             product.ThumbnailUrl,
             product.RequiresGameAccountValidation,
             product.IsFeatured,
-            HasReadyInputSchema(product) && variantResponses.Any(x => x.IsAvailable),
+            HasReadyInputSchema(product) &&
+                (product.Kind != ProductKind.GameAccount || variants.Any(x => x.StockQuantity == 1)) &&
+                variantResponses.Any(x => x.IsAvailable),
             variantResponses.Any(x => x.IsOnSale),
             ToCategoryResponse(product.Category),
             product.Game is null ? null : ToGameResponse(product.Game),
@@ -194,7 +204,13 @@ public sealed class CatalogService(ZetruvDbContext db)
                 .OrderBy(x => x.SortOrder)
                 .ThenBy(x => x.Label)
                 .Select(ProductInputFieldRules.ToResponse)
-                .ToList());
+                .ToList())
+        {
+            SoldQuantity = metric?.SoldQuantity ?? 0,
+            Rating = metric?.Rating,
+            ReviewCount = metric?.ReviewCount ?? 0,
+            AccountDetails = account
+        };
     }
 
     public async Task<FlashSaleResponse?> GetActiveFlashSaleAsync(
@@ -226,6 +242,7 @@ public sealed class CatalogService(ZetruvDbContext db)
                 x.ProductVariant.IsActive &&
                 x.ProductVariant.Product.IsActive &&
                 (x.ProductVariant.Product.Game == null || x.ProductVariant.Product.Game.IsActive) &&
+                x.SalePrice >= 0 &&
                 x.SalePrice <= x.ProductVariant.Price)
             .OrderBy(x => x.SortOrder)
             .Take(Math.Clamp(limit, 1, 50))
@@ -292,9 +309,57 @@ public sealed class CatalogService(ZetruvDbContext db)
             now,
             cancellationToken);
 
-        return productIds
-            .Select(id => ToProductListItemResponse(productById[id], offers))
-            .ToList();
+        var metrics = await GetProductMetricsAsync(productIds, cancellationToken);
+        var accounts = await db.GameAccountDetails.AsNoTracking()
+            .Where(x => productIds.Contains(x.ProductId))
+            .Select(x => new { x.ProductId, x.Rank, x.SkinCount,
+                x.Region, x.Level, x.AdditionalInfo })
+            .ToDictionaryAsync(x => x.ProductId, cancellationToken);
+
+        return productIds.Select(id =>
+        {
+            metrics.TryGetValue(id, out var metric);
+            accounts.TryGetValue(id, out var account);
+            return ToProductListItemResponse(productById[id], offers) with
+            {
+                SoldQuantity = metric?.SoldQuantity ?? 0,
+                Rating = metric?.Rating,
+                ReviewCount = metric?.ReviewCount ?? 0,
+                AccountDetails = account is null ? null : new GameAccountDetailsResponse(
+                    account.Rank, account.SkinCount, account.Region,
+                    account.Level, account.AdditionalInfo)
+            };
+        }).ToList();
+    }
+
+    private sealed record ProductMetric(int SoldQuantity, decimal? Rating, int ReviewCount);
+
+    private async Task<IReadOnlyDictionary<Guid, ProductMetric>> GetProductMetricsAsync(
+        IEnumerable<Guid> productIds, CancellationToken ct)
+    {
+        var ids = productIds.Distinct().ToArray();
+        var sold = await db.OrderItems.AsNoTracking()
+            .Where(x => x.ProductId.HasValue && ids.Contains(x.ProductId.Value) &&
+                x.Order.PaymentStatus == Zetruv.Api.Features.Orders.PaymentStatus.Paid &&
+                x.Order.Status != Zetruv.Api.Features.Orders.OrderStatus.Cancelled)
+            .GroupBy(x => x.ProductId!.Value)
+            .Select(x => new { Id = x.Key, Quantity = x.Sum(i => i.Quantity) })
+            .ToDictionaryAsync(x => x.Id, x => x.Quantity, ct);
+        var reviews = await db.ProductReviews.AsNoTracking()
+            .Where(x => ids.Contains(x.ProductId) && x.IsApproved &&
+                x.Rating >= 1 && x.Rating <= 5)
+            .GroupBy(x => x.ProductId)
+            .Select(x => new { Id = x.Key, Count = x.Count(), Average = x.Average(y => y.Rating) })
+            .ToDictionaryAsync(x => x.Id, ct);
+
+        return ids.ToDictionary(id => id, id =>
+        {
+            sold.TryGetValue(id, out var soldCount);
+            reviews.TryGetValue(id, out var review);
+            return new ProductMetric(soldCount,
+                review is null ? null : Math.Round((decimal)review.Average, 1),
+                review?.Count ?? 0);
+        });
     }
 
     private async Task<IReadOnlyDictionary<Guid, ActiveSaleOffer>> LoadActiveSaleOffersAsync(
@@ -316,6 +381,7 @@ public sealed class CatalogService(ZetruvDbContext db)
                 x.Promotion.IsFlashSale &&
                 x.Promotion.StartsAt <= now &&
                 x.Promotion.EndsAt >= now &&
+                x.SalePrice >= 0 &&
                 x.SalePrice <= x.ProductVariant.Price)
             .Select(x => new ActiveSaleOffer(
                 x.ProductVariantId,
@@ -357,14 +423,17 @@ public sealed class CatalogService(ZetruvDbContext db)
             regularPrices.Count == 0 ? null : regularPrices.Min(),
             regularPrices.Count == 0 ? null : regularPrices.Max(),
             variants.Count,
-            HasReadyInputSchema(product) && variants.Any(IsVariantAvailable),
+            HasReadyInputSchema(product) &&
+                (product.Kind != ProductKind.GameAccount || variants.Any(x => x.StockQuantity == 1)) &&
+                variants.Any(IsVariantAvailable),
             variants.Any(x => offers.ContainsKey(x.Id)),
             product.IsFeatured);
     }
 
     private static ProductVariantResponse ToProductVariantResponse(
         ProductVariant variant,
-        IReadOnlyDictionary<Guid, ActiveSaleOffer> offers)
+        IReadOnlyDictionary<Guid, ActiveSaleOffer> offers,
+        ProductKind kind)
     {
         var hasOffer = offers.TryGetValue(variant.Id, out var offer);
         return new ProductVariantResponse(
@@ -376,7 +445,8 @@ public sealed class CatalogService(ZetruvDbContext db)
             variant.CompareAtPrice,
             variant.StockQuantity,
             variant.WeightGrams,
-            IsVariantAvailable(variant),
+            IsVariantAvailable(variant) &&
+                (kind != ProductKind.GameAccount || variant.StockQuantity == 1),
             hasOffer,
             hasOffer ? offer!.PromotionName : null,
             hasOffer ? offer!.EndsAt : null,

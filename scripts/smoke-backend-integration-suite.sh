@@ -12,6 +12,7 @@ scripts=(
   smoke-cms-crud.sh
   smoke-openapi-security.sh
   smoke-customer-auth.sh
+  smoke-storefront-scope.sh
   smoke-media-storage.sh
   smoke-auto-id-fulfillment.sh
   smoke-manual-login-credentials.sh

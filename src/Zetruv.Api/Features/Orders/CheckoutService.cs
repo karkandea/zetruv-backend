@@ -14,6 +14,7 @@ public sealed class CheckoutService(
 {
     public async Task<CreateCheckoutOrderResult> CreateOrderAsync(
         CreateCheckoutOrderRequest request,
+        Guid? customerUserId = null,
         CancellationToken cancellationToken = default)
     {
         var items = request.Items;
@@ -124,6 +125,11 @@ public sealed class CheckoutService(
                 return CreateCheckoutOrderResult.Failure(
                     $"{variant.ProductName} / {variant.Name} is not available for checkout.");
             }
+
+            if (variant.ProductKind == ProductKind.GameAccount &&
+                (item.Quantity != 1 || variant.StockQuantity != 1))
+                return CreateCheckoutOrderResult.Failure(
+                    "Game accounts must be unique, stock-tracked listings with quantity 1.");
 
             if (variant.StockQuantity.HasValue &&
                 requestedQuantityByVariant[variant.Id] > variant.StockQuantity.Value)
@@ -373,6 +379,7 @@ public sealed class CheckoutService(
             CustomerName = Clean(request.CustomerName),
             CustomerEmail = Clean(request.CustomerEmail),
             CustomerPhone = Clean(request.CustomerPhone),
+            CustomerUserId = customerUserId,
             Subtotal = subtotal,
             DiscountAmount = discountAmount,
             ShippingAmount = shippingAmount,

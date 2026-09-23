@@ -25,6 +25,7 @@ public sealed class HomepageService(
                 (x.EndsAt == null || x.EndsAt >= now))
             .OrderBy(x => x.SortOrder)
             .ThenBy(x => x.CreatedAt)
+            .Take(10)
             .Select(x => new HeroResponse(
                 x.Id,
                 x.Title,
@@ -62,9 +63,9 @@ public sealed class HomepageService(
             popularOnly: true,
             Limit(limits, "popular_games", 10),
             cancellationToken);
-        var recentlyPurchased = await orderService.GetRecentPurchasesAsync(
-            Limit(limits, "recently_purchased", 5),
-            cancellationToken);
+        // Personal purchase history is only available from the authenticated /api/v1/me endpoint.
+        // Never disclose global customer activity in a public, cacheable homepage response.
+        IReadOnlyList<RecentPurchaseResponse> recentlyPurchased = [];
         var joki = await catalogService.GetProductsForHomepageAsync(
             ProductKind.Joki,
             Limit(limits, "joki", 10),
@@ -92,6 +93,17 @@ public sealed class HomepageService(
             gameAccounts,
             merchandise,
             latestArticles);
+    }
+
+    public async Task<HomepageResponse> GetPersonalAsync(
+        Guid customerUserId, CancellationToken cancellationToken = default)
+    {
+        var homepage = await GetAsync(cancellationToken);
+        var recentSection = homepage.Sections.FirstOrDefault(x => x.Key == "recently_purchased");
+        if (recentSection is null) return homepage;
+        var recent = await orderService.GetRecentPurchasesAsync(customerUserId,
+            recentSection.ItemLimit, cancellationToken);
+        return homepage with { RecentlyPurchased = recent };
     }
 
     private static int Limit(

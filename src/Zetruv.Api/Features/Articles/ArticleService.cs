@@ -82,7 +82,8 @@ public sealed class ArticleService(ZetruvDbContext db)
                 x.ThumbnailUrl,
                 x.AuthorName,
                 new ArticleCategoryResponse(x.Category.Id, x.Category.Name, x.Category.Slug),
-                x.PublishedAt!.Value))
+                x.PublishedAt!.Value,
+                Math.Max(1, (x.Content.Length + 999) / 1000)))
             .SingleOrDefaultAsync(cancellationToken);
     }
 
@@ -112,5 +113,6 @@ public sealed class ArticleService(ZetruvDbContext db)
             x.ThumbnailUrl,
             x.AuthorName,
             new ArticleCategoryResponse(x.Category.Id, x.Category.Name, x.Category.Slug),
-            x.PublishedAt!.Value));
+            x.PublishedAt!.Value,
+            Math.Max(1, (x.Content.Length + 999) / 1000)));
 }
