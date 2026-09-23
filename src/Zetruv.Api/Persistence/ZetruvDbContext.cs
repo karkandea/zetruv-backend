@@ -14,6 +14,9 @@ public sealed class ZetruvDbContext(
     DbContextOptions<ZetruvDbContext> options) : DbContext(options)
 {
     public DbSet<AdminUser> AdminUsers => Set<AdminUser>();
+    public DbSet<CustomerUser> CustomerUsers => Set<CustomerUser>();
+    public DbSet<CustomerAuthToken> CustomerAuthTokens => Set<CustomerAuthToken>();
+    public DbSet<CustomerPasswordHistory> CustomerPasswordHistories => Set<CustomerPasswordHistory>();
     public DbSet<HomeHero> HomeHeroes => Set<HomeHero>();
     public DbSet<HomeSection> HomeSections => Set<HomeSection>();
     public DbSet<CatalogCategory> CatalogCategories => Set<CatalogCategory>();
@@ -50,6 +53,41 @@ public sealed class ZetruvDbContext(
             entity.Property(x => x.PasswordHash).HasMaxLength(1000).IsRequired();
             entity.Property(x => x.Role).HasMaxLength(50).IsRequired();
             entity.HasIndex(x => x.NormalizedEmail).IsUnique();
+        });
+
+        modelBuilder.Entity<CustomerUser>(entity =>
+        {
+            entity.ToTable("customer_users");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Name).HasMaxLength(120).IsRequired();
+            entity.Property(x => x.Email).HasMaxLength(320).IsRequired();
+            entity.Property(x => x.NormalizedEmail).HasMaxLength(320).IsRequired();
+            entity.Property(x => x.PasswordHash).HasMaxLength(1000).IsRequired();
+            entity.HasIndex(x => x.NormalizedEmail).IsUnique();
+        });
+
+        modelBuilder.Entity<CustomerAuthToken>(entity =>
+        {
+            entity.ToTable("customer_auth_tokens");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Purpose).HasConversion<string>().HasMaxLength(30).IsRequired();
+            entity.Property(x => x.TokenHash).HasMaxLength(64).IsRequired();
+            entity.HasIndex(x => x.TokenHash).IsUnique();
+            entity.HasIndex(x => new { x.CustomerUserId, x.Purpose, x.ExpiresAt });
+            entity.HasIndex(x => new { x.CustomerUserId, x.Purpose })
+                .IsUnique().HasFilter("\"ConsumedAt\" IS NULL");
+            entity.HasOne(x => x.CustomerUser).WithMany()
+                .HasForeignKey(x => x.CustomerUserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<CustomerPasswordHistory>(entity =>
+        {
+            entity.ToTable("customer_password_history");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.PasswordHash).HasMaxLength(1000).IsRequired();
+            entity.HasIndex(x => new { x.CustomerUserId, x.CreatedAt });
+            entity.HasOne(x => x.CustomerUser).WithMany()
+                .HasForeignKey(x => x.CustomerUserId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<HomeHero>(entity =>
