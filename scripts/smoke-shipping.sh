@@ -5,7 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
 CONTAINER=zetruv-pg-shipping
-PORT=55433
+PORT=57433
 API_PORT=18081
 DB=zetruv_shipping_test
 LOG=/tmp/zetruv-shipping-test.log

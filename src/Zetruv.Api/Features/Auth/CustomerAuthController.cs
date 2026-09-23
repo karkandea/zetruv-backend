@@ -150,6 +150,9 @@ public sealed class CustomerAuthController(
         var normalized = Normalize(newEmail);
         await using (var transaction = await db.Database.BeginTransactionAsync(ct))
         {
+            await db.Database.ExecuteSqlInterpolatedAsync(
+                $"SELECT 1 FROM customer_users WHERE \"Id\" = {token.CustomerUserId} FOR UPDATE",
+                ct);
             var customer = await db.CustomerUsers.SingleAsync(
                 x => x.Id == token.CustomerUserId, ct);
             if (!customer.IsActive || customer.EmailVerifiedAt is not null)
@@ -213,6 +216,9 @@ public sealed class CustomerAuthController(
                 message = "This verification link has expired. Request a new email." });
 
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        await db.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT 1 FROM customer_users WHERE \"Id\" = {token.CustomerUserId} FOR UPDATE",
+            ct);
         var now = DateTimeOffset.UtcNow;
         var updated = await db.CustomerAuthTokens
             .Where(x => x.Id == token.Id && x.ConsumedAt == null && x.ExpiresAt > now)
