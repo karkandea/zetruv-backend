@@ -2,7 +2,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 C="zetruv-pg-game-account-migration-$$"
-cleanup(){ docker rm -f "$C" >/dev/null 2>&1 || true; }
+cleanup(){ docker rm -fv "$C" >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 dotnet build src/Zetruv.Api/Zetruv.Api.csproj -c Release --nologo >/dev/null
 docker run -d --name "$C" -e POSTGRES_USER=zetruv -e POSTGRES_PASSWORD=zetruvtest \

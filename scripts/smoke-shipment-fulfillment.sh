@@ -15,7 +15,7 @@ cleanup() {
   if [[ -n "${API_PID:-}" ]]; then
     kill "$API_PID" >/dev/null 2>&1 || true
   fi
-  docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
+  docker rm -fv "$CONTAINER" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
@@ -23,7 +23,7 @@ echo "=== BUILD ==="
 dotnet build src/Zetruv.Api/Zetruv.Api.csproj --configuration Release
 
 echo "=== START FRESH POSTGRES ==="
-docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
+docker rm -fv "$CONTAINER" >/dev/null 2>&1 || true
 docker run -d --name "$CONTAINER" \
   -e POSTGRES_USER=zetruv \
   -e POSTGRES_PASSWORD=zetruvtest \

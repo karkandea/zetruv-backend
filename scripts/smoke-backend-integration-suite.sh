@@ -3,6 +3,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 scripts=(
+  smoke-ephemeral-volume-cleanup.sh
   smoke-catalog-pdp-contract.sh
   smoke-payment-recovery-concurrency.sh
   smoke-payment-reconciliation.sh

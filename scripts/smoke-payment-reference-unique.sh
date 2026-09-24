@@ -7,7 +7,7 @@ cd "$ROOT_DIR"
 CONTAINER=zetruv-pg-payment-ref
 PORT=55435
 DB=zetruv_payment_ref_test
-cleanup() { docker rm -f "$CONTAINER" >/dev/null 2>&1 || true; }
+cleanup() { docker rm -fv "$CONTAINER" >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 
 echo "=== BUILD ==="

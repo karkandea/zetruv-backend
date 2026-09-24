@@ -7,7 +7,7 @@ C="zetruv-pg-customer-auth-$$"
 PID=""
 cleanup() {
   [[ -n "$PID" ]] && kill "$PID" >/dev/null 2>&1 || true
-  docker rm -f "$C" >/dev/null 2>&1 || true
+  docker rm -fv "$C" >/dev/null 2>&1 || true
   rm -rf "$TMP"
 }
 trap cleanup EXIT

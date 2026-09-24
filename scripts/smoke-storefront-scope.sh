@@ -8,7 +8,7 @@ cleanup() {
   status=$?
   if [[ "$status" != 0 ]]; then echo "--- API ERROR LOG ---" >&2; tail -85 "$TMP/api.log" >&2 || true; fi
   [[ -n "$PID" ]] && kill "$PID" >/dev/null 2>&1 || true
-  docker rm -f "$C" >/dev/null 2>&1 || true
+  docker rm -fv "$C" >/dev/null 2>&1 || true
   rm -rf "$TMP"
 }
 trap cleanup EXIT
