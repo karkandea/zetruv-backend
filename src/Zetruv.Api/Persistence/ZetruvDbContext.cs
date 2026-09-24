@@ -221,6 +221,7 @@ public sealed class ZetruvDbContext(
             entity.HasKey(x => x.Id);
             entity.Property(x => x.Name).HasMaxLength(180).IsRequired();
             entity.Property(x => x.Sku).HasMaxLength(100).IsRequired();
+            entity.Property(x => x.GroupName).HasMaxLength(80);
             entity.Property(x => x.Price).HasPrecision(18, 2);
             entity.Property(x => x.CompareAtPrice).HasPrecision(18, 2);
             entity.HasIndex(x => x.Sku).IsUnique();

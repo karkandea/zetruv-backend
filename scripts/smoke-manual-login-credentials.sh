@@ -48,7 +48,7 @@ SQL
 json(){ python3 -c "import json,sys; print(json.load(sys.stdin)$1)"; }
 checkout(){
   local credentials="$1" email="$2"
-  curl -fsS -X POST "http://127.0.0.1:$API/api/v1/checkout/orders"     -H 'Content-Type: application/json'     -d "{\"customerName\":\"Manual Login Smoke\",\"customerEmail\":\"$email\",\"items\":[{\"productVariantId\":\"93000000-0000-0000-0000-000000000001\",\"quantity\":1,\"loginCredentials\":$credentials}]}"
+  curl -fsS -X POST "http://127.0.0.1:$API/api/v1/checkout/orders"     -H 'Content-Type: application/json'     -d "{\"customerName\":\"Manual Login Smoke\",\"customerEmail\":\"$email\",\"customerPhone\":\"+6281234567890\",\"items\":[{\"productVariantId\":\"93000000-0000-0000-0000-000000000001\",\"quantity\":1,\"loginCredentials\":$credentials}]}"
 }
 pay(){ curl -fsS -X POST "http://127.0.0.1:$API/api/v1/checkout/orders/$1/payment" -H "X-Order-Access-Token: $2"; }
 webhook(){
@@ -59,12 +59,12 @@ webhook(){
 }
 
 echo '=== REQUIRED CREDENTIALS ==='
-CODE=$(curl -sS -o /tmp/manual-login-error.json -w '%{http_code}' -X POST "http://127.0.0.1:$API/api/v1/checkout/orders"   -H 'Content-Type: application/json'   -d '{"customerEmail":"missing@zetruv.local","items":[{"productVariantId":"93000000-0000-0000-0000-000000000001","quantity":1}]}')
+CODE=$(curl -sS -o /tmp/manual-login-error.json -w '%{http_code}' -X POST "http://127.0.0.1:$API/api/v1/checkout/orders"   -H 'Content-Type: application/json'   -d '{"customerEmail":"missing@zetruv.local","customerPhone":"+6281234567890","items":[{"productVariantId":"93000000-0000-0000-0000-000000000001","quantity":1}]}')
 [[ "$CODE" == 400 ]]
 grep -Fq "Field 'Email / Username' is required" /tmp/manual-login-error.json
 
 echo '=== BLOCK ONE-TIME SECRETS ==='
-CODE=$(curl -sS -o /tmp/manual-login-error.json -w '%{http_code}' -X POST "http://127.0.0.1:$API/api/v1/checkout/orders"   -H 'Content-Type: application/json'   -d '{"customerEmail":"otp@zetruv.local","items":[{"productVariantId":"93000000-0000-0000-0000-000000000001","quantity":1,"loginCredentials":{"email":"player@example.com","password":"demo-pass","otp":"123456"}}]}')
+CODE=$(curl -sS -o /tmp/manual-login-error.json -w '%{http_code}' -X POST "http://127.0.0.1:$API/api/v1/checkout/orders"   -H 'Content-Type: application/json'   -d '{"customerEmail":"otp@zetruv.local","customerPhone":"+6281234567890","items":[{"productVariantId":"93000000-0000-0000-0000-000000000001","quantity":1,"loginCredentials":{"email":"player@example.com","password":"demo-pass","otp":"123456"}}]}')
 [[ "$CODE" == 400 ]]
 grep -Fq "Unexpected input field 'otp'" /tmp/manual-login-error.json
 

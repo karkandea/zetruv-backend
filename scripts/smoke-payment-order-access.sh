@@ -42,7 +42,7 @@ checkout(){
   local email="$1"
   curl -fsS -X POST "http://127.0.0.1:$API/api/v1/checkout/orders" \
     -H 'Content-Type: application/json' \
-    -d "{\"customerName\":\"Access Smoke\",\"customerEmail\":\"$email\",\"customerPhone\":null,\"items\":[{\"productVariantId\":\"72000000-0000-0000-0000-000000000001\",\"quantity\":1}]}"
+    -d "{\"customerName\":\"Access Smoke\",\"customerEmail\":\"$email\",\"customerPhone\":\"+6281234567890\",\"items\":[{\"productVariantId\":\"72000000-0000-0000-0000-000000000001\",\"quantity\":1}]}"
 }
 
 echo '=== CHECKOUT TOKEN ==='
@@ -102,7 +102,7 @@ echo 'PASS: authorized payment inserts exactly one pending transaction'
 echo '=== ORDER LOOKUP RECOVERY ==='
 LOOKUP=$(curl -fsS -X POST "http://127.0.0.1:$API/api/v1/orders/lookup" \
   -H 'Content-Type: application/json' \
-  -d "{\"orderNumber\":\"$FIRST_NO\",\"customerEmail\":\"access1@example.com\",\"customerPhone\":null}")
+  -d "{\"orderNumber\":\"$FIRST_NO\",\"customerEmail\":\"access1@example.com\",\"customerPhone\":\"+6281234567890\"}")
 echo "$LOOKUP" | python3 -m json.tool
 LOOKUP_ID=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["orderId"])' <<<"$LOOKUP")
 LOOKUP_TOKEN=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["orderAccessToken"])' <<<"$LOOKUP")

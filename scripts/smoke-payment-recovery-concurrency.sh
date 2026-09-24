@@ -33,7 +33,7 @@ INSERT INTO product_variants ("Id","ProductId","Name","Sku","Price","StockQuanti
 VALUES ('92000000-0000-0000-0000-000000000001','91000000-0000-0000-0000-000000000001','Default','PAY-RECOVERY-100',50000,10,TRUE,0,NOW(),NOW());
 SQL
 
-ORDER=$(curl -fsS -X POST "http://127.0.0.1:$API/api/v1/checkout/orders" -H 'Content-Type: application/json' -d '{"customerName":"Recovery Smoke","customerEmail":"recovery@zetruv.local","customerPhone":null,"items":[{"productVariantId":"92000000-0000-0000-0000-000000000001","quantity":1}]}')
+ORDER=$(curl -fsS -X POST "http://127.0.0.1:$API/api/v1/checkout/orders" -H 'Content-Type: application/json' -d '{"customerName":"Recovery Smoke","customerEmail":"recovery@zetruv.local","customerPhone":"+6281234567890","items":[{"productVariantId":"92000000-0000-0000-0000-000000000001","quantity":1}]}')
 OID=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])' <<<"$ORDER")
 ONO=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["orderNumber"])' <<<"$ORDER")
 TOK=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["orderAccessToken"])' <<<"$ORDER")
