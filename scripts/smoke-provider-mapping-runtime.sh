@@ -43,7 +43,7 @@ SQL
 
 json(){ python3 -c "import json,sys; print(json.load(sys.stdin)$1)"; }
 validate(){ curl -fsS -X POST "http://127.0.0.1:$API/api/v1/game-account/validate" -H 'Content-Type: application/json' -d '{"productId":"a2000000-0000-0000-0000-000000000001","fields":{"userid":"10001","zoneid":"20001"}}'; }
-checkout(){ curl -fsS -X POST "http://127.0.0.1:$API/api/v1/checkout/orders" -H 'Content-Type: application/json' -d "{\"customerName\":\"Provider Runtime\",\"customerEmail\":\"$2\",\"items\":[{\"productVariantId\":\"a3000000-0000-0000-0000-000000000001\",\"quantity\":1,\"gameAccountValidationId\":\"$1\"}]}"; }
+checkout(){ curl -fsS -X POST "http://127.0.0.1:$API/api/v1/checkout/orders" -H 'Content-Type: application/json' -d "{\"customerName\":\"Provider Runtime\",\"customerEmail\":\"$2\",\"customerPhone\":\"+6281234567890\",\"items\":[{\"productVariantId\":\"a3000000-0000-0000-0000-000000000001\",\"quantity\":1,\"gameAccountValidationId\":\"$1\"}]}"; }
 pay(){ curl -fsS -X POST "http://127.0.0.1:$API/api/v1/checkout/orders/$1/payment" -H "X-Order-Access-Token: $2"; }
 webhook(){
   local ref="$1"

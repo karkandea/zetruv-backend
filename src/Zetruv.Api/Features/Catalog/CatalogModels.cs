@@ -82,6 +82,8 @@ public sealed class ProductVariant
     public Product Product { get; set; } = null!;
     public string Name { get; set; } = string.Empty;
     public string Sku { get; set; } = string.Empty;
+    // CMS-defined package tab (for example Diamonds or Starlight).
+    public string? GroupName { get; set; }
     public decimal Price { get; set; }
     public decimal? CompareAtPrice { get; set; }
     public int? StockQuantity { get; set; }
@@ -185,7 +187,8 @@ public sealed record ProductVariantResponse(
     bool IsOnSale,
     string? PromotionName,
     DateTimeOffset? PromotionEndsAt,
-    int SortOrder);
+    int SortOrder,
+    string? GroupName = null);
 
 public sealed record ProductImageResponse(
     Guid Id,
@@ -236,7 +239,8 @@ public sealed record CmsProductVariantResponse(
     bool IsActive,
     int SortOrder,
     DateTimeOffset CreatedAt,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset UpdatedAt,
+    string? GroupName = null);
 
 public sealed record CmsProductDetailResponse(
     Guid Id,
@@ -339,7 +343,8 @@ public sealed record UpsertVariantRequest(
     int? StockQuantity,
     int? WeightGrams,
     bool IsActive,
-    int SortOrder);
+    int SortOrder,
+    [MaxLength(80)] string? GroupName = null);
 
 public sealed record UpsertImageRequest(
     [Required, MaxLength(1000)] string Url,

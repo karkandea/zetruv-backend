@@ -98,21 +98,28 @@ product=check(api('POST','/api/v1/cms/catalog/products',{
     'isActive':True,'isFeatured':True,'sortOrder':1},admin),201)
 pid=product if isinstance(product,str) else product['id']
 variant=check(api('POST',f'/api/v1/cms/catalog/products/{pid}/variants',{
-    'name':'Service A','sku':'STOREFRONT-JOKI-A','price':100000,
+    'name':'Service A','sku':'STOREFRONT-JOKI-A','groupName':'Ranked','price':100000,
     'compareAtPrice':None,'stockQuantity':12,'weightGrams':None,
     'isActive':True,'sortOrder':1},admin),201)
 vid=variant if isinstance(variant,str) else variant['id']
+detail=check(api('GET',f'/api/v1/cms/catalog/products/{pid}',token=admin),200)
+assert detail['variants'][0]['groupName']=='Ranked'
+public=check(api('GET','/api/v1/catalog/products/storefront-joki'),200)
+assert public['variants'][0]['groupName']=='Ranked'
+check(api('POST','/api/v1/checkout/orders',{'customerEmail':'guest@zetruv.test','items':[{'productVariantId':vid,'quantity':1}]}),400)
+print('PASS: grouped SKU projects in CMS/public PDP and WhatsApp required for digital checkout')
+
 check(api('PUT',f'/api/v1/me/cart/items/{vid}',{'productVariantId':vid,'quantity':2},first),200)
 check(api('PUT',f'/api/v1/me/cart/items/{vid}',{'productVariantId':vid,'quantity':1},second),200)
 assert len(check(api('GET','/api/v1/me/cart',token=first),200)['items'])==1
 assert check(api('GET','/api/v1/me/cart',token=second),200)['items'][0]['quantity']==1
 check(api('PUT',f'/api/v1/me/cart/items/{vid}',{'productVariantId':vid,'quantity':99},first),409)
-check(api('POST','/api/v1/checkout/orders',{'customerEmail':'second@zetruv.test','items':[{'productVariantId':vid,'quantity':1}]},first),400)
-order=check(api('POST','/api/v1/checkout/orders',{'items':[{'productVariantId':vid,'quantity':1}]},first),201)
+check(api('POST','/api/v1/checkout/orders',{'customerEmail':'second@zetruv.test','customerPhone':'+6281234567890','items':[{'productVariantId':vid,'quantity':1}]},first),400)
+order=check(api('POST','/api/v1/checkout/orders',{'customerPhone':'+6281234567890','items':[{'productVariantId':vid,'quantity':1}]},first),201)
 oid=order['id']
-other=check(api('POST','/api/v1/checkout/orders',{'items':[{'productVariantId':vid,'quantity':1}]},second),201)
+other=check(api('POST','/api/v1/checkout/orders',{'customerPhone':'+6281234567890','items':[{'productVariantId':vid,'quantity':1}]},second),201)
 oid2=other['id']
-guest=check(api('POST','/api/v1/checkout/orders',{'customerEmail':'guest@zetruv.test','items':[{'productVariantId':vid,'quantity':1}]}),201)
+guest=check(api('POST','/api/v1/checkout/orders',{'customerEmail':'guest@zetruv.test','customerPhone':'+6281234567890','items':[{'productVariantId':vid,'quantity':1}]}),201)
 # Isolated DB fixture simulates payment+fulfillment completion to exercise aggregated read models.
 sql('UPDATE orders SET "PaymentStatus"=\'Paid\', "Status"=\'Completed\', "PaidAt"=now(), "CompletedAt"=now() WHERE "Id" IN (\''+oid+'\',\''+oid2+'\',\''+guest['id']+'\');')
 first_history=check(api('GET','/api/v1/me/recent-purchases',token=first),200)

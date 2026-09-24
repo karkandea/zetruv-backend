@@ -104,7 +104,7 @@ PY
 [[ "$(curl -sS -o /dev/null -w '%{http_code}' "http://127.0.0.1:$API/api/v1/catalog/products/unconfigured-product")" == 404 ]]
 
 echo '=== CHECKOUT PRICE PARITY ==='
-ORDER=$(curl -fsS -X POST "http://127.0.0.1:$API/api/v1/checkout/orders" -H 'Content-Type: application/json' -d '{"customerEmail":"catalog@zetruv.local","items":[{"productVariantId":"a3000000-0000-0000-0000-000000000001","quantity":1,"loginCredentials":{"email":"player@example.com","password":"demo-password"}}]}')
+ORDER=$(curl -fsS -X POST "http://127.0.0.1:$API/api/v1/checkout/orders" -H 'Content-Type: application/json' -d '{"customerEmail":"catalog@zetruv.local","customerPhone":"+6281234567890","items":[{"productVariantId":"a3000000-0000-0000-0000-000000000001","quantity":1,"loginCredentials":{"email":"player@example.com","password":"demo-password"}}]}')
 python3 - "$ORDER" <<'PY'
 import json,sys
 x=json.loads(sys.argv[1]); assert x['items'][0]['unitPrice']==15000

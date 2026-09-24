@@ -291,7 +291,8 @@ public sealed class CmsCatalogController(ZetruvDbContext db) : ControllerBase
                 .ThenBy(x => x.Name)
                 .Select(x => new CmsProductVariantResponse(
                     x.Id, x.Name, x.Sku, x.Price, x.CompareAtPrice, x.StockQuantity,
-                    x.WeightGrams, x.IsActive, x.SortOrder, x.CreatedAt, x.UpdatedAt))
+                    x.WeightGrams, x.IsActive, x.SortOrder, x.CreatedAt, x.UpdatedAt,
+                    x.GroupName))
                 .ToList(),
             product.Images
                 .OrderBy(x => x.SortOrder)
@@ -773,6 +774,7 @@ public sealed class CmsCatalogController(ZetruvDbContext db) : ControllerBase
     {
         variant.Name = request.Name.Trim();
         variant.Sku = sku;
+        variant.GroupName = string.IsNullOrWhiteSpace(request.GroupName) ? null : request.GroupName.Trim();
         variant.Price = request.Price;
         variant.CompareAtPrice = request.CompareAtPrice;
         variant.StockQuantity = request.StockQuantity;

@@ -71,7 +71,7 @@ create_payment(){
   local email="$1"
   local out="$2"
   local order token payment txid
-  order=$(curl -fsS -X POST "$BASE/api/v1/checkout/orders" -H 'Content-Type: application/json' -d "{\"customerName\":\"Payment Reconcile\",\"customerEmail\":\"$email\",\"items\":[{\"productVariantId\":\"b2000000-0000-0000-0000-000000000001\",\"quantity\":1}]}")
+  order=$(curl -fsS -X POST "$BASE/api/v1/checkout/orders" -H 'Content-Type: application/json' -d "{\"customerName\":\"Payment Reconcile\",\"customerEmail\":\"$email\",\"customerPhone\":\"+6281234567890\",\"items\":[{\"productVariantId\":\"b2000000-0000-0000-0000-000000000001\",\"quantity\":1}]}")
   local oid
   oid=$(json '["id"]' <<<"$order")
   token=$(json '["orderAccessToken"]' <<<"$order")

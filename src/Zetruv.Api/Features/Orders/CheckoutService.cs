@@ -100,6 +100,16 @@ public sealed class CheckoutService(
                 "One or more product variants do not exist.");
         }
 
+        // Digital checkout always needs the WhatsApp contact shown in the Figma flow.
+        // Email alone is insufficient for fulfillment/support; merchandise keeps its
+        // separate shipping-recipient contact validation.
+        if (variants.Any(x => x.ProductKind != ProductKind.Merchandise) &&
+            string.IsNullOrWhiteSpace(request.CustomerPhone))
+        {
+            return CreateCheckoutOrderResult.Failure(
+                "WhatsApp phone is required for digital checkout.");
+        }
+
         var variantById = variants.ToDictionary(x => x.Id);
         var productIds = variants.Select(x => x.ProductId).Distinct().ToArray();
         var inputFields = await db.ProductInputFields
