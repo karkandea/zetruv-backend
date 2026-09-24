@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Zetruv.Api.Persistence;
@@ -11,9 +12,11 @@ using Zetruv.Api.Persistence;
 namespace Zetruv.Api.Persistence.Migrations
 {
     [DbContext(typeof(ZetruvDbContext))]
-    partial class ZetruvDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260923080846_AddStorefrontPersonalizationAndMetrics")]
+    partial class AddStorefrontPersonalizationAndMetrics
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -396,62 +399,6 @@ namespace Zetruv.Api.Persistence.Migrations
                     b.ToTable("games", (string)null);
                 });
 
-            modelBuilder.Entity("Zetruv.Api.Features.Catalog.GameAccountAttributeDefinition", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("GameId")
-                        .HasColumnType("uuid");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("boolean");
-
-                    b.Property<bool>("IsRequired")
-                        .HasColumnType("boolean");
-
-                    b.Property<string>("Key")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)");
-
-                    b.Property<string>("Label")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
-                    b.Property<string>("OptionsJson")
-                        .IsRequired()
-                        .HasColumnType("jsonb");
-
-                    b.Property<bool>("ShowOnCard")
-                        .HasColumnType("boolean");
-
-                    b.Property<int>("SortOrder")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("Type")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)");
-
-                    b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("GameId", "Key")
-                        .IsUnique();
-
-                    b.HasIndex("GameId", "IsActive", "SortOrder");
-
-                    b.ToTable("game_account_attribute_definitions", (string)null);
-                });
-
             modelBuilder.Entity("Zetruv.Api.Features.Catalog.GameAccountDetails", b =>
                 {
                     b.Property<Guid>("ProductId")
@@ -460,12 +407,6 @@ namespace Zetruv.Api.Persistence.Migrations
                     b.Property<string>("AdditionalInfo")
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
-
-                    b.Property<string>("AttributesJson")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("jsonb")
-                        .HasDefaultValueSql("'{}'::jsonb");
 
                     b.Property<int?>("Level")
                         .HasColumnType("integer");
@@ -2003,17 +1944,6 @@ namespace Zetruv.Api.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("CustomerUser");
-                });
-
-            modelBuilder.Entity("Zetruv.Api.Features.Catalog.GameAccountAttributeDefinition", b =>
-                {
-                    b.HasOne("Zetruv.Api.Features.Catalog.Game", "Game")
-                        .WithMany()
-                        .HasForeignKey("GameId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Game");
                 });
 
             modelBuilder.Entity("Zetruv.Api.Features.Catalog.GameAccountDetails", b =>

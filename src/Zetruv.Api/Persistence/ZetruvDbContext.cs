@@ -22,6 +22,10 @@ public sealed class ZetruvDbContext(
     public DbSet<CatalogCategory> CatalogCategories => Set<CatalogCategory>();
     public DbSet<Game> Games => Set<Game>();
     public DbSet<Product> Products => Set<Product>();
+    public DbSet<GameAccountDetails> GameAccountDetails => Set<GameAccountDetails>();
+    public DbSet<GameAccountAttributeDefinition> GameAccountAttributeDefinitions =>
+        Set<GameAccountAttributeDefinition>();
+    public DbSet<ProductReview> ProductReviews => Set<ProductReview>();
     public DbSet<ProductVariant> ProductVariants => Set<ProductVariant>();
     public DbSet<ProductImage> ProductImages => Set<ProductImage>();
     public DbSet<ProductInputField> ProductInputFields => Set<ProductInputField>();
@@ -32,6 +36,7 @@ public sealed class ZetruvDbContext(
     public DbSet<MediaAsset> MediaAssets => Set<MediaAsset>();
     public DbSet<Order> Orders => Set<Order>();
     public DbSet<OrderItem> OrderItems => Set<OrderItem>();
+    public DbSet<CustomerCartItem> CustomerCartItems => Set<CustomerCartItem>();
     public DbSet<FulfillmentActivity> FulfillmentActivities => Set<FulfillmentActivity>();
     public DbSet<ManualLoginCredential> ManualLoginCredentials => Set<ManualLoginCredential>();
     public DbSet<PaymentTransaction> PaymentTransactions => Set<PaymentTransaction>();
@@ -167,6 +172,49 @@ public sealed class ZetruvDbContext(
                 .OnDelete(DeleteBehavior.Restrict);
         });
 
+        modelBuilder.Entity<GameAccountAttributeDefinition>(entity =>
+        {
+            entity.ToTable("game_account_attribute_definitions");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Key).HasMaxLength(50).IsRequired();
+            entity.Property(x => x.Label).HasMaxLength(100).IsRequired();
+            entity.Property(x => x.Type).HasConversion<string>().HasMaxLength(20).IsRequired();
+            entity.Property(x => x.OptionsJson).HasColumnType("jsonb").IsRequired();
+            entity.HasIndex(x => new { x.GameId, x.Key }).IsUnique();
+            entity.HasIndex(x => new { x.GameId, x.IsActive, x.SortOrder });
+            entity.HasOne(x => x.Game).WithMany()
+                .HasForeignKey(x => x.GameId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<GameAccountDetails>(entity =>
+        {
+            entity.ToTable("game_account_details");
+            entity.HasKey(x => x.ProductId);
+            entity.Property(x => x.Rank).HasMaxLength(100).IsRequired();
+            entity.Property(x => x.Region).HasMaxLength(120).IsRequired();
+            entity.Property(x => x.AdditionalInfo).HasMaxLength(1000);
+            entity.Property(x => x.AttributesJson).HasColumnType("jsonb").IsRequired()
+                .HasDefaultValueSql("'{}'::jsonb");
+            entity.HasOne(x => x.Product).WithOne()
+                .HasForeignKey<GameAccountDetails>(x => x.ProductId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<ProductReview>(entity =>
+        {
+            entity.ToTable("product_reviews");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Comment).HasMaxLength(1000);
+            entity.HasIndex(x => x.OrderItemId).IsUnique();
+            entity.HasIndex(x => new { x.ProductId, x.IsApproved });
+            entity.HasOne<OrderItem>().WithMany().HasForeignKey(x => x.OrderItemId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<CustomerUser>().WithMany().HasForeignKey(x => x.CustomerUserId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<Product>().WithMany().HasForeignKey(x => x.ProductId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
         modelBuilder.Entity<ProductVariant>(entity =>
         {
             entity.ToTable("product_variants");
@@ -283,8 +331,22 @@ public sealed class ZetruvDbContext(
             entity.HasIndex(x => new { x.DeletedAt, x.CreatedAt });
         });
 
+        modelBuilder.Entity<CustomerCartItem>(entity =>
+        {
+            entity.ToTable("customer_cart_items");
+            entity.HasKey(x => x.Id);
+            entity.HasIndex(x => new { x.CustomerUserId, x.ProductVariantId }).IsUnique();
+            entity.HasOne<CustomerUser>().WithMany().HasForeignKey(x => x.CustomerUserId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(x => x.ProductVariant).WithMany().HasForeignKey(x => x.ProductVariantId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
         modelBuilder.Entity<Order>(entity =>
         {
+            entity.HasIndex(x => new { x.CustomerUserId, x.PaidAt });
+            entity.HasOne<CustomerUser>().WithMany()
+                .HasForeignKey(x => x.CustomerUserId).OnDelete(DeleteBehavior.SetNull);
             entity.ToTable("orders");
             entity.HasKey(x => x.Id);
             entity.Property(x => x.OrderNumber).HasMaxLength(40).IsRequired();

@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.IdentityModel.Tokens.Jwt;
 using Zetruv.Api.Features.Auth;
 using Zetruv.Api.Persistence;
 
@@ -10,6 +11,15 @@ namespace Zetruv.Api.Features.Home
     [Route("api/v1/homepage")]
     public sealed class HomepageController(HomepageService homepage) : ControllerBase
     {
+        [HttpGet("personal")]
+        [Authorize(AuthenticationSchemes = CustomerAuthConstants.Scheme)]
+        public async Task<ActionResult<HomepageResponse>> Personal(CancellationToken cancellationToken)
+        {
+            var customerId = Guid.Parse(User.FindFirst(JwtRegisteredClaimNames.Sub)!.Value);
+            Response.Headers.CacheControl = "private, no-store";
+            return Ok(await homepage.GetPersonalAsync(customerId, cancellationToken));
+        }
+
         [HttpGet]
         [ResponseCache(Duration = 30, Location = ResponseCacheLocation.Any)]
         public async Task<ActionResult<HomepageResponse>> Get(
@@ -53,12 +63,19 @@ namespace Zetruv.Api.Features.Home
                 return ValidationProblem(ModelState);
             }
 
+            if (!ValidHeroLinks(request))
+                return BadRequest(new { message = "CTA URLs must be local paths or HTTPS URLs, with paired labels." });
+            await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+            // Serialize concurrent CMS inserts so two requests cannot both create banner #10.
+            await db.Database.ExecuteSqlRawAsync(
+                "SELECT pg_advisory_xact_lock(8234710321)", cancellationToken);
+            if (await db.HomeHeroes.CountAsync(cancellationToken) >= 10)
+                return Conflict(new { code = "HERO_LIMIT_REACHED", message = "Maximum 10 hero banners in total, including inactive banners." });
             var hero = new HomeHero();
             Apply(hero, request);
-
             db.HomeHeroes.Add(hero);
             await db.SaveChangesAsync(cancellationToken);
-
+            await transaction.CommitAsync(cancellationToken);
             return StatusCode(StatusCodes.Status201Created, hero);
         }
 
@@ -84,6 +101,8 @@ namespace Zetruv.Api.Features.Home
                 return ValidationProblem(ModelState);
             }
 
+            if (!ValidHeroLinks(request))
+                return BadRequest(new { message = "CTA URLs must be local paths or HTTPS URLs, with paired labels." });
             Apply(hero, request);
             await db.SaveChangesAsync(cancellationToken);
 
@@ -145,6 +164,20 @@ namespace Zetruv.Api.Features.Home
             await db.SaveChangesAsync(cancellationToken);
 
             return Ok(section);
+        }
+
+        private static bool ValidHeroLinks(UpsertHeroRequest request) =>
+            ValidLink(request.PrimaryCtaLabel, request.PrimaryCtaUrl) &&
+            ValidLink(request.SecondaryCtaLabel, request.SecondaryCtaUrl);
+
+        private static bool ValidLink(string? label, string? url)
+        {
+            if (string.IsNullOrWhiteSpace(label) && string.IsNullOrWhiteSpace(url)) return true;
+            if (string.IsNullOrWhiteSpace(label) || string.IsNullOrWhiteSpace(url)) return false;
+            var value = url.Trim();
+            return (value.StartsWith('/') && !value.StartsWith("//") && !value.Contains('\\')) ||
+                (Uri.TryCreate(value, UriKind.Absolute, out var uri) &&
+                 uri.Scheme == Uri.UriSchemeHttps && string.IsNullOrEmpty(uri.UserInfo));
         }
 
         private static void Apply(HomeHero hero, UpsertHeroRequest request)

@@ -7,6 +7,7 @@ namespace Zetruv.Api.Features.Orders;
 public sealed class OrderService(ZetruvDbContext db)
 {
     public async Task<IReadOnlyList<RecentPurchaseResponse>> GetRecentPurchasesAsync(
+        Guid customerUserId,
         int limit,
         CancellationToken cancellationToken = default)
     {
@@ -15,6 +16,7 @@ public sealed class OrderService(ZetruvDbContext db)
         return await db.OrderItems
             .AsNoTracking()
             .Where(x =>
+                x.Order.CustomerUserId == customerUserId &&
                 x.Order.Status == OrderStatus.Completed &&
                 x.Order.PaymentStatus == PaymentStatus.Paid)
             .OrderByDescending(x => x.Order.CompletedAt ?? x.Order.PaidAt ?? x.Order.CreatedAt)
