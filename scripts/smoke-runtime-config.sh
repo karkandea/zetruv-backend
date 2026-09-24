@@ -36,6 +36,7 @@ check_env() {
   grep -Fxq "ASPNETCORE_ENVIRONMENT=$expected_aspnet" "$TMP/.env"
   grep -Fxq "PAYMENTS_RECONCILIATION_ENABLED=true" "$TMP/.env"
   grep -Fxq "MEDIA_PROVIDER=local" "$TMP/.env"
+  grep -Fxq "CUSTOMER_EMAIL_PROVIDER=disabled" "$TMP/.env"
   grep -Fxq "MEDIA_LOCAL_PATH=/app/media" "$TMP/.env"
   grep -Fxq "MEDIA_PUBLIC_PATH=/media" "$TMP/.env"
   grep -Fxq "MEDIA_MAX_FILE_SIZE_BYTES=5242880" "$TMP/.env"

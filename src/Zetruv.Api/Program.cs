@@ -70,6 +70,18 @@ builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
 
+    options.AddPolicy("customer-auth", httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: (httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown")
+                + ":" + httpContext.Request.Path,
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 10,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+                AutoReplenishment = true
+            }));
+
     options.AddPolicy("order-lookup", httpContext =>
         RateLimitPartition.GetFixedWindowLimiter(
             partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
@@ -123,6 +135,11 @@ builder.Services.AddDbContext<ZetruvDbContext>(options =>
 
 builder.Services.Configure<JwtOptions>(
     builder.Configuration.GetSection(JwtOptions.SectionName));
+builder.Services.Configure<CustomerAuthOptions>(
+    builder.Configuration.GetSection(CustomerAuthOptions.SectionName));
+builder.Services.Configure<CustomerEmailOptions>(
+    builder.Configuration.GetSection(CustomerEmailOptions.SectionName));
+builder.Services.AddHttpClient();
 builder.Services.Configure<MediaOptions>(
     builder.Configuration.GetSection(MediaOptions.SectionName));
 
@@ -163,6 +180,44 @@ builder.Services
                 Encoding.UTF8.GetBytes(jwtOptions.Key)),
             ClockSkew = TimeSpan.FromMinutes(1)
         };
+    })
+    .AddJwtBearer(CustomerAuthConstants.Scheme, options =>
+    {
+        options.MapInboundClaims = false;
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            ValidIssuer = jwtOptions.Issuer,
+            ValidAudience = CustomerJwtTokenService.Audience,
+            IssuerSigningKey = new SymmetricSecurityKey(
+                Encoding.UTF8.GetBytes(jwtOptions.Key)),
+            ClockSkew = TimeSpan.FromMinutes(1)
+        };
+        options.Events = new JwtBearerEvents
+        {
+            OnTokenValidated = async context =>
+            {
+                var sub = context.Principal?.FindFirst(
+                    System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Sub)?.Value;
+                var versionClaim = context.Principal?.FindFirst(
+                    CustomerJwtTokenService.VersionClaim)?.Value;
+                if (!Guid.TryParse(sub, out var userId) ||
+                    !int.TryParse(versionClaim, out var version))
+                {
+                    context.Fail("Invalid customer session.");
+                    return;
+                }
+                var db = context.HttpContext.RequestServices.GetRequiredService<ZetruvDbContext>();
+                var valid = await db.CustomerUsers.AsNoTracking().AnyAsync(
+                    x => x.Id == userId && x.IsActive && x.EmailVerifiedAt != null
+                         && x.TokenVersion == version,
+                    context.HttpContext.RequestAborted);
+                if (!valid) context.Fail("Customer session is no longer valid.");
+            }
+        };
     });
 
 builder.Services.AddAuthorization(options =>
@@ -196,6 +251,8 @@ builder.Services.AddCors(options =>
 });
 
 builder.Services.AddScoped<JwtTokenService>();
+builder.Services.AddScoped<CustomerJwtTokenService>();
+builder.Services.AddScoped<CustomerEmailSender>();
 builder.Services.AddScoped<AdminSeeder>();
 builder.Services.AddScoped<CatalogService>();
 builder.Services.AddScoped<CatalogSeeder>();

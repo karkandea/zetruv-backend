@@ -36,6 +36,15 @@ internal sealed class BearerSecuritySchemeTransformer(
                 BearerFormat = "JWT",
                 Description = "CMS administrator JWT. Obtain it from POST /api/v1/cms/auth/login."
             };
+        document.Components.SecuritySchemes[Zetruv.Api.Features.Auth.CustomerAuthConstants.Scheme] =
+            new OpenApiSecurityScheme
+            {
+                Type = SecuritySchemeType.Http,
+                Scheme = "bearer",
+                In = ParameterLocation.Header,
+                BearerFormat = "JWT",
+                Description = "Customer JWT. Obtain it from POST /api/v1/auth/login or verify-email."
+            };
     }
 }
 
@@ -55,12 +64,18 @@ internal sealed class BearerSecurityRequirementTransformer : IOpenApiOperationTr
             return Task.CompletedTask;
         }
 
+        var customerEndpoint = metadata.OfType<IAuthorizeData>()
+            .Any(x => (x.AuthenticationSchemes ?? "").Split(',')
+                .Any(s => string.Equals(s.Trim(),
+                    Zetruv.Api.Features.Auth.CustomerAuthConstants.Scheme,
+                    StringComparison.Ordinal)));
+        var scheme = customerEndpoint
+            ? Zetruv.Api.Features.Auth.CustomerAuthConstants.Scheme
+            : JwtBearerDefaults.AuthenticationScheme;
         operation.Security ??= [];
         operation.Security.Add(new OpenApiSecurityRequirement
         {
-            [new OpenApiSecuritySchemeReference(
-                JwtBearerDefaults.AuthenticationScheme,
-                context.Document)] = []
+            [new OpenApiSecuritySchemeReference(scheme, context.Document)] = []
         });
 
         return Task.CompletedTask;

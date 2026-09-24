@@ -27,6 +27,15 @@ services:
       Jwt__Key: ${JWT_KEY}
       CmsAdmin__Email: ${CMS_ADMIN_EMAIL}
       CmsAdmin__Password: ${CMS_ADMIN_PASSWORD}
+      CustomerAuth__FrontendBaseUrl: ${FRONTEND_ORIGIN:-http://localhost:5173}
+      CustomerEmail__Provider: ${CUSTOMER_EMAIL_PROVIDER:-disabled}
+      CustomerEmail__FromAddress: ${CUSTOMER_EMAIL_FROM:-}
+      CustomerEmail__FromName: ${CUSTOMER_EMAIL_FROM_NAME:-Zetruv}
+      CustomerEmail__ResendApiKey: ${CUSTOMER_EMAIL_RESEND_API_KEY:-}
+      CustomerEmail__SmtpHost: ${CUSTOMER_EMAIL_SMTP_HOST:-}
+      CustomerEmail__SmtpPort: ${CUSTOMER_EMAIL_SMTP_PORT:-587}
+      CustomerEmail__SmtpUsername: ${CUSTOMER_EMAIL_SMTP_USERNAME:-}
+      CustomerEmail__SmtpPassword: ${CUSTOMER_EMAIL_SMTP_PASSWORD:-}
       Cors__AllowedOrigins__0: ${FRONTEND_ORIGIN:-http://localhost:5173}
       Cors__AllowedOrigins__1: ${CMS_ORIGIN:-http://localhost:5174}
       Cors__AllowedOrigins__2: ${FRONTEND_ORIGIN_LEGACY:-}
