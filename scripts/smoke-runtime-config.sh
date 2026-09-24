@@ -55,7 +55,11 @@ check_env() {
   [[ "$key_bytes" == 32 ]]
 
   (cd "$TMP" && docker compose --project-name "$expected_project" --env-file .env config >/dev/null)
-  (cd "$TMP" && docker compose --project-name "$expected_project" --env-file .env config --volumes | grep -Fxq media_data)
+  # Do not pipe Compose into grep -q under pipefail: an early match can close
+  # stdout and make Compose exit 255 (SIGPIPE), intermittently failing CI.
+  local volumes
+  volumes=$(cd "$TMP" && docker compose --project-name "$expected_project" --env-file .env config --volumes)
+  grep -Fxq media_data <<< "$volumes"
 }
 
 check_env dev zetruv-dev 8081 zetruv_dev Development
