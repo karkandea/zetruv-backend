@@ -9,13 +9,13 @@ API=18196
 PID=""
 cleanup(){
   [[ -n "$PID" ]] && kill "$PID" >/dev/null 2>&1 || true
-  docker rm -f "$C" >/dev/null 2>&1 || true
+  docker rm -fv "$C" >/dev/null 2>&1 || true
   rm -f /tmp/zetruv-webhook-ledger*.json
 }
 trap cleanup EXIT
 
 dotnet build src/Zetruv.Api/Zetruv.Api.csproj --configuration Release --nologo
-docker rm -f "$C" >/dev/null 2>&1 || true
+docker rm -fv "$C" >/dev/null 2>&1 || true
 docker run -d --name "$C" -e POSTGRES_USER=zetruv -e POSTGRES_PASSWORD=zetruvtest -e POSTGRES_DB="$DB" -p 127.0.0.1:$PORT:5432 postgres:17-alpine >/dev/null
 until docker exec "$C" pg_isready -U zetruv -d "$DB" >/dev/null 2>&1; do sleep 1; done
 

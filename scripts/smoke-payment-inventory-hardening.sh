@@ -7,14 +7,14 @@ DB=zetruv_payment_hardening_test
 PORT=55435
 API=18083
 PID=""
-cleanup(){ [[ -n "$PID" ]] && kill "$PID" >/dev/null 2>&1 || true; docker rm -f "$C" >/dev/null 2>&1 || true; }
+cleanup(){ [[ -n "$PID" ]] && kill "$PID" >/dev/null 2>&1 || true; docker rm -fv "$C" >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 
 echo '=== BUILD ==='
 dotnet build src/Zetruv.Api/Zetruv.Api.csproj --configuration Release
 
 echo '=== START FRESH POSTGRES ==='
-docker rm -f "$C" >/dev/null 2>&1 || true
+docker rm -fv "$C" >/dev/null 2>&1 || true
 docker run -d --name "$C" -e POSTGRES_USER=zetruv -e POSTGRES_PASSWORD=zetruvtest -e POSTGRES_DB="$DB" -p 127.0.0.1:${PORT}:5432 postgres:17-alpine >/dev/null
 until docker exec "$C" pg_isready -U zetruv -d "$DB" >/dev/null 2>&1; do sleep 1; done
 

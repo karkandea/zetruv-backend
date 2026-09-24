@@ -8,14 +8,14 @@ PORT=57448
 LOG=/tmp/zetruv-production-auto-id-guard.log
 
 cleanup() {
-  docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
+  docker rm -fv "$CONTAINER" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
 echo "=== BUILD ==="
 dotnet build src/Zetruv.Api/Zetruv.Api.csproj --configuration Release --nologo
 
-docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
+docker rm -fv "$CONTAINER" >/dev/null 2>&1 || true
 docker run -d --name "$CONTAINER" \
   -e POSTGRES_USER=zetruv \
   -e POSTGRES_PASSWORD=zetruvtest \
