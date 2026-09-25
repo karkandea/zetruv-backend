@@ -48,6 +48,9 @@ public sealed class Order
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public string OrderNumber { get; set; } = string.Empty;
+    // Hashed, scoped to the verified customer; raw keys and request credentials are not stored.
+    public string? IdempotencyKeyHash { get; set; }
+    public string? IdempotencyRequestHash { get; set; }
     public OrderStatus Status { get; set; } = OrderStatus.Pending;
     public PaymentStatus PaymentStatus { get; set; } = PaymentStatus.Pending;
     public string? CustomerName { get; set; }

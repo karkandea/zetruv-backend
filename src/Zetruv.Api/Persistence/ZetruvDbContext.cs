@@ -380,6 +380,9 @@ public sealed class ZetruvDbContext(
             entity.ToTable("orders");
             entity.HasKey(x => x.Id);
             entity.Property(x => x.OrderNumber).HasMaxLength(40).IsRequired();
+            entity.Property(x => x.IdempotencyKeyHash).HasMaxLength(64);
+            entity.Property(x => x.IdempotencyRequestHash).HasMaxLength(64);
+            entity.HasIndex(x => x.IdempotencyKeyHash).IsUnique();
             entity.Property(x => x.VoucherCode).HasMaxLength(32);
             entity.Property(x => x.VoucherDiscountAmount).HasPrecision(18, 2);
             entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(30).IsRequired();
