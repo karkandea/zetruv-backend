@@ -34,6 +34,8 @@ public sealed class ZetruvDbContext(
     public DbSet<ArticleCategory> ArticleCategories => Set<ArticleCategory>();
     public DbSet<Article> Articles => Set<Article>();
     public DbSet<MediaAsset> MediaAssets => Set<MediaAsset>();
+    public DbSet<DiscountVoucher> DiscountVouchers => Set<DiscountVoucher>();
+    public DbSet<DiscountVoucherRedemption> DiscountVoucherRedemptions => Set<DiscountVoucherRedemption>();
     public DbSet<Order> Orders => Set<Order>();
     public DbSet<OrderItem> OrderItems => Set<OrderItem>();
     public DbSet<CustomerCartItem> CustomerCartItems => Set<CustomerCartItem>();
@@ -343,6 +345,33 @@ public sealed class ZetruvDbContext(
                 .OnDelete(DeleteBehavior.Restrict);
         });
 
+        modelBuilder.Entity<DiscountVoucher>(entity =>
+        {
+            entity.ToTable("discount_vouchers");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Code).HasMaxLength(32).IsRequired();
+            entity.Property(x => x.Type).HasConversion<string>().HasMaxLength(20).IsRequired();
+            entity.Property(x => x.Value).HasPrecision(18, 2);
+            entity.Property(x => x.MaximumDiscount).HasPrecision(18, 2);
+            entity.Property(x => x.MinimumSpend).HasPrecision(18, 2);
+            entity.Property(x => x.ApplicableKind).HasConversion<string>().HasMaxLength(30);
+            entity.HasIndex(x => x.Code).IsUnique();
+            entity.HasIndex(x => new { x.IsActive, x.StartsAt, x.EndsAt });
+        });
+        modelBuilder.Entity<DiscountVoucherRedemption>(entity =>
+        {
+            entity.ToTable("discount_voucher_redemptions");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.CustomerKey).HasMaxLength(64).IsRequired();
+            entity.Property(x => x.Amount).HasPrecision(18, 2);
+            entity.HasIndex(x => x.OrderId).IsUnique();
+            entity.HasIndex(x => new { x.VoucherId, x.CustomerKey, x.ReleasedAt });
+            entity.HasOne(x => x.Voucher).WithMany().HasForeignKey(x => x.VoucherId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.Order).WithMany().HasForeignKey(x => x.OrderId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
         modelBuilder.Entity<Order>(entity =>
         {
             entity.HasIndex(x => new { x.CustomerUserId, x.PaidAt });
@@ -351,6 +380,8 @@ public sealed class ZetruvDbContext(
             entity.ToTable("orders");
             entity.HasKey(x => x.Id);
             entity.Property(x => x.OrderNumber).HasMaxLength(40).IsRequired();
+            entity.Property(x => x.VoucherCode).HasMaxLength(32);
+            entity.Property(x => x.VoucherDiscountAmount).HasPrecision(18, 2);
             entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(30).IsRequired();
             entity.Property(x => x.PaymentStatus).HasConversion<string>().HasMaxLength(30).IsRequired();
             entity.Property(x => x.CustomerName).HasMaxLength(160);

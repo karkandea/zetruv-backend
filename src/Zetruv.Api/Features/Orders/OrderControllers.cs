@@ -16,7 +16,8 @@ public sealed class CmsOrdersController(
     OrderFulfillmentService fulfillmentService,
     FulfillmentExecutionService executionService,
     InventoryReservationService inventoryReservations,
-    ShipmentFulfillmentService shipmentFulfillment) : ControllerBase
+    ShipmentFulfillmentService shipmentFulfillment,
+    DiscountVoucherService discountVouchers) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<OrderPageResponse>> GetOrders(
@@ -103,6 +104,7 @@ public sealed class CmsOrdersController(
 
         await inventoryReservations.ReleaseAsync(id, cancellationToken);
         await shipmentFulfillment.CancelUnshippedAsync(id, cancellationToken);
+        await discountVouchers.ReleaseUnpaidCancellationAsync(id, cancellationToken);
 
         return NoContent();
     }

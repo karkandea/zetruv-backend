@@ -14,7 +14,8 @@ public sealed record CreateCheckoutOrderRequest(
     [EmailAddress, MaxLength(320)] string? CustomerEmail,
     [MaxLength(50)] string? CustomerPhone,
     [Required, MinLength(1)] IReadOnlyList<CheckoutItemRequest> Items,
-    Guid? ShippingQuoteId = null);
+    Guid? ShippingQuoteId = null,
+    [MaxLength(32)] string? VoucherCode = null);
 
 public sealed record CheckoutOrderItemResponse(
     Guid ProductVariantId,
@@ -43,7 +44,11 @@ public sealed record CreateCheckoutOrderResponse(
     IReadOnlyList<CheckoutOrderItemResponse> Items,
     DateTimeOffset CreatedAt,
     string? OrderAccessToken = null,
-    DateTimeOffset? OrderAccessTokenExpiresAt = null);
+    DateTimeOffset? OrderAccessTokenExpiresAt = null)
+{
+    public string? VoucherCode { get; init; }
+    public decimal VoucherDiscountAmount { get; init; }
+}
 
 public sealed record CreateCheckoutOrderResult(
     CreateCheckoutOrderResponse? Order,
