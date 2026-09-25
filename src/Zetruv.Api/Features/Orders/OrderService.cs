@@ -191,6 +191,10 @@ public sealed class OrderService(ZetruvDbContext db)
                         t.NextReconciliationAt,
                         t.ReconciliationMessage,
                         t.CreatedAt))
-                    .ToList()))
+                    .ToList())
+            {
+                VoucherCode = x.VoucherCode,
+                VoucherDiscountAmount = x.VoucherDiscountAmount
+            })
             .SingleOrDefaultAsync(cancellationToken);
 }

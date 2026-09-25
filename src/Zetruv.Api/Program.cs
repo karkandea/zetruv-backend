@@ -104,6 +104,16 @@ builder.Services.AddRateLimiter(options =>
                 AutoReplenishment = true
             }));
 
+    options.AddPolicy("voucher-preview", httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 30,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+                AutoReplenishment = true
+            }));
     options.AddPolicy("payment-initiation", httpContext =>
         RateLimitPartition.GetFixedWindowLimiter(
             partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
@@ -267,6 +277,7 @@ builder.Services.AddScoped<ManualLoginCredentialService>();
 builder.Services.AddHostedService<ManualLoginCredentialCleanupService>();
 builder.Services.AddScoped<OrderAccessTokenService>();
 builder.Services.AddScoped<OrderTrackingService>();
+builder.Services.AddScoped<DiscountVoucherService>();
 builder.Services.AddScoped<CheckoutService>();
 builder.Services.AddScoped<InventoryReservationService>();
 builder.Services.AddHostedService<InventoryReservationCleanupService>();

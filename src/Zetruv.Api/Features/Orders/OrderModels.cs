@@ -56,6 +56,8 @@ public sealed class Order
     public Guid? CustomerUserId { get; set; }
     public decimal Subtotal { get; set; }
     public decimal DiscountAmount { get; set; }
+    public string? VoucherCode { get; set; }
+    public decimal VoucherDiscountAmount { get; set; }
     public decimal ShippingAmount { get; set; }
     public decimal GrandTotal { get; set; }
     public string Currency { get; set; } = "IDR";
@@ -216,7 +218,11 @@ public sealed record OrderDetailResponse(
     bool HasFulfillmentIssue,
     ShipmentAdminResponse? Shipment,
     IReadOnlyList<OrderItemResponse> Items,
-    IReadOnlyList<PaymentTransactionResponse> Transactions);
+    IReadOnlyList<PaymentTransactionResponse> Transactions)
+{
+    public string? VoucherCode { get; init; }
+    public decimal VoucherDiscountAmount { get; init; }
+}
 
 public sealed record OrderPageResponse(
     IReadOnlyList<OrderListItemResponse> Items,

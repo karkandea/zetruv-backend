@@ -268,5 +268,63 @@ check(api('PUT','/api/v1/cms/homepage/heroes/'+first_hero['id'],{
     **hero,'title':'Future banner','isActive':True,'startsAt':'2099-01-01T00:00:00Z',
     'endsAt':'2099-01-02T00:00:00Z'},admin),200)
 assert check(api('GET','/api/v1/homepage'),200)['heroes']==[]
+# Voucher contract: CMS configuration must affect customer preview and persisted order.
+import datetime
+from concurrent.futures import ThreadPoolExecutor
+now=datetime.datetime.now(datetime.timezone.utc)
+def iso(dt): return dt.isoformat()
+voucher_form={
+    'code':'WELCOME10','type':'Percentage','value':10,
+    'maximumDiscount':50000,'minimumSpend':50000,'applicableKind':'Joki',
+    'maxUses':2,'maxUsesPerCustomer':1,'isActive':True,
+    'startsAt':iso(now-datetime.timedelta(hours=1)),
+    'endsAt':iso(now+datetime.timedelta(hours=2))}
+voucher_id=check(api('POST','/api/v1/cms/discount-vouchers',voucher_form,admin),201)
+if isinstance(voucher_id,dict): voucher_id=voucher_id['id']
+vouchers=check(api('GET','/api/v1/cms/discount-vouchers',token=admin),200)
+assert len(vouchers)==1 and vouchers[0]['code']=='WELCOME10' and vouchers[0]['usedCount']==0
+check(api('POST','/api/v1/cms/discount-vouchers',voucher_form,admin),409)
+check(api('POST','/api/v1/cms/discount-vouchers',{**voucher_form,'code':'BAD%'},admin),400)
+check(api('POST','/api/v1/cms/discount-vouchers',{**voucher_form,'code':'BADDATE','endsAt':voucher_form['startsAt']},admin),400)
+preview={'code':'welcome10','customerEmail':'first@zetruv.test','items':[{'productVariantId':vid,'quantity':1}]}
+quote=check(api('POST','/api/v1/checkout/vouchers/preview',preview),200)
+assert quote['code']=='WELCOME10' and quote['subtotal']==100000 and quote['eligibleSubtotal']==100000
+assert quote['discountAmount']==10000 and quote['total']==90000,quote
+check(api('POST','/api/v1/checkout/vouchers/preview',{**preview,'code':'MISSING'}),400)
+check(api('POST','/api/v1/checkout/vouchers/preview',{**preview,'customerEmail':None,'customerPhone':None}),400)
+order_payload={'customerPhone':'+6281234567890','voucherCode':' welcome10 ',
+    'items':[{'productVariantId':vid,'quantity':1}]}
+first_coupon=check(api('POST','/api/v1/checkout/orders',order_payload,first),201)
+assert first_coupon['voucherCode']=='WELCOME10' and first_coupon['voucherDiscountAmount']==10000
+assert first_coupon['discountAmount']==10000 and first_coupon['grandTotal']==90000,first_coupon
+detail=check(api('GET',f"/api/v1/cms/orders/{first_coupon['id']}",token=admin),200)
+assert detail['voucherCode']=='WELCOME10' and detail['voucherDiscountAmount']==10000
+check(api('POST','/api/v1/checkout/orders',order_payload,first),400)
+second_coupon=check(api('POST','/api/v1/checkout/orders',order_payload,second),201)
+assert second_coupon['grandTotal']==90000
+assert next(v for v in check(api('GET','/api/v1/cms/discount-vouchers',token=admin),200) if v['code']=='WELCOME10')['usedCount']==2
+check(api('POST','/api/v1/checkout/orders',{'customerEmail':'guest-voucher@zetruv.test',**order_payload}),400)
+check(api('PUT',f'/api/v1/cms/discount-vouchers/{voucher_id}',{**voucher_form,'value':20},admin),409)
+check(api('PUT',f'/api/v1/cms/orders/{first_coupon["id"]}/status',{'status':'Cancelled'},admin),204)
+assert next(v for v in check(api('GET','/api/v1/cms/discount-vouchers',token=admin),200) if v['code']=='WELCOME10')['usedCount']==1
+guest_coupon=check(api('POST','/api/v1/checkout/orders',
+    {'customerEmail':'guest-voucher@zetruv.test',**order_payload}),201)
+assert guest_coupon['grandTotal']==90000
+check(api('POST','/api/v1/checkout/orders',{'customerEmail':'another@zetruv.test',**order_payload}),400)
+single={**voucher_form,'code':'ONCEONLY','type':'Fixed','value':5000,
+    'maximumDiscount':None,'maxUses':1,'maxUsesPerCustomer':1}
+check(api('POST','/api/v1/cms/discount-vouchers',single,admin),201)
+def race(i):
+    return api('POST','/api/v1/checkout/orders',
+        {'customerEmail':f'race{i}@zetruv.test','customerPhone':'+6281234567890',
+         'voucherCode':'ONCEONLY','items':[{'productVariantId':vid,'quantity':1}]})[0]
+with ThreadPoolExecutor(max_workers=2) as pool:
+    statuses=list(pool.map(race,range(2)))
+assert sorted(statuses)==[201,400],statuses
+counts={x['code']:x['usedCount'] for x in check(api('GET','/api/v1/cms/discount-vouchers',token=admin),200)}
+assert counts['ONCEONLY']==1 and counts['WELCOME10']==2,counts
+check(api('DELETE',f'/api/v1/cms/discount-vouchers/{voucher_id}',token=admin),204)
+check(api('POST','/api/v1/checkout/vouchers/preview',preview),400)
+print('PASS: voucher CMS, quote, persisted discount, per-customer usage, unpaid cancellation, concurrent cap, disable')
 print('PASS: 10 total heroes, CTA safety, personal purchase isolation, customer cart, checkout owner, spend leaderboard, paid sales, verified moderated rating, search, dynamic per-game/per-listing account attributes, refunds, hero scheduling')
 PY

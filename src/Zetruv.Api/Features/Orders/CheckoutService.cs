@@ -10,7 +10,8 @@ namespace Zetruv.Api.Features.Orders;
 public sealed class CheckoutService(
     ZetruvDbContext db,
     ShippingService shippingService,
-    ManualLoginCredentialService manualLoginCredentials)
+    ManualLoginCredentialService manualLoginCredentials,
+    DiscountVoucherService discountVouchers)
 {
     public async Task<CreateCheckoutOrderResult> CreateOrderAsync(
         CreateCheckoutOrderRequest request,
@@ -292,6 +293,7 @@ public sealed class CheckoutService(
         decimal discountAmount = 0;
         var orderItems = new List<OrderItem>(groupedItems.Count);
         var responseItems = new List<CheckoutOrderItemResponse>(groupedItems.Count);
+        var eligibleByKind = new Dictionary<ProductKind, decimal>();
         var validationClaims = new List<(Guid ValidationId, Guid OrderItemId)>();
 
         foreach (var item in groupedItems)
@@ -310,6 +312,8 @@ public sealed class CheckoutService(
             var lineTotal = unitPrice * item.Quantity;
             subtotal += regularLineTotal;
             discountAmount += regularLineTotal - lineTotal;
+            eligibleByKind[variant.ProductKind] =
+                eligibleByKind.GetValueOrDefault(variant.ProductKind) + lineTotal;
 
             var orderItem = new OrderItem
             {
@@ -428,6 +432,32 @@ public sealed class CheckoutService(
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
 
         db.Orders.Add(order);
+
+        if (!string.IsNullOrWhiteSpace(request.VoucherCode))
+        {
+            var customerKey = DiscountVoucherService.CustomerKey(
+                order.CustomerEmail, order.CustomerPhone);
+            var evaluation = await discountVouchers.ClaimAsync(
+                request.VoucherCode, customerKey, subtotal - discountAmount,
+                eligibleByKind, order, now, cancellationToken);
+            if (!evaluation.IsSuccess)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                return CreateCheckoutOrderResult.Failure(
+                    evaluation.Error ?? "Voucher cannot be applied.");
+            }
+            if (grandTotal - evaluation.Amount <= 0)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                return CreateCheckoutOrderResult.Failure(
+                    "Voucher would make the payment total zero. This checkout requires a positive amount.");
+            }
+            discountAmount += evaluation.Amount;
+            grandTotal -= evaluation.Amount;
+            order.DiscountAmount = discountAmount;
+            order.GrandTotal = grandTotal;
+        }
+
         await db.SaveChangesAsync(cancellationToken);
 
         if (shippingQuote is not null)
@@ -480,7 +510,11 @@ public sealed class CheckoutService(
                 order.GrandTotal,
                 order.Currency,
                 responseItems,
-                order.CreatedAt));
+                order.CreatedAt)
+            {
+                VoucherCode = order.VoucherCode,
+                VoucherDiscountAmount = order.VoucherDiscountAmount
+            });
     }
 
     private static string CreateOrderNumber(DateTimeOffset now)
