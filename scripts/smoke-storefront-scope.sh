@@ -48,9 +48,10 @@ from pathlib import Path
 BASE=os.environ['TEST_API']
 MAIL=Path(os.environ['TEST_MAIL'])
 C=os.environ['TEST_CONTAINER']
-def api(method,path,payload=None,token=None):
+def api(method,path,payload=None,token=None,extra_headers=None):
     headers={'Content-Type':'application/json'}
     if token: headers['Authorization']='Bearer '+token
+    if extra_headers: headers.update(extra_headers)
     req=urllib.request.Request(BASE+path,data=json.dumps(payload).encode() if payload is not None else None,headers=headers,method=method)
     try:
         with urllib.request.urlopen(req,timeout=15) as r:
@@ -269,6 +270,7 @@ check(api('PUT','/api/v1/cms/homepage/heroes/'+first_hero['id'],{
     'endsAt':'2099-01-02T00:00:00Z'},admin),200)
 assert check(api('GET','/api/v1/homepage'),200)['heroes']==[]
 # Voucher contract: CMS configuration must affect customer preview and persisted order.
+import uuid
 import datetime
 from concurrent.futures import ThreadPoolExecutor
 now=datetime.datetime.now(datetime.timezone.utc)
@@ -294,7 +296,14 @@ check(api('POST','/api/v1/checkout/vouchers/preview',{**preview,'code':'MISSING'
 check(api('POST','/api/v1/checkout/vouchers/preview',{**preview,'customerEmail':None,'customerPhone':None}),400)
 order_payload={'customerPhone':'+6281234567890','voucherCode':' welcome10 ',
     'items':[{'productVariantId':vid,'quantity':1}]}
-first_coupon=check(api('POST','/api/v1/checkout/orders',order_payload,first),201)
+coupon_key={'Idempotency-Key':str(uuid.uuid4())}
+first_coupon=check(api('POST','/api/v1/checkout/orders',order_payload,first,coupon_key),201)
+replayed=check(api('POST','/api/v1/checkout/orders',order_payload,first,coupon_key),200)
+assert replayed['id']==first_coupon['id'] and replayed['orderNumber']==first_coupon['orderNumber']
+assert replayed['grandTotal']==first_coupon['grandTotal'] and replayed['orderAccessToken']
+check(api('POST','/api/v1/checkout/orders',{**order_payload,'items':[{'productVariantId':vid,'quantity':2}]},first,coupon_key),409)
+check(api('POST','/api/v1/checkout/orders',order_payload,extra_headers=coupon_key),401)
+check(api('POST','/api/v1/checkout/orders',order_payload,first,{'Idempotency-Key':'bad-key'}),400)
 assert first_coupon['voucherCode']=='WELCOME10' and first_coupon['voucherDiscountAmount']==10000
 assert first_coupon['discountAmount']==10000 and first_coupon['grandTotal']==90000,first_coupon
 detail=check(api('GET',f"/api/v1/cms/orders/{first_coupon['id']}",token=admin),200)
@@ -325,6 +334,14 @@ counts={x['code']:x['usedCount'] for x in check(api('GET','/api/v1/cms/discount-
 assert counts['ONCEONLY']==1 and counts['WELCOME10']==2,counts
 check(api('DELETE',f'/api/v1/cms/discount-vouchers/{voucher_id}',token=admin),204)
 check(api('POST','/api/v1/checkout/vouchers/preview',preview),400)
+parallel_key={'Idempotency-Key':str(uuid.uuid4())}
+plain={'customerPhone':'+6281234567890','items':[{'productVariantId':vid,'quantity':1}]}
+def same_key(_): return api('POST','/api/v1/checkout/orders',plain,first,parallel_key)
+with ThreadPoolExecutor(max_workers=2) as pool:
+    same_results=list(pool.map(same_key,range(2)))
+assert sorted(x[0] for x in same_results)==[200,201],same_results
+assert same_results[0][1]['id']==same_results[1][1]['id']
+print('PASS: customer idempotency replay, conflict, auth gate, concurrent same-key order + coupon claim once')
 print('PASS: voucher CMS, quote, persisted discount, per-customer usage, unpaid cancellation, concurrent cap, disable')
 print('PASS: 10 total heroes, CTA safety, personal purchase isolation, customer cart, checkout owner, spend leaderboard, paid sales, verified moderated rating, search, dynamic per-game/per-listing account attributes, refunds, hero scheduling')
 PY
