@@ -152,6 +152,8 @@ builder.Services.Configure<CustomerEmailOptions>(
 builder.Services.AddHttpClient();
 builder.Services.Configure<MediaOptions>(
     builder.Configuration.GetSection(MediaOptions.SectionName));
+builder.Services.Configure<ShippingOptions>(
+    builder.Configuration.GetSection(ShippingOptions.SectionName));
 
 var configuredMediaOptions = builder.Configuration
     .GetSection(MediaOptions.SectionName)
@@ -297,6 +299,7 @@ builder.Services.AddScoped<GameAccountValidatorResolver>();
 builder.Services.AddScoped<GameAccountValidationService>();
 builder.Services.AddScoped<ShippingProviderResolver>();
 builder.Services.AddScoped<ShippingService>();
+builder.Services.AddHostedService<ShippingQuotePiiCleanupService>();
 builder.Services.AddScoped<ShipmentFulfillmentService>();
 builder.Services.Configure<PaymentReconciliationOptions>(
     builder.Configuration.GetSection(PaymentReconciliationOptions.SectionName));

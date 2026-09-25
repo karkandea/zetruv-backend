@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Zetruv.Api.Persistence;
@@ -11,9 +12,11 @@ using Zetruv.Api.Persistence;
 namespace Zetruv.Api.Persistence.Migrations
 {
     [DbContext(typeof(ZetruvDbContext))]
-    partial class ZetruvDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260922100205_HardenShippingQuotePiiAndStatus")]
+    partial class HardenShippingQuotePiiAndStatus
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -167,127 +170,6 @@ namespace Zetruv.Api.Persistence.Migrations
                     b.ToTable("admin_users", (string)null);
                 });
 
-            modelBuilder.Entity("Zetruv.Api.Features.Auth.CustomerAuthToken", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTimeOffset?>("ConsumedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("CustomerUserId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTimeOffset>("ExpiresAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Purpose")
-                        .IsRequired()
-                        .HasMaxLength(30)
-                        .HasColumnType("character varying(30)");
-
-                    b.Property<string>("TokenHash")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("TokenHash")
-                        .IsUnique();
-
-                    b.HasIndex("CustomerUserId", "Purpose")
-                        .IsUnique()
-                        .HasFilter("\"ConsumedAt\" IS NULL");
-
-                    b.HasIndex("CustomerUserId", "Purpose", "ExpiresAt");
-
-                    b.ToTable("customer_auth_tokens", (string)null);
-                });
-
-            modelBuilder.Entity("Zetruv.Api.Features.Auth.CustomerPasswordHistory", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("CustomerUserId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("PasswordHash")
-                        .IsRequired()
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CustomerUserId", "CreatedAt");
-
-                    b.ToTable("customer_password_history", (string)null);
-                });
-
-            modelBuilder.Entity("Zetruv.Api.Features.Auth.CustomerUser", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Email")
-                        .IsRequired()
-                        .HasMaxLength(320)
-                        .HasColumnType("character varying(320)");
-
-                    b.Property<DateTimeOffset?>("EmailVerifiedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("boolean");
-
-                    b.Property<DateTimeOffset?>("LastPasswordResetEmailSentAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTimeOffset?>("LastVerificationEmailSentAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(120)
-                        .HasColumnType("character varying(120)");
-
-                    b.Property<string>("NormalizedEmail")
-                        .IsRequired()
-                        .HasMaxLength(320)
-                        .HasColumnType("character varying(320)");
-
-                    b.Property<string>("PasswordHash")
-                        .IsRequired()
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)");
-
-                    b.Property<int>("TokenVersion")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("NormalizedEmail")
-                        .IsUnique();
-
-                    b.ToTable("customer_users", (string)null);
-                });
-
             modelBuilder.Entity("Zetruv.Api.Features.Catalog.CatalogCategory", b =>
                 {
                     b.Property<Guid>("Id")
@@ -394,98 +276,6 @@ namespace Zetruv.Api.Persistence.Migrations
                     b.HasIndex("IsActive", "IsPopular", "SortOrder");
 
                     b.ToTable("games", (string)null);
-                });
-
-            modelBuilder.Entity("Zetruv.Api.Features.Catalog.GameAccountAttributeDefinition", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("GameId")
-                        .HasColumnType("uuid");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("boolean");
-
-                    b.Property<bool>("IsRequired")
-                        .HasColumnType("boolean");
-
-                    b.Property<string>("Key")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)");
-
-                    b.Property<string>("Label")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
-                    b.Property<string>("OptionsJson")
-                        .IsRequired()
-                        .HasColumnType("jsonb");
-
-                    b.Property<bool>("ShowOnCard")
-                        .HasColumnType("boolean");
-
-                    b.Property<int>("SortOrder")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("Type")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)");
-
-                    b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("GameId", "Key")
-                        .IsUnique();
-
-                    b.HasIndex("GameId", "IsActive", "SortOrder");
-
-                    b.ToTable("game_account_attribute_definitions", (string)null);
-                });
-
-            modelBuilder.Entity("Zetruv.Api.Features.Catalog.GameAccountDetails", b =>
-                {
-                    b.Property<Guid>("ProductId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("AdditionalInfo")
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)");
-
-                    b.Property<string>("AttributesJson")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("jsonb")
-                        .HasDefaultValueSql("'{}'::jsonb");
-
-                    b.Property<int?>("Level")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("Rank")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
-                    b.Property<string>("Region")
-                        .IsRequired()
-                        .HasMaxLength(120)
-                        .HasColumnType("character varying(120)");
-
-                    b.Property<int?>("SkinCount")
-                        .HasColumnType("integer");
-
-                    b.HasKey("ProductId");
-
-                    b.ToTable("game_account_details", (string)null);
                 });
 
             modelBuilder.Entity("Zetruv.Api.Features.Catalog.Product", b =>
@@ -659,49 +449,6 @@ namespace Zetruv.Api.Persistence.Migrations
                     b.ToTable("product_input_fields", (string)null);
                 });
 
-            modelBuilder.Entity("Zetruv.Api.Features.Catalog.ProductReview", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Comment")
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("CustomerUserId")
-                        .HasColumnType("uuid");
-
-                    b.Property<bool>("IsApproved")
-                        .HasColumnType("boolean");
-
-                    b.Property<Guid>("OrderItemId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("ProductId")
-                        .HasColumnType("uuid");
-
-                    b.Property<int>("Rating")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTimeOffset?>("ReviewedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CustomerUserId");
-
-                    b.HasIndex("OrderItemId")
-                        .IsUnique();
-
-                    b.HasIndex("ProductId", "IsApproved");
-
-                    b.ToTable("product_reviews", (string)null);
-                });
-
             modelBuilder.Entity("Zetruv.Api.Features.Catalog.ProductVariant", b =>
                 {
                     b.Property<Guid>("Id")
@@ -714,10 +461,6 @@ namespace Zetruv.Api.Persistence.Migrations
 
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("GroupName")
-                        .HasMaxLength(80)
-                        .HasColumnType("character varying(80)");
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
@@ -1056,137 +799,6 @@ namespace Zetruv.Api.Persistence.Migrations
                     b.ToTable("media_assets", (string)null);
                 });
 
-            modelBuilder.Entity("Zetruv.Api.Features.Orders.CustomerCartItem", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("CustomerUserId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("ProductVariantId")
-                        .HasColumnType("uuid");
-
-                    b.Property<int>("Quantity")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ProductVariantId");
-
-                    b.HasIndex("CustomerUserId", "ProductVariantId")
-                        .IsUnique();
-
-                    b.ToTable("customer_cart_items", (string)null);
-                });
-
-            modelBuilder.Entity("Zetruv.Api.Features.Orders.DiscountVoucher", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("ApplicableKind")
-                        .HasMaxLength(30)
-                        .HasColumnType("character varying(30)");
-
-                    b.Property<string>("Code")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("character varying(32)");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTimeOffset>("EndsAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("boolean");
-
-                    b.Property<int?>("MaxUses")
-                        .HasColumnType("integer");
-
-                    b.Property<int?>("MaxUsesPerCustomer")
-                        .HasColumnType("integer");
-
-                    b.Property<decimal?>("MaximumDiscount")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)");
-
-                    b.Property<decimal>("MinimumSpend")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)");
-
-                    b.Property<DateTimeOffset>("StartsAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Type")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)");
-
-                    b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int>("UsedCount")
-                        .HasColumnType("integer");
-
-                    b.Property<decimal>("Value")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("Code")
-                        .IsUnique();
-
-                    b.HasIndex("IsActive", "StartsAt", "EndsAt");
-
-                    b.ToTable("discount_vouchers", (string)null);
-                });
-
-            modelBuilder.Entity("Zetruv.Api.Features.Orders.DiscountVoucherRedemption", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<decimal>("Amount")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)");
-
-                    b.Property<DateTimeOffset>("ClaimedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("CustomerKey")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
-
-                    b.Property<Guid>("OrderId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTimeOffset?>("ReleasedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("VoucherId")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("OrderId")
-                        .IsUnique();
-
-                    b.HasIndex("VoucherId", "CustomerKey", "ReleasedAt");
-
-                    b.ToTable("discount_voucher_redemptions", (string)null);
-                });
-
             modelBuilder.Entity("Zetruv.Api.Features.Orders.FulfillmentActivity", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1369,9 +981,6 @@ namespace Zetruv.Api.Persistence.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
 
-                    b.Property<Guid?>("CustomerUserId")
-                        .HasColumnType("uuid");
-
                     b.Property<decimal>("DiscountAmount")
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
@@ -1417,22 +1026,12 @@ namespace Zetruv.Api.Persistence.Migrations
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<string>("VoucherCode")
-                        .HasMaxLength(32)
-                        .HasColumnType("character varying(32)");
-
-                    b.Property<decimal>("VoucherDiscountAmount")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)");
-
                     b.HasKey("Id");
 
                     b.HasIndex("OrderNumber")
                         .IsUnique();
 
                     b.HasIndex("PaymentReference");
-
-                    b.HasIndex("CustomerUserId", "PaidAt");
 
                     b.HasIndex("Status", "PaymentStatus", "CreatedAt");
 
@@ -2098,50 +1697,6 @@ namespace Zetruv.Api.Persistence.Migrations
                     b.Navigation("Category");
                 });
 
-            modelBuilder.Entity("Zetruv.Api.Features.Auth.CustomerAuthToken", b =>
-                {
-                    b.HasOne("Zetruv.Api.Features.Auth.CustomerUser", "CustomerUser")
-                        .WithMany()
-                        .HasForeignKey("CustomerUserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("CustomerUser");
-                });
-
-            modelBuilder.Entity("Zetruv.Api.Features.Auth.CustomerPasswordHistory", b =>
-                {
-                    b.HasOne("Zetruv.Api.Features.Auth.CustomerUser", "CustomerUser")
-                        .WithMany()
-                        .HasForeignKey("CustomerUserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("CustomerUser");
-                });
-
-            modelBuilder.Entity("Zetruv.Api.Features.Catalog.GameAccountAttributeDefinition", b =>
-                {
-                    b.HasOne("Zetruv.Api.Features.Catalog.Game", "Game")
-                        .WithMany()
-                        .HasForeignKey("GameId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Game");
-                });
-
-            modelBuilder.Entity("Zetruv.Api.Features.Catalog.GameAccountDetails", b =>
-                {
-                    b.HasOne("Zetruv.Api.Features.Catalog.Product", "Product")
-                        .WithOne()
-                        .HasForeignKey("Zetruv.Api.Features.Catalog.GameAccountDetails", "ProductId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Product");
-                });
-
             modelBuilder.Entity("Zetruv.Api.Features.Catalog.Product", b =>
                 {
                     b.HasOne("Zetruv.Api.Features.Catalog.CatalogCategory", "Category")
@@ -2180,27 +1735,6 @@ namespace Zetruv.Api.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("Product");
-                });
-
-            modelBuilder.Entity("Zetruv.Api.Features.Catalog.ProductReview", b =>
-                {
-                    b.HasOne("Zetruv.Api.Features.Auth.CustomerUser", null)
-                        .WithMany()
-                        .HasForeignKey("CustomerUserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("Zetruv.Api.Features.Orders.OrderItem", null)
-                        .WithMany()
-                        .HasForeignKey("OrderItemId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("Zetruv.Api.Features.Catalog.Product", null)
-                        .WithMany()
-                        .HasForeignKey("ProductId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
                 });
 
             modelBuilder.Entity("Zetruv.Api.Features.Catalog.ProductVariant", b =>
@@ -2250,42 +1784,6 @@ namespace Zetruv.Api.Persistence.Migrations
                     b.Navigation("Product");
                 });
 
-            modelBuilder.Entity("Zetruv.Api.Features.Orders.CustomerCartItem", b =>
-                {
-                    b.HasOne("Zetruv.Api.Features.Auth.CustomerUser", null)
-                        .WithMany()
-                        .HasForeignKey("CustomerUserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("Zetruv.Api.Features.Catalog.ProductVariant", "ProductVariant")
-                        .WithMany()
-                        .HasForeignKey("ProductVariantId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("ProductVariant");
-                });
-
-            modelBuilder.Entity("Zetruv.Api.Features.Orders.DiscountVoucherRedemption", b =>
-                {
-                    b.HasOne("Zetruv.Api.Features.Orders.Order", "Order")
-                        .WithMany()
-                        .HasForeignKey("OrderId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("Zetruv.Api.Features.Orders.DiscountVoucher", "Voucher")
-                        .WithMany()
-                        .HasForeignKey("VoucherId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("Order");
-
-                    b.Navigation("Voucher");
-                });
-
             modelBuilder.Entity("Zetruv.Api.Features.Orders.FulfillmentActivity", b =>
                 {
                     b.HasOne("Zetruv.Api.Features.Orders.Order", null)
@@ -2327,14 +1825,6 @@ namespace Zetruv.Api.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("OrderItem");
-                });
-
-            modelBuilder.Entity("Zetruv.Api.Features.Orders.Order", b =>
-                {
-                    b.HasOne("Zetruv.Api.Features.Auth.CustomerUser", null)
-                        .WithMany()
-                        .HasForeignKey("CustomerUserId")
-                        .OnDelete(DeleteBehavior.SetNull);
                 });
 
             modelBuilder.Entity("Zetruv.Api.Features.Orders.OrderItem", b =>

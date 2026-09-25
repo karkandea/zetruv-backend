@@ -108,7 +108,7 @@ VALUES
 (
   'cccccccc-cccc-cccc-cccc-cccccccccccc',
   'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
-  0, 'mock', 'REG', 'Regular',
+  'Pending', 'mock', 'REG', 'Regular',
   17000, 'IDR', 1000,
   'Smoke User', '08123456789', 'Jl. Test No. 1', 'Pesanggrahan', 'Jakarta Selatan', 'DKI Jakarta', '12320',
   NOW(), NOW()
@@ -116,7 +116,7 @@ VALUES
 (
   'dddddddd-dddd-dddd-dddd-dddddddddddd',
   'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
-  0, 'mock', 'REG', 'Regular',
+  'Pending', 'mock', 'REG', 'Regular',
   17000, 'IDR', 500,
   'Cancel User', '08123456789', 'Jl. Test No. 2', 'Pesanggrahan', 'Jakarta Selatan', 'DKI Jakarta', '12320',
   NOW(), NOW()
@@ -229,8 +229,8 @@ PY
 CANCELLED_STATUS=$(docker exec "$CONTAINER" psql -U zetruv -d "$DB" -Atc \
   "SELECT \"Status\" FROM shipments WHERE \"OrderId\"='bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';")
 
-if [[ "$CANCELLED_STATUS" != "4" ]]; then
-  echo "ERROR: expected unshipped shipment to be Cancelled (4), got $CANCELLED_STATUS"
+if [[ "$CANCELLED_STATUS" != "Cancelled" ]]; then
+  echo "ERROR: expected unshipped shipment to be Cancelled, got $CANCELLED_STATUS"
   exit 1
 fi
 

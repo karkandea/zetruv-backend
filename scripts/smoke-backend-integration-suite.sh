@@ -19,6 +19,7 @@ scripts=(
   smoke-auto-id-fulfillment.sh
   smoke-manual-login-credentials.sh
   smoke-payment-inventory-hardening.sh
+  smoke-shipping-status-migration.sh
   smoke-shipping.sh
   smoke-shipment-fulfillment.sh
 )

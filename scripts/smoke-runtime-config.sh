@@ -35,6 +35,8 @@ check_env() {
   grep -Fxq "POSTGRES_DB=$expected_db" "$TMP/.env"
   grep -Fxq "ASPNETCORE_ENVIRONMENT=$expected_aspnet" "$TMP/.env"
   grep -Fxq "PAYMENTS_RECONCILIATION_ENABLED=true" "$TMP/.env"
+  grep -Fxq "SHIPPING_QUOTE_TTL_MINUTES=15" "$TMP/.env"
+  grep -Fxq "SHIPPING_QUOTE_PII_CLEANUP_INTERVAL_SECONDS=60" "$TMP/.env"
   grep -Fxq "MEDIA_PROVIDER=local" "$TMP/.env"
   grep -Fxq "CUSTOMER_EMAIL_PROVIDER=disabled" "$TMP/.env"
   grep -Fxq "MEDIA_LOCAL_PATH=/app/media" "$TMP/.env"
