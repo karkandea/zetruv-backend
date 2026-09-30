@@ -275,6 +275,8 @@ builder.Services.AddScoped<FulfillmentQueueService>();
 builder.Services.AddSingleton<ManualLoginCredentialProtector>();
 builder.Services.AddScoped<ManualLoginCredentialService>();
 builder.Services.AddHostedService<ManualLoginCredentialCleanupService>();
+builder.Services.AddSingleton<GameVoucherCodeProtector>();
+builder.Services.AddScoped<GameVoucherCodeService>();
 builder.Services.AddScoped<OrderAccessTokenService>();
 builder.Services.AddScoped<OrderTrackingService>();
 builder.Services.AddScoped<DiscountVoucherService>();

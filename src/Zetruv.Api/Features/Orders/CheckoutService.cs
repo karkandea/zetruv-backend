@@ -103,6 +103,13 @@ public sealed class CheckoutService(
                 "One or more product variants do not exist.");
         }
 
+        if (!customerUserId.HasValue &&
+            variants.Any(x => x.ProductKind == ProductKind.GameVoucher))
+        {
+            return CreateCheckoutOrderResult.Failure(
+                "Sign in with a verified customer account to purchase Game Voucher codes.");
+        }
+
         // Digital checkout always needs the WhatsApp contact shown in the Figma flow.
         // Email alone is insufficient for fulfillment/support; merchandise keeps its
         // separate shipping-recipient contact validation.

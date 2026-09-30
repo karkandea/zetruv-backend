@@ -41,6 +41,7 @@ public sealed class ZetruvDbContext(
     public DbSet<CustomerCartItem> CustomerCartItems => Set<CustomerCartItem>();
     public DbSet<FulfillmentActivity> FulfillmentActivities => Set<FulfillmentActivity>();
     public DbSet<ManualLoginCredential> ManualLoginCredentials => Set<ManualLoginCredential>();
+    public DbSet<GameVoucherCode> GameVoucherCodes => Set<GameVoucherCode>();
     public DbSet<PaymentTransaction> PaymentTransactions => Set<PaymentTransaction>();
     public DbSet<PaymentWebhookEvent> PaymentWebhookEvents => Set<PaymentWebhookEvent>();
     public DbSet<InventoryReservation> InventoryReservations => Set<InventoryReservation>();
@@ -474,6 +475,26 @@ public sealed class ZetruvDbContext(
                 .WithOne(x => x.ManualLoginCredential)
                 .HasForeignKey<ManualLoginCredential>(x => x.OrderItemId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<GameVoucherCode>(entity =>
+        {
+            entity.ToTable("game_voucher_codes");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.CodeHash).HasMaxLength(64).IsRequired();
+            entity.Property(x => x.EncryptedCode).HasColumnType("text");
+            entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(30).IsRequired();
+            entity.HasIndex(x => x.CodeHash).IsUnique();
+            entity.HasIndex(x => new { x.ProductVariantId, x.Status, x.CreatedAt });
+            entity.HasIndex(x => new { x.OrderItemId, x.Status });
+            entity.HasOne(x => x.ProductVariant)
+                .WithMany()
+                .HasForeignKey(x => x.ProductVariantId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.OrderItem)
+                .WithMany()
+                .HasForeignKey(x => x.OrderItemId)
+                .OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<PaymentTransaction>(entity =>
