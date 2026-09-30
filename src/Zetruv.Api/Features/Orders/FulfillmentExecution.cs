@@ -84,6 +84,7 @@ public sealed class FulfillmentExecutionService(
     AutoIdRuntimeProviderMappingService providerMappings,
     OrderFulfillmentService fulfillmentService,
     FulfillmentActivityService activities,
+    GameVoucherCodeService gameVoucherCodes,
     ILogger<FulfillmentExecutionService> logger)
 {
     public async Task ExecuteAutoItemsForOrderAsync(
@@ -109,6 +110,11 @@ public sealed class FulfillmentExecutionService(
                 executionContext ?? FulfillmentExecutionContext.System,
                 cancellationToken);
         }
+
+        await gameVoucherCodes.AssignForPaidOrderAsync(
+            orderId,
+            executionContext ?? FulfillmentExecutionContext.System,
+            cancellationToken);
     }
 
     public async Task<ExecuteAutoFulfillmentResponse?> ExecuteAutoItemAsync(

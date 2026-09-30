@@ -96,6 +96,13 @@ public sealed class OrderFulfillmentService(ZetruvDbContext db, FulfillmentActiv
             return OrderItemFulfillmentResult.Missing();
         }
 
+        if (item.ProductKind == ProductKind.GameVoucher)
+        {
+            return OrderItemFulfillmentResult.Failure(
+                "Game Voucher fulfillment is system-managed from encrypted code inventory.",
+                conflict: true);
+        }
+
         if (request.Status is FulfillmentStatus.Pending or FulfillmentStatus.Cancelled)
         {
             return OrderItemFulfillmentResult.Failure(

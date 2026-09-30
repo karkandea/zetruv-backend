@@ -14,6 +14,9 @@ public enum FulfillmentActivityType
     ManualStatusChanged,
     CredentialRevealed,
     CredentialExpired,
+    VoucherCodesAssigned,
+    VoucherCodeAllocationFailed,
+    VoucherCodesRevealed,
     OrderCancelled
 }
 

@@ -372,6 +372,8 @@ public sealed class CmsCatalogController(ZetruvDbContext db) : ControllerBase
         if (kind is null) return NotFound();
         if (kind == ProductKind.GameAccount && request.StockQuantity != 1)
             return BadRequest(new { message = "A unique game account listing must have stock quantity exactly 1." });
+        if (kind == ProductKind.GameVoucher && request.StockQuantity is not null and not 0)
+            return BadRequest(new { message = "Game Voucher stock is managed by encrypted voucher-code inventory. Create the variant with stock 0." });
 
         var sku = CatalogText.NormalizeSku(request.Sku);
         if (await db.ProductVariants.AnyAsync(x => x.Sku == sku, cancellationToken))
@@ -387,6 +389,10 @@ public sealed class CmsCatalogController(ZetruvDbContext db) : ControllerBase
 
         var variant = new ProductVariant { ProductId = productId };
         ApplyVariant(variant, request, sku);
+        if (kind == ProductKind.GameVoucher)
+        {
+            variant.StockQuantity = 0;
+        }
         db.ProductVariants.Add(variant);
         await db.SaveChangesAsync(cancellationToken);
         return Created($"/api/v1/cms/catalog/products/{productId}/variants/{variant.Id}", variant.Id);
@@ -399,17 +405,21 @@ public sealed class CmsCatalogController(ZetruvDbContext db) : ControllerBase
         UpsertVariantRequest request,
         CancellationToken cancellationToken)
     {
-        var variant = await db.ProductVariants.SingleOrDefaultAsync(
-            x => x.Id == variantId && x.ProductId == productId,
-            cancellationToken);
+        var variant = await db.ProductVariants
+            .Include(x => x.Product)
+            .SingleOrDefaultAsync(
+                x => x.Id == variantId && x.ProductId == productId,
+                cancellationToken);
         if (variant is null)
         {
             return NotFound();
         }
-        if (await db.Products.AnyAsync(x => x.Id == productId &&
-            x.Kind == ProductKind.GameAccount, cancellationToken) &&
+        if (variant.Product.Kind == ProductKind.GameAccount &&
             request.StockQuantity != 1)
             return BadRequest(new { message = "A unique game account listing must have stock quantity exactly 1." });
+        if (variant.Product.Kind == ProductKind.GameVoucher &&
+            request.StockQuantity is not null and not 0)
+            return BadRequest(new { message = "Game Voucher stock is managed by encrypted voucher-code inventory and cannot be edited directly. Send 0 or omit stock." });
 
         var sku = CatalogText.NormalizeSku(request.Sku);
         if (await db.ProductVariants.AnyAsync(
@@ -425,7 +435,11 @@ public sealed class CmsCatalogController(ZetruvDbContext db) : ControllerBase
             return validation;
         }
 
-        ApplyVariant(variant, request, sku);
+        ApplyVariant(
+            variant,
+            request,
+            sku,
+            preserveStock: variant.Product.Kind == ProductKind.GameVoucher);
         await db.SaveChangesAsync(cancellationToken);
         return NoContent();
     }
@@ -689,6 +703,13 @@ public sealed class CmsCatalogController(ZetruvDbContext db) : ControllerBase
                 cancellationToken))
             return Conflict(new { message = "Cannot change a game after account attributes have been saved. Create a new listing." });
 
+        if (currentProductId.HasValue &&
+            request.Kind != ProductKind.GameVoucher &&
+            await db.GameVoucherCodes.AnyAsync(
+                x => x.ProductVariant.ProductId == currentProductId.Value,
+                cancellationToken))
+            return Conflict(new { message = "Cannot change a Game Voucher product kind after voucher-code inventory has been imported." });
+
         if (request.GameId.HasValue &&
             !await db.Games.AnyAsync(x => x.Id == request.GameId.Value, cancellationToken))
         {
@@ -770,14 +791,21 @@ public sealed class CmsCatalogController(ZetruvDbContext db) : ControllerBase
         product.UpdatedAt = DateTimeOffset.UtcNow;
     }
 
-    private static void ApplyVariant(ProductVariant variant, UpsertVariantRequest request, string sku)
+    private static void ApplyVariant(
+        ProductVariant variant,
+        UpsertVariantRequest request,
+        string sku,
+        bool preserveStock = false)
     {
         variant.Name = request.Name.Trim();
         variant.Sku = sku;
         variant.GroupName = string.IsNullOrWhiteSpace(request.GroupName) ? null : request.GroupName.Trim();
         variant.Price = request.Price;
         variant.CompareAtPrice = request.CompareAtPrice;
-        variant.StockQuantity = request.StockQuantity;
+        if (!preserveStock)
+        {
+            variant.StockQuantity = request.StockQuantity;
+        }
         variant.WeightGrams = request.WeightGrams;
         variant.IsActive = request.IsActive;
         variant.SortOrder = request.SortOrder;
