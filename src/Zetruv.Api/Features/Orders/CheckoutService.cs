@@ -16,7 +16,9 @@ public sealed class CheckoutService(
     public async Task<CreateCheckoutOrderResult> CreateOrderAsync(
         CreateCheckoutOrderRequest request,
         Guid? customerUserId = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? idempotencyKeyHash = null,
+        string? idempotencyRequestHash = null)
     {
         var items = request.Items;
         if (items is null || items.Count == 0)
@@ -388,6 +390,8 @@ public sealed class CheckoutService(
         var order = new Order
         {
             OrderNumber = CreateOrderNumber(now),
+            IdempotencyKeyHash = idempotencyKeyHash,
+            IdempotencyRequestHash = idempotencyRequestHash,
             Status = OrderStatus.Pending,
             PaymentStatus = PaymentStatus.Pending,
             CustomerName = Clean(request.CustomerName),
