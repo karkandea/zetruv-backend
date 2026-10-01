@@ -1,4 +1,6 @@
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
+using Zetruv.Api.Features.GameAccounts;
 using Zetruv.Api.Features.Shipping;
 using Zetruv.Api.Persistence;
 
@@ -101,8 +103,9 @@ public sealed class OrderService(ZetruvDbContext db)
 
     public async Task<OrderDetailResponse?> GetAdminOrderAsync(
         Guid id,
-        CancellationToken cancellationToken = default) =>
-        await db.Orders
+        CancellationToken cancellationToken = default)
+    {
+        var detail = await db.Orders
             .AsNoTracking()
             .Where(x => x.Id == id)
             .Select(x => new OrderDetailResponse(
@@ -197,4 +200,53 @@ public sealed class OrderService(ZetruvDbContext db)
                 VoucherDiscountAmount = x.VoucherDiscountAmount
             })
             .SingleOrDefaultAsync(cancellationToken);
+
+        if (detail is null)
+            return null;
+
+        var itemIds = detail.Items.Select(item => item.Id).ToArray();
+        var validations = await db.Set<GameAccountValidation>()
+            .AsNoTracking()
+            .Where(x => x.OrderItemId.HasValue && itemIds.Contains(x.OrderItemId.Value))
+            .Select(x => new
+            {
+                ItemId = x.OrderItemId!.Value,
+                x.Id,
+                x.AccountDisplayName,
+                x.InputJson,
+                x.ValidatedAt
+            })
+            .ToListAsync(cancellationToken);
+
+        var targets = validations.ToDictionary(
+            x => x.ItemId,
+            x => new OrderAccountTargetResponse(
+                x.Id,
+                x.AccountDisplayName,
+                DeserializeTargetFields(x.InputJson),
+                x.ValidatedAt));
+
+        return detail with
+        {
+            Items = detail.Items.Select(item =>
+                targets.TryGetValue(item.Id, out var target)
+                    ? item with { AccountTarget = target }
+                    : item).ToList()
+        };
+    }
+
+    private static IReadOnlyDictionary<string, string> DeserializeTargetFields(string? json)
+    {
+        try
+        {
+            return string.IsNullOrWhiteSpace(json)
+                ? new Dictionary<string, string>()
+                : JsonSerializer.Deserialize<Dictionary<string, string>>(json)
+                    ?? new Dictionary<string, string>();
+        }
+        catch (JsonException)
+        {
+            return new Dictionary<string, string>();
+        }
+    }
 }

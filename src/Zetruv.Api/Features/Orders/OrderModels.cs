@@ -182,7 +182,17 @@ public sealed record OrderItemResponse(
     string? GameName,
     decimal UnitPrice,
     int Quantity,
-    decimal LineTotal);
+    decimal LineTotal)
+{
+    // Only included in the CMS authenticated order detail, never guest tracking.
+    public OrderAccountTargetResponse? AccountTarget { get; init; }
+}
+
+public sealed record OrderAccountTargetResponse(
+    Guid ValidationId,
+    string? AccountDisplayName,
+    IReadOnlyDictionary<string, string> Fields,
+    DateTimeOffset ValidatedAt);
 
 public sealed record PaymentTransactionResponse(
     Guid Id,
