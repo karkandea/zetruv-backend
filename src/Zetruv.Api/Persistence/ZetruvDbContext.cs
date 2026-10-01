@@ -339,7 +339,9 @@ public sealed class ZetruvDbContext(
         {
             entity.ToTable("customer_cart_items");
             entity.HasKey(x => x.Id);
-            entity.HasIndex(x => new { x.CustomerUserId, x.ProductVariantId }).IsUnique();
+            entity.Property(x => x.LineKey).HasMaxLength(80).IsRequired();
+            entity.HasIndex(x => new { x.CustomerUserId, x.LineKey }).IsUnique();
+            entity.HasIndex(x => x.GameAccountValidationId);
             entity.HasOne<CustomerUser>().WithMany().HasForeignKey(x => x.CustomerUserId)
                 .OnDelete(DeleteBehavior.Cascade);
             entity.HasOne(x => x.ProductVariant).WithMany().HasForeignKey(x => x.ProductVariantId)
