@@ -184,6 +184,12 @@ target_order_lines=subprocess.check_output([
     'SELECT COUNT(*) FROM order_items WHERE "OrderId"=\''+target_order['id']+'\';'
 ]).decode().strip()
 assert target_order_lines=='2'
+cms_order=check(api('GET',f'/api/v1/cms/orders/{target_order["id"]}',token=admin),200)
+target_items=[x for x in cms_order['items'] if x['productVariantId']==target_vid]
+assert len(target_items)==2,target_items
+assert {x['accountTarget']['accountDisplayName'] for x in target_items}=={'AlphaTarget','BetaTarget'}
+assert {x['accountTarget']['fields']['user_id'] for x in target_items}=={'10001','10002'}
+assert {x['accountTarget']['fields']['zone'] for x in target_items}=={'2001','2002'}
 # Consumed validations make old cart targets unavailable rather than silently reusing them.
 target_lines=[x for x in check(api('GET','/api/v1/me/cart',token=first),200)['items']
     if x['productVariantId']==target_vid]
