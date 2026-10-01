@@ -115,6 +115,89 @@ check(api('PUT',f'/api/v1/me/cart/items/{vid}',{'productVariantId':vid,'quantity
 assert len(check(api('GET','/api/v1/me/cart',token=first),200)['items'])==1
 assert check(api('GET','/api/v1/me/cart',token=second),200)['items'][0]['quantity']==1
 check(api('PUT',f'/api/v1/me/cart/items/{vid}',{'productVariantId':vid,'quantity':99},first),409)
+
+# AUTO_ID cart lines are target-aware: the same SKU can coexist for different
+# validated accounts without persisting raw login credentials.
+topup_cat=next(x for x in cats if x['kind']=='TopUpGame')
+target_game=check(api('POST','/api/v1/cms/catalog/games',{
+    'name':'Cart Target Game','slug':'cart-target-game','publisher':'Test',
+    'imageUrl':None,'isActive':True,'isPopular':False,'sortOrder':2},admin),201)
+target_game_id=target_game if isinstance(target_game,str) else target_game['id']
+target_product=check(api('POST','/api/v1/cms/catalog/products',{
+    'categoryId':topup_cat['id'],'gameId':target_game_id,
+    'name':'Cart Target Top Up','slug':'cart-target-top-up',
+    'shortDescription':'Target-aware cart','description':'Target-aware cart',
+    'thumbnailUrl':'https://example.test/target.png','kind':'TopUpGame',
+    'fulfillmentMethod':'AUTO_ID','requiresGameAccountValidation':True,
+    'isActive':True,'isFeatured':False,'sortOrder':2},admin),201)
+target_pid=target_product if isinstance(target_product,str) else target_product['id']
+for sort_order,(key,label) in enumerate([
+    ('user_id','User ID'),('zone','Zone'),('nickname','Nickname')]):
+    check(api('POST',f'/api/v1/cms/catalog/products/{target_pid}/input-fields',{
+        'key':key,'label':label,'scope':'AccountValidation','type':'Text',
+        'placeholder':None,'helpText':None,'isRequired':True,'isSensitive':False,
+        'maxLength':80,'options':None,'sortOrder':sort_order},admin),201)
+target_variant=check(api('POST',f'/api/v1/cms/catalog/products/{target_pid}/variants',{
+    'name':'86 Diamonds','sku':'CART-TARGET-86','groupName':'Diamonds','price':20000,
+    'compareAtPrice':None,'stockQuantity':20,'weightGrams':None,
+    'isActive':True,'sortOrder':1},admin),201)
+target_vid=target_variant if isinstance(target_variant,str) else target_variant['id']
+def validate_target(user_id,zone,nickname):
+    return check(api('POST','/api/v1/game-account/validate',{
+        'productId':target_pid,
+        'fields':{'user_id':user_id,'zone':zone,'nickname':nickname}}),200)
+target_a=validate_target('10001','2001','AlphaTarget')
+target_b=validate_target('10002','2002','BetaTarget')
+check(api('PUT',f'/api/v1/me/cart/items/{target_vid}',{
+    'productVariantId':target_vid,'quantity':1,
+    'gameAccountValidationId':target_a['validationId']},first),200)
+check(api('PUT',f'/api/v1/me/cart/items/{target_vid}',{
+    'productVariantId':target_vid,'quantity':2,
+    'gameAccountValidationId':target_b['validationId']},first),200)
+target_lines=[x for x in check(api('GET','/api/v1/me/cart',token=first),200)['items']
+    if x['productVariantId']==target_vid]
+assert len(target_lines)==2,target_lines
+assert {x['target']['accountDisplayName'] for x in target_lines}=={'AlphaTarget','BetaTarget'}
+assert {x['target']['fields']['user_id'] for x in target_lines}=={'10001','10002'}
+assert all(x['isAvailable'] for x in target_lines)
+# Same variant + same validation updates that target line, not a sibling.
+check(api('PUT',f'/api/v1/me/cart/items/{target_vid}',{
+    'productVariantId':target_vid,'quantity':3,
+    'gameAccountValidationId':target_a['validationId']},first),200)
+target_lines=[x for x in check(api('GET','/api/v1/me/cart',token=first),200)['items']
+    if x['productVariantId']==target_vid]
+assert len(target_lines)==2
+assert next(x for x in target_lines if x['target']['accountDisplayName']=='AlphaTarget')['quantity']==3
+check(api('PUT',f'/api/v1/me/cart/items/{target_vid}',{
+    'productVariantId':target_vid,'quantity':1},first),400)
+check(api('PUT',f'/api/v1/me/cart/items/{vid}',{
+    'productVariantId':vid,'quantity':1,
+    'gameAccountValidationId':target_a['validationId']},first),400)
+# Checkout already supports same SKU with different validation IDs as distinct order lines.
+target_order=check(api('POST','/api/v1/checkout/orders',{
+    'customerPhone':'+6281234567890','items':[
+        {'productVariantId':target_vid,'quantity':1,'gameAccountValidationId':target_a['validationId']},
+        {'productVariantId':target_vid,'quantity':1,'gameAccountValidationId':target_b['validationId']}
+    ]},first),201)
+target_order_lines=subprocess.check_output([
+    'docker','exec',C,'psql','-At','-U','zetruv','-d','zetruv_storefront_test','-c',
+    'SELECT COUNT(*) FROM order_items WHERE "OrderId"=\''+target_order['id']+'\';'
+]).decode().strip()
+assert target_order_lines=='2'
+# Consumed validations make old cart targets unavailable rather than silently reusing them.
+target_lines=[x for x in check(api('GET','/api/v1/me/cart',token=first),200)['items']
+    if x['productVariantId']==target_vid]
+assert len(target_lines)==2 and not any(x['isAvailable'] for x in target_lines)
+delete_id=target_lines[0]['id']
+check(api('DELETE',f'/api/v1/me/cart/lines/{delete_id}',token=first),204)
+assert len([x for x in check(api('GET','/api/v1/me/cart',token=first),200)['items']
+    if x['productVariantId']==target_vid])==1
+# Legacy variant delete intentionally removes all target lines for old clients.
+check(api('DELETE',f'/api/v1/me/cart/items/{target_vid}',token=first),204)
+assert not [x for x in check(api('GET','/api/v1/me/cart',token=first),200)['items']
+    if x['productVariantId']==target_vid]
+print('PASS: customer cart preserves same SKU across distinct validated account targets')
+
 check(api('POST','/api/v1/checkout/orders',{'customerEmail':'second@zetruv.test','customerPhone':'+6281234567890','items':[{'productVariantId':vid,'quantity':1}]},first),400)
 order=check(api('POST','/api/v1/checkout/orders',{'customerPhone':'+6281234567890','items':[{'productVariantId':vid,'quantity':1}]},first),201)
 oid=order['id']
