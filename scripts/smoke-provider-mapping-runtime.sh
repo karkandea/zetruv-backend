@@ -87,6 +87,48 @@ ACT=$(curl -fsS "http://127.0.0.1:$API/api/v1/cms/fulfillment/orders/$OID/items/
 python3 -c 'import json,sys; x=json.loads(sys.argv[1]); types=[a["type"] for a in x]; assert types.count("ProviderAttemptStarted")==2; assert "ProviderAttemptFailed" in types and "ProviderAttemptSucceeded" in types; assert any(a["source"]=="Payment" and a["type"]=="ProviderAttemptFailed" for a in x); assert any(a["source"]=="CmsAdmin" and a["actorEmail"]=="provider-runtime@zetruv.local" and a["type"]=="ProviderAttemptSucceeded" for a in x); assert all("password" not in json.dumps(a).lower() for a in x)' "$ACT"
 echo 'PASS: fulfillment activity API exposes payment failure + audited CMS retry without secrets'
 
+echo '=== FIGMA NO NICKNAME CHECK: WARN THEN CUSTOMER CONFIRM ==='
+WARN_MAP_CODE=$(curl -sS -o /dev/null -w '%{http_code}' -X PUT \
+  "http://127.0.0.1:$API/api/v1/cms/provider-mappings/games/a1000000-0000-0000-0000-000000000001" \
+  -H "Authorization: Bearer $CTOK" -H 'Content-Type: application/json' \
+  -d '{"providerCode":"mock","nicknameCheckEnabled":false,"isActive":true}')
+[[ "$WARN_MAP_CODE" == 204 ]]
+WARN_COUNT_BEFORE=$(docker exec "$C" psql -At -U zetruv -d "$DB" -c \
+  "SELECT COUNT(*) FROM game_account_validations WHERE \"ProductId\"='a2000000-0000-0000-0000-000000000001';")
+WARN_CODE=$(curl -sS -o /tmp/zetruv-pmr-warning.json -w '%{http_code}' -X POST \
+  "http://127.0.0.1:$API/api/v1/game-account/validate" -H 'Content-Type: application/json' \
+  -d '{"productId":"a2000000-0000-0000-0000-000000000001","fields":{"userid":"90001","zoneid":"12001"}}')
+[[ "$WARN_CODE" == 409 ]] || { echo "FAIL: missing nickname acknowledgment accepted $WARN_CODE"; exit 1; }
+python3 -c 'import json; x=json.load(open("/tmp/zetruv-pmr-warning.json")); assert x["code"]=="NICKNAME_VERIFICATION_UNSUPPORTED"'
+WARN_COUNT_AFTER=$(docker exec "$C" psql -At -U zetruv -d "$DB" -c \
+  "SELECT COUNT(*) FROM game_account_validations WHERE \"ProductId\"='a2000000-0000-0000-0000-000000000001';")
+[[ "$WARN_COUNT_BEFORE" == "$WARN_COUNT_AFTER" ]] || { echo "FAIL: warning created an unapproved validation"; exit 1; }
+
+ACK=$(curl -fsS -X POST "http://127.0.0.1:$API/api/v1/game-account/validate" \
+  -H 'Content-Type: application/json' \
+  -d '{"productId":"a2000000-0000-0000-0000-000000000001","fields":{"userid":"90001","zoneid":"12001"},"acknowledgeUnverifiedAccount":true}')
+python3 - "$ACK" <<'PY'
+import json,sys
+x=json.loads(sys.argv[1])
+assert x['status']=='Warning' and x['accountDisplayName'] is None
+assert x['provider']=='mock' and x['warning']
+assert x['validationId']
+PY
+VID_WARN=$(json '["validationId"]' <<<"$ACK")
+SNAPSHOT=$(docker exec "$C" psql -At -F '|' -U zetruv -d "$DB" -c \
+  "SELECT \"Provider\",(\"ProviderReference\" IS NULL),(\"AccountDisplayName\" IS NULL) FROM game_account_validations WHERE \"Id\"='$VID_WARN';")
+[[ "$SNAPSHOT" == 'mock|t|t' ]] || { echo "FAIL: self-attested destination faked provider verification"; exit 1; }
+WARN_ORDER=$(checkout "$VID_WARN" warning@zetruv.local)
+WARN_OID=$(json '["id"]' <<<"$WARN_ORDER")
+WARN_TOKEN=$(json '["orderAccessToken"]' <<<"$WARN_ORDER")
+WARN_PAYMENT=$(pay "$WARN_OID" "$WARN_TOKEN")
+WARN_REF=$(json '["providerReference"]' <<<"$WARN_PAYMENT")
+webhook "$WARN_REF" >/dev/null
+WARN_FINAL=$(docker exec "$C" psql -At -F '|' -U zetruv -d "$DB" -c \
+  "SELECT o.\"PaymentStatus\",o.\"Status\",oi.\"FulfillmentStatus\" FROM orders o JOIN order_items oi ON oi.\"OrderId\"=o.\"Id\" WHERE o.\"Id\"='$WARN_OID';")
+[[ "$WARN_FINAL" == 'Paid|Completed|Completed' ]]
+echo 'PASS: no-nickname-check warning requires consent and never fakes provider verification'
+
 GAME_OFF=$(curl -sS -o /dev/null -w '%{http_code}' -X PUT "http://127.0.0.1:$API/api/v1/cms/provider-mappings/games/a1000000-0000-0000-0000-000000000001" -H "Authorization: Bearer $CTOK" -H 'Content-Type: application/json' -d '{"providerCode":"mock","nicknameCheckEnabled":true,"isActive":false}')
 [[ "$GAME_OFF" == 204 ]]
 MAPS_OFF=$(curl -fsS "http://127.0.0.1:$API/api/v1/cms/provider-mappings" -H "Authorization: Bearer $CTOK")
