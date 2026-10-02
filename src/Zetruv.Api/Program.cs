@@ -303,6 +303,7 @@ builder.Services.AddScoped<ShipmentFulfillmentService>();
 builder.Services.Configure<PaymentReconciliationOptions>(
     builder.Configuration.GetSection(PaymentReconciliationOptions.SectionName));
 builder.Services.AddScoped<PaymentGatewayResolver>();
+builder.Services.AddScoped<PaymentReadinessService>();
 builder.Services.AddScoped<PaymentWebhookEventLedger>();
 builder.Services.AddHostedService<PaymentReconciliationBackgroundService>();
 builder.Services.AddScoped<AutoIdRuntimeProviderMappingService>();
