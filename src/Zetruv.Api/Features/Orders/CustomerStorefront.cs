@@ -40,6 +40,8 @@ public sealed record CartItemResponse(
     string? ThumbnailUrl, decimal UnitPrice, int Quantity, bool IsAvailable)
 {
     public CartTargetResponse? Target { get; init; }
+    // NotRequired / RequiresVerification / Verified / Expired / Consumed
+    public string TargetStatus { get; init; } = "NotRequired";
 }
 
 public sealed record CustomerCartResponse(IReadOnlyList<CartItemResponse> Items);
@@ -156,6 +158,7 @@ public sealed class CustomerStorefrontController(ZetruvDbContext db) : Controlle
                 x.FulfillmentMethod == FulfillmentMethod.AUTO_ID &&
                 x.RequiresValidation;
             var targetAvailable = !targetRequired && !x.GameAccountValidationId.HasValue;
+            var targetStatus = targetRequired ? "RequiresVerification" : "NotRequired";
 
             if (x.GameAccountValidationId.HasValue &&
                 validations.TryGetValue(x.GameAccountValidationId.Value, out var validation))
@@ -171,6 +174,12 @@ public sealed class CustomerStorefrontController(ZetruvDbContext db) : Controlle
                     validation.OrderItemId is null &&
                     validation.ConsumedAt is null &&
                     validation.ExpiresAt > now;
+                if (targetRequired)
+                    targetStatus = validation.ProductId != x.ProductId
+                        ? "RequiresVerification"
+                        : validation.OrderItemId.HasValue || validation.ConsumedAt.HasValue
+                            ? "Consumed"
+                            : validation.ExpiresAt <= now ? "Expired" : "Verified";
             }
 
             return new CartItemResponse(
@@ -188,7 +197,8 @@ public sealed class CustomerStorefrontController(ZetruvDbContext db) : Controlle
                 x.Quantity,
                 x.BaseAvailable && targetAvailable)
             {
-                Target = target
+                Target = target,
+                TargetStatus = targetStatus
             };
         }).ToList();
 
