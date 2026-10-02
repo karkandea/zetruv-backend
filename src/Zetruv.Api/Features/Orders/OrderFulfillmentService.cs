@@ -103,6 +103,23 @@ public sealed class OrderFulfillmentService(ZetruvDbContext db, FulfillmentActiv
                 conflict: true);
         }
 
+        // AUTO_ID must be settled by the configured provider/execute endpoint;
+        // merchandise completion comes only from shipment status (Delivered).
+        // CMS cannot bypass those authorities by marking an item Completed.
+        if (item.FulfillmentMethod == FulfillmentMethod.AUTO_ID)
+        {
+            return OrderItemFulfillmentResult.Failure(
+                "AUTO_ID fulfillment is provider-managed. Use the fulfillment execute endpoint to retry a failed attempt.",
+                conflict: true);
+        }
+
+        if (item.ProductKind == ProductKind.Merchandise)
+        {
+            return OrderItemFulfillmentResult.Failure(
+                "Merchandise fulfillment is shipment-managed. Update shipment status instead.",
+                conflict: true);
+        }
+
         if (request.Status is FulfillmentStatus.Pending or FulfillmentStatus.Cancelled)
         {
             return OrderItemFulfillmentResult.Failure(
