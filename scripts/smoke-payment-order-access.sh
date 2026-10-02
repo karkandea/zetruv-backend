@@ -61,6 +61,23 @@ echo 'PASS: checkout returns signed order access token'
 SECOND=$(checkout 'access2@example.com')
 SECOND_ID=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])' <<<"$SECOND")
 
+echo '=== PAYMENT STATUS POLL ACCESS ==='
+ST_CODE=$(curl -sS -o /tmp/payment-status-response.json -w '%{http_code}' \
+  "http://127.0.0.1:$API/api/v1/checkout/orders/$FIRST_ID/payment")
+[[ "$ST_CODE" == 404 ]]
+ST_CODE=$(curl -sS -o /tmp/payment-status-response.json -w '%{http_code}' \
+  "http://127.0.0.1:$API/api/v1/checkout/orders/$SECOND_ID/payment" -H "X-Order-Access-Token: $FIRST_TOKEN")
+[[ "$ST_CODE" == 404 ]]
+INITIAL_STATUS=$(curl -fsS "http://127.0.0.1:$API/api/v1/checkout/orders/$FIRST_ID/payment" -H "X-Order-Access-Token: $FIRST_TOKEN")
+python3 - "$INITIAL_STATUS" <<'PY'
+import json,sys
+x=json.loads(sys.argv[1])
+assert x['state']=='NotStarted' and x['canRetry'] is True
+assert x['hasActivePaymentSession'] is False
+assert x['paymentUrl'] is None and x['qrString'] is None
+PY
+echo 'PASS: payment status protects order and exposes NotStarted'
+
 echo '=== PAYMENT TOKEN ENFORCEMENT ==='
 CODE=$(curl -sS -o /tmp/payment-access-response.json -w '%{http_code}' -X POST "http://127.0.0.1:$API/api/v1/checkout/orders/$FIRST_ID/payment")
 [[ "$CODE" == "404" ]]
@@ -112,6 +129,39 @@ TX_COUNT=$(docker exec "$C" psql -At -U zetruv -d "$DB" -c "SELECT COUNT(*) FROM
 echo 'PASS: correct order access token authorizes payment initiation'
 echo 'PASS: authorized payment inserts exactly one pending transaction'
 
+echo '=== PAYMENT STATUS: PENDING / EXPIRED / RETRY ==='
+PENDING_STATUS=$(curl -fsS "http://127.0.0.1:$API/api/v1/checkout/orders/$FIRST_ID/payment" -H "X-Order-Access-Token: $FIRST_TOKEN")
+python3 - "$PENDING_STATUS" <<'PY'
+import json,sys
+x=json.loads(sys.argv[1])
+assert x['state']=='Pending' and x['paymentStatus']=='Pending'
+assert x['hasActivePaymentSession'] is True and x['canRetry'] is False
+assert x['paymentUrl'].startswith('mock://payment/')
+PY
+docker exec "$C" psql -v ON_ERROR_STOP=1 -U zetruv -d "$DB" -c \
+  "UPDATE payment_transactions SET \"ExpiresAt\" = NOW() - INTERVAL '1 minute' WHERE \"OrderId\"='$FIRST_ID' AND \"Status\"='Pending';" >/dev/null
+EXPIRED_STATUS=$(curl -fsS "http://127.0.0.1:$API/api/v1/checkout/orders/$FIRST_ID/payment" -H "X-Order-Access-Token: $FIRST_TOKEN")
+python3 - "$EXPIRED_STATUS" <<'PY'
+import json,sys
+x=json.loads(sys.argv[1])
+assert x['state']=='Expired' and x['hasActivePaymentSession'] is False
+assert x['canRetry'] is True and x['paymentUrl'] is None and x['qrString'] is None
+PY
+RETRY=$(curl -fsS -X POST "http://127.0.0.1:$API/api/v1/checkout/orders/$FIRST_ID/payment" \
+  -H "X-Order-Access-Token: $FIRST_TOKEN")
+python3 - "$RETRY" <<'PY'
+import json,sys
+x=json.loads(sys.argv[1])
+assert x['orderId'] and x['isRecovery'] is False
+PY
+RETRY_PENDING=$(curl -fsS "http://127.0.0.1:$API/api/v1/checkout/orders/$FIRST_ID/payment" -H "X-Order-Access-Token: $FIRST_TOKEN")
+python3 - "$RETRY_PENDING" <<'PY'
+import json,sys
+x=json.loads(sys.argv[1])
+assert x['state']=='Pending' and x['hasActivePaymentSession'] is True
+PY
+echo 'PASS: Pending -> Expired -> same-order new payment attempt -> Pending'
+
 echo '=== ORDER LOOKUP RECOVERY ==='
 LOOKUP=$(curl -fsS -X POST "http://127.0.0.1:$API/api/v1/orders/lookup" \
   -H 'Content-Type: application/json' \
@@ -124,5 +174,50 @@ LOOKUP_EXP=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["orderAcces
 [[ "$LOOKUP_TOKEN" == v1.* ]]
 [[ -n "$LOOKUP_EXP" ]]
 echo 'PASS: verified order lookup returns payment access token'
+
+echo '=== PAYMENT STATUS: PROVIDER FAILURE / SUCCESS ==='
+send_mock_webhook() {
+  local reference="$1" event_status="$2" body sig
+  body=$(python3 - "$reference" "$event_status" <<'PY'
+import json,sys
+print(json.dumps({"providerReference":sys.argv[1],"status":sys.argv[2],"amount":50000,"currency":"IDR"},separators=(',',':')))
+PY
+)
+  sig=$(printf '%s' "$body" | openssl dgst -sha256 -hmac 'smoke-secret' | awk '{print $NF}')
+  curl -fsS -X POST "http://127.0.0.1:$API/api/v1/payments/webhooks/mock" \
+    -H 'Content-Type: application/json' -H "X-Mock-Signature: $sig" -d "$body" >/dev/null
+}
+
+RETRY_REF=$(python3 - "$RETRY_PENDING" <<'PY'
+import json,sys
+print(json.loads(sys.argv[1])['providerReference'])
+PY
+)
+send_mock_webhook "$RETRY_REF" Paid
+PAID_STATUS=$(curl -fsS "http://127.0.0.1:$API/api/v1/checkout/orders/$FIRST_ID/payment" -H "X-Order-Access-Token: $FIRST_TOKEN")
+python3 - "$PAID_STATUS" <<'PY'
+import json,sys
+x=json.loads(sys.argv[1])
+assert x['paymentStatus']=='Paid' and x['state']=='Paid' and x['canRetry'] is False
+assert x['paymentUrl'] is None and x['qrString'] is None
+PY
+
+SECOND_PAYMENT=$(curl -fsS -X POST "http://127.0.0.1:$API/api/v1/checkout/orders/$SECOND_ID/payment" \
+  -H "X-Order-Access-Token: $(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["orderAccessToken"])' "$SECOND")")
+SECOND_REF=$(python3 - "$SECOND_PAYMENT" <<'PY'
+import json,sys
+print(json.loads(sys.argv[1])['providerReference'])
+PY
+)
+send_mock_webhook "$SECOND_REF" Failed
+SECOND_TOKEN=$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["orderAccessToken"])' "$SECOND")
+FAILED_STATUS=$(curl -fsS "http://127.0.0.1:$API/api/v1/checkout/orders/$SECOND_ID/payment" -H "X-Order-Access-Token: $SECOND_TOKEN")
+python3 - "$FAILED_STATUS" <<'PY'
+import json,sys
+x=json.loads(sys.argv[1])
+assert x['paymentStatus']=='Failed' and x['state']=='Failed'
+assert x['canRetry'] is True and x['hasActivePaymentSession'] is False
+PY
+echo 'PASS: verified provider callbacks update Paid / Failed without unsafe mutation'
 
 echo 'PASS: payment order ownership access flow'
