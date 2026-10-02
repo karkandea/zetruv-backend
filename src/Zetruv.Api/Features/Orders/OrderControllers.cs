@@ -109,85 +109,15 @@ public sealed class CmsOrdersController(
         return NoContent();
     }
 
+    // Payment settlement is provider-authoritative. Retain this legacy route only
+    // to return a deliberate error to clients that still call it; never change
+    // order, payment transaction, reservation, or fulfillment state from CMS.
     [HttpPut("{id:guid}/payment-status")]
-    public async Task<IActionResult> UpdatePaymentStatus(
-        Guid id,
-        UpdatePaymentStatusRequest request,
-        CancellationToken cancellationToken)
-    {
-        var order = await db.Orders
-            .Include(x => x.Items)
-                .ThenInclude(x => x.ManualLoginCredential)
-            .SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
-
-        if (order is null)
+    public IActionResult UpdatePaymentStatus(Guid id, UpdatePaymentStatusRequest request) =>
+        StatusCode(StatusCodes.Status410Gone, new
         {
-            return NotFound();
-        }
-
-        if (order.PaymentStatus == PaymentStatus.Paid &&
-            request.Status is PaymentStatus.Pending or PaymentStatus.Failed)
-        {
-            return Conflict(new
-            {
-                message = "A paid order cannot move back to pending or failed payment status."
-            });
-        }
-
-        if (request.Status == PaymentStatus.Paid)
-        {
-            if (order.Status == OrderStatus.Cancelled)
-            {
-                return Conflict(new { message = "A cancelled order cannot transition to paid." });
-            }
-
-            await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
-            var inventory = await inventoryReservations.EnsureConsumedForPaidAsync(
-                order,
-                cancellationToken);
-
-            if (!inventory.IsSuccess)
-            {
-                await transaction.RollbackAsync(cancellationToken);
-                return Conflict(new
-                {
-                    message = inventory.Error ?? "Inventory could not be secured for the paid order."
-                });
-            }
-
-            var now = DateTimeOffset.UtcNow;
-            order.PaymentStatus = PaymentStatus.Paid;
-            order.PaidAt ??= now;
-            fulfillmentService.StartPaidOrder(order, now);
-
-            await db.SaveChangesAsync(cancellationToken);
-            await transaction.CommitAsync(cancellationToken);
-
-            await executionService.ExecuteAutoItemsForOrderAsync(
-                order.Id,
-                FulfillmentExecutionContext.Admin(User),
-                cancellationToken);
-
-            return NoContent();
-        }
-
-        order.PaymentStatus = request.Status;
-        order.UpdatedAt = DateTimeOffset.UtcNow;
-
-        if (request.Status is PaymentStatus.Pending or PaymentStatus.Failed)
-        {
-            order.PaidAt = null;
-        }
-
-        await db.SaveChangesAsync(cancellationToken);
-
-        if (request.Status == PaymentStatus.Failed)
-        {
-            await inventoryReservations.ReleaseAsync(id, cancellationToken);
-        }
-
-        return NoContent();
-    }
+            message = "Direct CMS payment status changes are disabled. Payment status is confirmed by the configured payment gateway through verified webhook or reconciliation."
+        });
 
     [HttpPut("{orderId:guid}/items/{orderItemId:guid}/fulfillment")]
     public async Task<ActionResult<OrderItemFulfillmentResponse>> UpdateItemFulfillment(
