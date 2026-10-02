@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Zetruv.Api.Features.Orders;
+using Zetruv.Api.Features.Catalog;
 using Zetruv.Api.Persistence;
 
 namespace Zetruv.Api.Features.Payments;
@@ -85,11 +86,11 @@ public sealed class CustomerPaymentStatusController(
         };
 
         var credentialsUsable = order.Items.All(x =>
-            x.FulfillmentMethod != Catalog.FulfillmentMethod.MANUAL_LOGIN ||
+            x.FulfillmentMethod != FulfillmentMethod.MANUAL_LOGIN ||
             ManualLoginCredentialService.IsUsable(x.ManualLoginCredential, now));
         var canRetry =
             order.Status != OrderStatus.Cancelled &&
-            order.PaymentStatus is PaymentStatus.Pending or PaymentStatus.Failed &&
+            (order.PaymentStatus is PaymentStatus.Pending or PaymentStatus.Failed) &&
             active is null &&
             credentialsUsable;
 
