@@ -24,8 +24,8 @@ Reviewed against Figma sections "Top Up Via ID", "Top Up Via Login", "Game Accou
 | Payment Pending → Paid / Failed / Expired; retry on same order | `GET/POST /api/v1/checkout/orders/{id}/payment`, signed order access token, PR #69, webhook/reconciliation; `smoke-payment-order-access.sh` | Implemented in mock/integration tests |
 | Manual CMS spoofing of Paid and premature fulfillment blocked | Payment route HTTP 410 (#67), fulfillment authority (#72); smoke CI | Implemented |
 | VA number, QRIS QR, GoPay deeplink and verified provider delivery | No configured real Xendit gateway. No mock QR/VA details shown as payable, and credentials are not invented | **Explicitly parked by project owner** |
-| Figma provider cannot check nickname: show warning and allow user decision | Capability + explicit warning/acknowledgment API contract absent | **To Do**; do not treat provider outage as successful verification |
-| "Unduh Invoice" in pending/paid payment states | No authorized invoice download endpoint identified | **To Do** |
+| Figma provider cannot check nickname: show warning and allow user decision | Warning + explicit acknowledge contract proposed in PR #77; checked provider mapping, no faked nickname/reference; validation errors fail closed | **PR #77 in review / CI**, not yet in DEV |
+| "Unduh Invoice" in pending/paid payment states | Owner-only invoice JSON snapshot proposed in PR #78 for Pending/Paid. Actual downloadable PDF + FE wiring still missing | **PR #78 in review / CI**; PDF/UI still To Do |
 | Live/sandbox payment E2E | Requires Xendit sandbox credentials/channels and external verification | **Parked with Xendit** |
 
 ## Release gates
@@ -37,7 +37,7 @@ Reviewed against Figma sections "Top Up Via ID", "Top Up Via Login", "Game Accou
 ## Immediate non-Xendit queue
 - PR #74: cart edit and re-verification, integration QA then merge.
 - PR #75: strict verified checkout entrypoint, integration QA then merge; legacy route cutover **separate** and requires FE migration.
-- Backend provider nickname-support capability with warning/acknowledgment state.
-- Authorized invoice data/download contract.
+- PR #77: nickname unsupported warning/acknowledgment, provider mapping fail-closed, integration QA.
+- PR #78: authorized Pending/Paid invoice data JSON, integration QA; PDF download still a separate gap.
 
 Historical TODO items for discount coupons, encrypted Game Voucher inventory, order idempotency, price change, payment polling, and multi-target cart are **not open anymore**; this document supersedes the September initial-gap checklist.
