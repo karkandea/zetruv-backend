@@ -51,11 +51,13 @@ public sealed class GameAccountValidation
 
 public sealed record GameAccountValidationRequest(
     Guid ProductId,
-    [Required] IReadOnlyDictionary<string, string> Fields);
+    [Required] IReadOnlyDictionary<string, string> Fields,
+    bool AcknowledgeUnverifiedAccount = false);
 
 public enum GameAccountValidationStatus
 {
-    Verified
+    Verified,
+    Warning
 }
 
 public enum GameAccountValidationFailureKind
@@ -63,7 +65,8 @@ public enum GameAccountValidationFailureKind
     InvalidRequest,
     ProductUnavailable,
     AccountNotFound,
-    ProviderUnavailable
+    ProviderUnavailable,
+    NicknameUnsupported
 }
 
 public sealed record GameAccountValidationResponse(
@@ -72,7 +75,8 @@ public sealed record GameAccountValidationResponse(
     Guid ProductId,
     string Provider,
     string? AccountDisplayName,
-    DateTimeOffset ExpiresAt);
+    DateTimeOffset ExpiresAt,
+    string? Warning = null);
 
 public sealed record GameAccountValidationErrorResponse(
     string Code,
@@ -185,6 +189,8 @@ public sealed record GameAccountValidationResult(
 public sealed class GameAccountValidationService(
     ZetruvDbContext db,
     GameAccountValidatorResolver resolver,
+    AutoIdFulfillmentProviderResolver fulfillmentProviders,
+    IHostEnvironment environment,
     ILogger<GameAccountValidationService> logger)
 {
     private static readonly HashSet<string> SensitiveFieldNames = new(
@@ -254,42 +260,76 @@ public sealed class GameAccountValidationService(
                 fieldsResult.Error);
         }
 
-        var validator = resolver.Resolve();
-        if (validator is null)
-        {
-            return GameAccountValidationResult.Failure(
-                GameAccountValidationFailureKind.ProviderUnavailable,
-                "Game account validation is temporarily unavailable.");
-        }
-
+        var nicknameCapability = await GetNicknameCapabilityAsync(
+            product.GameId.Value, cancellationToken);
+        var requiresWarning = nicknameCapability.HasValue &&
+            !nicknameCapability.Value.NicknameCheckEnabled;
         GameAccountProviderResult providerResult;
-        try
-        {
-            providerResult = await validator.ValidateAsync(
-                new GameAccountProviderRequest(
-                    product.Id,
-                    product.Name,
-                    product.GameId.Value,
-                    product.Game.Name,
-                    product.Game.Slug,
-                    fieldsResult.Fields!),
-                cancellationToken);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception exception)
-        {
-            logger.LogError(
-                exception,
-                "Game account validation provider {Provider} failed for product {ProductId}.",
-                validator.Name,
-                product.Id);
+        string providerName;
 
-            return GameAccountValidationResult.Failure(
-                GameAccountValidationFailureKind.ProviderUnavailable,
-                "Game account validation is temporarily unavailable.");
+        if (requiresWarning)
+        {
+            providerName = nicknameCapability!.Value.ProviderCode.Trim().ToLowerInvariant();
+            if (fulfillmentProviders.Resolve(providerName) is null ||
+                (environment.IsProduction() &&
+                 string.Equals(providerName, "mock", StringComparison.OrdinalIgnoreCase)))
+            {
+                return GameAccountValidationResult.Failure(
+                    GameAccountValidationFailureKind.ProviderUnavailable,
+                    "A configured fulfillment provider is required before using nickname-check warnings.");
+            }
+
+            if (!request.AcknowledgeUnverifiedAccount)
+            {
+                return GameAccountValidationResult.Failure(
+                    GameAccountValidationFailureKind.NicknameUnsupported,
+                    "This provider cannot check nicknames. Confirm the User ID and Server are correct before continuing.");
+            }
+
+            // This is a self-attested destination, NOT a verified nickname.
+            // Never invent a provider reference or account display name.
+            providerResult = GameAccountProviderResult.Valid(
+                expiresAt: DateTimeOffset.UtcNow.AddMinutes(10));
+        }
+        else
+        {
+            var validator = resolver.Resolve();
+            if (validator is null)
+            {
+                return GameAccountValidationResult.Failure(
+                    GameAccountValidationFailureKind.ProviderUnavailable,
+                    "Game account validation is temporarily unavailable.");
+            }
+
+            providerName = validator.Name;
+            try
+            {
+                providerResult = await validator.ValidateAsync(
+                    new GameAccountProviderRequest(
+                        product.Id,
+                        product.Name,
+                        product.GameId.Value,
+                        product.Game.Name,
+                        product.Game.Slug,
+                        fieldsResult.Fields!),
+                    cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                logger.LogError(
+                    exception,
+                    "Game account validation provider {Provider} failed for product {ProductId}.",
+                    providerName,
+                    product.Id);
+
+                return GameAccountValidationResult.Failure(
+                    GameAccountValidationFailureKind.ProviderUnavailable,
+                    "Game account validation is temporarily unavailable.");
+            }
         }
 
         if (!providerResult.IsValid)
@@ -312,7 +352,7 @@ public sealed class GameAccountValidationService(
         var validation = new GameAccountValidation
         {
             ProductId = product.Id,
-            Provider = validator.Name,
+            Provider = providerName,
             ProviderReference = Clean(providerResult.ProviderReference),
             AccountDisplayName = Clean(providerResult.AccountDisplayName),
             InputJson = inputJson,
@@ -328,12 +368,49 @@ public sealed class GameAccountValidationService(
 
         return GameAccountValidationResult.Success(
             new GameAccountValidationResponse(
-                GameAccountValidationStatus.Verified,
+                requiresWarning
+                    ? GameAccountValidationStatus.Warning
+                    : GameAccountValidationStatus.Verified,
                 validation.Id,
                 validation.ProductId,
                 validation.Provider,
                 validation.AccountDisplayName,
-                validation.ExpiresAt));
+                validation.ExpiresAt,
+                requiresWarning
+                    ? "Nickname was not verified by the provider. Destination fields were confirmed by the customer."
+                    : null));
+    }
+
+    private async Task<(string ProviderCode, bool NicknameCheckEnabled)?>
+        GetNicknameCapabilityAsync(Guid gameId, CancellationToken ct)
+    {
+        var connection = db.Database.GetDbConnection();
+        var openedHere = connection.State != System.Data.ConnectionState.Open;
+        if (openedHere)
+            await db.Database.OpenConnectionAsync(ct);
+        try
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText = """
+                SELECT "ProviderCode", "NicknameCheckEnabled"
+                FROM provider_game_mappings
+                WHERE "GameId" = @gameId AND "IsActive" = TRUE
+                LIMIT 1
+                """;
+            var parameter = command.CreateParameter();
+            parameter.ParameterName = "@gameId";
+            parameter.Value = gameId;
+            command.Parameters.Add(parameter);
+            await using var reader = await command.ExecuteReaderAsync(ct);
+            if (!await reader.ReadAsync(ct))
+                return null;
+            return (reader.GetString(0), reader.GetBoolean(1));
+        }
+        finally
+        {
+            if (openedHere)
+                await db.Database.CloseConnectionAsync();
+        }
     }
 
     private static (IReadOnlyDictionary<string, string>? Fields, string? Error) NormalizeFields(
@@ -415,6 +492,10 @@ public sealed class GameAccountValidationController(
                 new GameAccountValidationErrorResponse(
                     "VALIDATION_UNAVAILABLE",
                     result.Error ?? "Game account validation is temporarily unavailable."),
+            GameAccountValidationFailureKind.NicknameUnsupported =>
+                new GameAccountValidationErrorResponse(
+                    "NICKNAME_VERIFICATION_UNSUPPORTED",
+                    result.Error ?? "Provider cannot verify nicknames. Check your account details before confirming."),
             _ =>
                 new GameAccountValidationErrorResponse(
                     "VALIDATION_FAILED",
@@ -429,6 +510,8 @@ public sealed class GameAccountValidationController(
                 UnprocessableEntity(error),
             GameAccountValidationFailureKind.ProviderUnavailable =>
                 StatusCode(StatusCodes.Status503ServiceUnavailable, error),
+            GameAccountValidationFailureKind.NicknameUnsupported =>
+                Conflict(error),
             _ =>
                 BadRequest(error)
         };
