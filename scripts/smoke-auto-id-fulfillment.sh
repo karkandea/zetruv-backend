@@ -70,6 +70,22 @@ CTOK=$(json '["accessToken"]' <<<"$LOGIN")
 Q=$(curl -fsS "http://127.0.0.1:$API/api/v1/cms/fulfillment/queue?status=Failed" -H "Authorization: Bearer $CTOK")
 python3 -c 'import json,sys; d=json.loads(sys.argv[1]); iid=sys.argv[2]; assert any(str(x["orderItemId"])==iid for x in d["items"])' "$Q" "$ITEM2"
 
+echo '=== AUTO_ID CMS STATUS OVERRIDE MUST FAIL ==='
+OVERRIDE_STATUS=$(curl -sS -o /tmp/zetruv-auto-id-override.json -w '%{http_code}' -X PUT \
+  "http://127.0.0.1:$API/api/v1/cms/orders/$OID2/items/$ITEM2/fulfillment" \
+  -H "Authorization: Bearer $CTOK" -H 'Content-Type: application/json' \
+  -d '{"status":"Completed","reference":"CMS-FAKE-PAID"}')
+[[ "$OVERRIDE_STATUS" == 409 ]] || { echo "FAIL: AUTO_ID CMS override returned $OVERRIDE_STATUS"; exit 1; }
+python3 - <<'PY'
+import json
+with open('/tmp/zetruv-auto-id-override.json') as f: result=json.load(f)
+assert 'provider-managed' in result['message']
+PY
+UNCHANGED=$(docker exec "$C" psql -At -F '|' -U zetruv -d "$DB" -c \
+  "SELECT \"FulfillmentStatus\",\"FulfillmentAttemptCount\" FROM order_items WHERE \"Id\"='$ITEM2';")
+[[ "$UNCHANGED" == 'Failed|1' ]]
+echo 'PASS: failed AUTO_ID cannot be marked completed manually; existing provider retry remains available'
+
 docker exec "$C" psql -U zetruv -d "$DB" -c "UPDATE game_account_validations SET \"InputJson\"='{\"userId\":\"10002\",\"zoneId\":\"20002\"}'::jsonb WHERE \"OrderItemId\"='$ITEM2';" >/dev/null
 R=$(curl -fsS -X POST "http://127.0.0.1:$API/api/v1/cms/fulfillment/orders/$OID2/items/$ITEM2/execute" -H "Authorization: Bearer $CTOK")
 python3 -c 'import json,sys; x=json.loads(sys.argv[1]); assert x["status"]=="Completed" and x["attemptCount"]==2 and x["orderStatus"]=="Completed" and x["reference"]' "$R"
