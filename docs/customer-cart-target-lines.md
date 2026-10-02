@@ -22,6 +22,20 @@ for multiple validated destination accounts.
 
 The checkout service already groups by variant + validation ID, so different
 targets remain distinct order items.
+## Edit destination / re-verification (Figma Cart States)
+
+When the user edits User ID / Zone on an existing validated AUTO_ID cart line, use:
+
+`PATCH /api/v1/me/cart/lines/{cartItemId}/target`
+
+- `{"gameAccountValidationId":null}` resets **only** that cart line to **RequiresVerification**, retaining its original cart-line `id`, quantity and SKU. Its `target` becomes null; `isAvailable=false`, so selection/checkout UI must disable that line.
+- Call `POST /api/v1/game-account/validate` with the updated fields. Only after the new validation succeeds, PATCH the **same cart line** with `{"gameAccountValidationId":"<new-validated-guid>"}`. The line returns to **Verified** and becomes eligible again (subject to stock/availability).
+- Replacing with an expired, consumed, missing or wrong-product validation returns 409. Choosing a validation already present on another line for that customer returns 409 instead of silently merging separate destinations. Other customer's line ID returns 404.
+- No unverified User ID / Zone is persisted in cart; it remains client-side until validation. Reset lines receive a distinct `:reverify:{cartItemId}` internal key (74 characters), preserving multiple identical-SKU lines without a migration.
+- `GET /api/v1/me/cart` now exposes a per-line `targetStatus` string: `NotRequired`, `RequiresVerification`, `Verified`, `Expired` or `Consumed`. Existing `isAvailable` remains authoritative for selection UI; a valid target alone does not guarantee inventory.
+
+This API does not revoke previously issued validations that might be referenced by another cart line; at checkout the existing server validation rules still apply. The caller must submit the currently selected validated destination after editing.
+
 ## Line identity and persistence
 
 `customer_cart_items` now stores:

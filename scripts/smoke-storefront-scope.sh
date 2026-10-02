@@ -168,6 +168,43 @@ target_lines=[x for x in check(api('GET','/api/v1/me/cart',token=first),200)['it
     if x['productVariantId']==target_vid]
 assert len(target_lines)==2
 assert next(x for x in target_lines if x['target']['accountDisplayName']=='AlphaTarget')['quantity']==3
+
+# Figma Cart Re-verification Required: changing one destination never makes
+# another same-SKU destination disappear or silently remain eligible.
+alpha_line=next(x for x in target_lines if x['target']['accountDisplayName']=='AlphaTarget')
+alpha_line_id=alpha_line['id']
+check(api('PATCH',f'/api/v1/me/cart/lines/{alpha_line_id}/target',
+    {'gameAccountValidationId':None},second),404)
+reset=check(api('PATCH',f'/api/v1/me/cart/lines/{alpha_line_id}/target',
+    {'gameAccountValidationId':None},first),200)
+assert reset['id']==alpha_line_id and reset['needsReverification'] is True
+target_lines=[x for x in check(api('GET','/api/v1/me/cart',token=first),200)['items']
+    if x['productVariantId']==target_vid]
+assert len(target_lines)==2
+edited=next(x for x in target_lines if x['id']==alpha_line_id)
+assert edited['target'] is None and edited['targetStatus']=='RequiresVerification'
+assert edited['isAvailable'] is False and edited['quantity']==3
+sibling=next(x for x in target_lines if x['id']!=alpha_line_id)
+assert sibling['target']['fields']['user_id']=='10002'
+assert sibling['targetStatus']=='Verified' and sibling['isAvailable'] is True
+# Cross-product/unknown target cannot replace an account; a validation already
+# represented by a sibling would collapse distinct lines and must conflict.
+check(api('PATCH',f'/api/v1/me/cart/lines/{alpha_line_id}/target',
+    {'gameAccountValidationId':'00000000-0000-0000-0000-000000000123'},first),409)
+check(api('PATCH',f'/api/v1/me/cart/lines/{alpha_line_id}/target',
+    {'gameAccountValidationId':target_b['validationId']},first),409)
+target_a2=validate_target('10001','2001','AlphaTarget')
+reverified=check(api('PATCH',f'/api/v1/me/cart/lines/{alpha_line_id}/target',
+    {'gameAccountValidationId':target_a2['validationId']},first),200)
+assert reverified['id']==alpha_line_id and reverified['needsReverification'] is False
+target_lines=[x for x in check(api('GET','/api/v1/me/cart',token=first),200)['items']
+    if x['productVariantId']==target_vid]
+assert len(target_lines)==2 and all(x['isAvailable'] for x in target_lines)
+assert {x['targetStatus'] for x in target_lines}=={'Verified'}
+assert {x['id'] for x in target_lines}=={alpha_line_id,sibling['id']}
+print('PASS: edited cart line requires re-verification and retains sibling')
+
+
 check(api('PUT',f'/api/v1/me/cart/items/{target_vid}',{
     'productVariantId':target_vid,'quantity':1},first),400)
 check(api('PUT',f'/api/v1/me/cart/items/{vid}',{
@@ -176,7 +213,7 @@ check(api('PUT',f'/api/v1/me/cart/items/{vid}',{
 # Checkout already supports same SKU with different validation IDs as distinct order lines.
 target_order=check(api('POST','/api/v1/checkout/orders',{
     'customerPhone':'+6281234567890','items':[
-        {'productVariantId':target_vid,'quantity':1,'gameAccountValidationId':target_a['validationId']},
+        {'productVariantId':target_vid,'quantity':1,'gameAccountValidationId':target_a2['validationId']},
         {'productVariantId':target_vid,'quantity':1,'gameAccountValidationId':target_b['validationId']}
     ]},first),201)
 target_order_lines=subprocess.check_output([
@@ -194,6 +231,7 @@ assert {x['accountTarget']['fields']['zone'] for x in target_items}=={'2001','20
 target_lines=[x for x in check(api('GET','/api/v1/me/cart',token=first),200)['items']
     if x['productVariantId']==target_vid]
 assert len(target_lines)==2 and not any(x['isAvailable'] for x in target_lines)
+assert all(x['targetStatus']=='Consumed' for x in target_lines)
 delete_id=target_lines[0]['id']
 check(api('DELETE',f'/api/v1/me/cart/lines/{delete_id}',token=first),204)
 assert len([x for x in check(api('GET','/api/v1/me/cart',token=first),200)['items']
