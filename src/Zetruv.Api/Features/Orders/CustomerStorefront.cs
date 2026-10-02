@@ -44,6 +44,10 @@ public sealed record CartItemResponse(
 
 public sealed record CustomerCartResponse(IReadOnlyList<CartItemResponse> Items);
 
+// Null means destination fields were edited and the old verification
+// must no longer make this particular cart line checkout-eligible.
+public sealed record ChangeCartLineTargetRequest(Guid? GameAccountValidationId);
+
 [ApiController]
 [Authorize(AuthenticationSchemes = CustomerAuthConstants.Scheme)]
 [Route("api/v1/me")]
@@ -277,6 +281,78 @@ public sealed class CustomerStorefrontController(ZetruvDbContext db) : Controlle
             item.ProductVariantId,
             item.GameAccountValidationId,
             item.Quantity
+        });
+    }
+
+    // Figma: editing User ID / Zone on ONE cart item must invalidate
+    // that item's checkout eligibility without deleting its sibling SKUs.
+    [HttpPatch("cart/lines/{cartItemId:guid}/target")]
+    public async Task<IActionResult> ChangeCartLineTarget(
+        Guid cartItemId, ChangeCartLineTargetRequest request, CancellationToken ct)
+    {
+        var id = CustomerId;
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        await db.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT pg_advisory_xact_lock(hashtext({id.ToString()}))", ct);
+
+        var line = await db.CustomerCartItems
+            .Include(x => x.ProductVariant)
+                .ThenInclude(x => x.Product)
+            .SingleOrDefaultAsync(
+                x => x.CustomerUserId == id && x.Id == cartItemId, ct);
+        if (line is null)
+            return NotFound(new { message = "Cart line was not found." });
+
+        var product = line.ProductVariant.Product;
+        if (product.FulfillmentMethod != FulfillmentMethod.AUTO_ID ||
+            !product.RequiresGameAccountValidation)
+            return BadRequest(new { message = "Only validated AUTO_ID cart items can change their account target." });
+
+        var targetId = request.GameAccountValidationId;
+        if (targetId.HasValue)
+        {
+            var now = DateTimeOffset.UtcNow;
+            var isVerified = await db.Set<GameAccountValidation>()
+                .AsNoTracking()
+                .AnyAsync(x =>
+                    x.Id == targetId.Value &&
+                    x.ProductId == product.Id &&
+                    x.OrderItemId == null &&
+                    x.ConsumedAt == null &&
+                    x.ExpiresAt > now, ct);
+            if (!isVerified)
+                return Conflict(new
+                {
+                    message = "The replacement account has not been verified, has expired, or belongs to another product. Validate the new User ID and Zone first."
+                });
+        }
+
+        // Keep a unique identity for every edited, unverified line of the
+        // same SKU; :default is reserved for products not requiring a target.
+        var nextKey = targetId.HasValue
+            ? BuildLineKey(line.ProductVariantId, targetId)
+            : $"{line.ProductVariantId:N}:reverify:{line.Id:N}";
+
+        if (await db.CustomerCartItems.AnyAsync(x =>
+            x.CustomerUserId == id && x.Id != line.Id && x.LineKey == nextKey, ct))
+            return Conflict(new
+            {
+                message = "This product and verified destination already exist on another cart line."
+            });
+
+        line.GameAccountValidationId = targetId;
+        line.LineKey = nextKey;
+        line.UpdatedAt = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
+
+        return Ok(new
+        {
+            line.Id,
+            line.ProductVariantId,
+            line.GameAccountValidationId,
+            line.Quantity,
+            NeedsReverification = !targetId.HasValue
         });
     }
 
