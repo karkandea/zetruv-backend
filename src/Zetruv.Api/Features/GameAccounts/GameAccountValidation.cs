@@ -262,6 +262,16 @@ public sealed class GameAccountValidationService(
 
         var nicknameCapability = await GetNicknameCapabilityAsync(
             product.GameId.Value, cancellationToken);
+        // Once CMS has a game-provider mapping, disabling it must not
+        // silently fall back to a different/global nickname verifier.
+        if (nicknameCapability.HasValue &&
+            (!nicknameCapability.Value.IsActive ||
+             fulfillmentProviders.Resolve(nicknameCapability.Value.ProviderCode) is null))
+        {
+            return GameAccountValidationResult.Failure(
+                GameAccountValidationFailureKind.ProviderUnavailable,
+                "The configured game provider is unavailable or disabled.");
+        }
         var requiresWarning = nicknameCapability.HasValue &&
             !nicknameCapability.Value.NicknameCheckEnabled;
         GameAccountProviderResult providerResult;
@@ -302,6 +312,14 @@ public sealed class GameAccountValidationService(
             }
 
             providerName = validator.Name;
+            if (nicknameCapability.HasValue &&
+                !string.Equals(providerName, nicknameCapability.Value.ProviderCode,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return GameAccountValidationResult.Failure(
+                    GameAccountValidationFailureKind.ProviderUnavailable,
+                    "Nickname validator does not match the configured game provider.");
+            }
             try
             {
                 providerResult = await validator.ValidateAsync(
@@ -381,7 +399,7 @@ public sealed class GameAccountValidationService(
                     : null));
     }
 
-    private async Task<(string ProviderCode, bool NicknameCheckEnabled)?>
+    private async Task<(string ProviderCode, bool NicknameCheckEnabled, bool IsActive)?>
         GetNicknameCapabilityAsync(Guid gameId, CancellationToken ct)
     {
         var connection = db.Database.GetDbConnection();
@@ -392,9 +410,9 @@ public sealed class GameAccountValidationService(
         {
             await using var command = connection.CreateCommand();
             command.CommandText = """
-                SELECT "ProviderCode", "NicknameCheckEnabled"
+                SELECT "ProviderCode", "NicknameCheckEnabled", "IsActive"
                 FROM provider_game_mappings
-                WHERE "GameId" = @gameId AND "IsActive" = TRUE
+                WHERE "GameId" = @gameId
                 LIMIT 1
                 """;
             var parameter = command.CreateParameter();
@@ -404,7 +422,7 @@ public sealed class GameAccountValidationService(
             await using var reader = await command.ExecuteReaderAsync(ct);
             if (!await reader.ReadAsync(ct))
                 return null;
-            return (reader.GetString(0), reader.GetBoolean(1));
+            return (reader.GetString(0), reader.GetBoolean(1), reader.GetBoolean(2));
         }
         finally
         {
