@@ -46,6 +46,17 @@ LOGIN=$(curl -fsS -X POST "$BASE/api/v1/cms/auth/login"   -H 'Content-Type: appl
 CTOK=$(json_value '["accessToken"]' <<<"$LOGIN")
 AUTH=(-H "Authorization: Bearer $CTOK" -H 'Content-Type: application/json')
 
+echo '=== CMS PAYMENT STATUS GUARD ==='
+# Even authenticated CMS admins must not forge gateway settlement.
+for status in Paid Pending Failed Refunded; do
+  code=$(curl -sS -o /tmp/zetruv-cms-crud-payment-guard.json -w '%{http_code}' \
+    -X PUT "$BASE/api/v1/cms/orders/00000000-0000-0000-0000-000000000001/payment-status" \
+    "${AUTH[@]}" -d "{\"status\":\"$status\"}")
+  [[ "$code" == 410 ]] || { echo "FAIL: CMS $status payment mutation returned HTTP $code"; exit 1; }
+done
+python3 -c 'import json; d=json.load(open("/tmp/zetruv-cms-crud-payment-guard.json")); assert "gateway" in d["message"].lower()'
+echo 'PASS: CMS cannot mutate payment settlement or fulfillment'
+
 UNAUTH=$(curl -sS -o /dev/null -w '%{http_code}' "$BASE/api/v1/cms/catalog/products")
 [[ "$UNAUTH" == 401 ]]
 echo 'PASS: CMS endpoints reject unauthenticated access'
