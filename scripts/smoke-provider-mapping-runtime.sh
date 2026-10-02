@@ -134,5 +134,12 @@ GAME_OFF=$(curl -sS -o /dev/null -w '%{http_code}' -X PUT "http://127.0.0.1:$API
 MAPS_OFF=$(curl -fsS "http://127.0.0.1:$API/api/v1/cms/provider-mappings" -H "Authorization: Bearer $CTOK")
 python3 -c 'import json,sys; x=json.loads(sys.argv[1]); g=next(v for v in x if v["gameId"]=="a1000000-0000-0000-0000-000000000001"); s=next(v for v in g["skus"] if v["variantId"]=="a3000000-0000-0000-0000-000000000001"); assert g["mappingActive"] is False and s["isOperational"] is False' "$MAPS_OFF"
 echo 'PASS: disabling game mapping makes variants non-operational'
+DISABLED_VALIDATION=$(curl -sS -o /tmp/zetruv-pmr-disabled-validation.json -w '%{http_code}' \
+  -X POST "http://127.0.0.1:$API/api/v1/game-account/validate" -H 'Content-Type: application/json' \
+  -d '{"productId":"a2000000-0000-0000-0000-000000000001","fields":{"userid":"10002","zoneid":"20002"},"acknowledgeUnverifiedAccount":true}')
+[[ "$DISABLED_VALIDATION" == 503 ]] || { echo "FAIL: disabled mapping accepted validation: $DISABLED_VALIDATION"; exit 1; }
+python3 -c 'import json; x=json.load(open("/tmp/zetruv-pmr-disabled-validation.json")); assert x["code"]=="VALIDATION_UNAVAILABLE"'
+echo 'PASS: disabled game-provider mapping cannot silently fall back to a mock validator'
+
 
 echo 'PASS: provider mapping runtime + CMS + fail-closed + activity history'
