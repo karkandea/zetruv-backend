@@ -117,10 +117,17 @@ CHANGED=$(CHECKOUT_BODY="$CHECKOUT_BODY" python3 -c 'import os,json; x=json.load
 CODE=$(curl -sS -o /tmp/zetruv-price-change.json -w '%{http_code}' -X POST "http://127.0.0.1:$API/api/v1/checkout/orders" -H 'Content-Type: application/json' -d "$CHANGED")
 [[ "$CODE" == 409 ]] || { echo "FAIL: price changed must return 409, got $CODE"; exit 1; }
 python3 -c 'import json; x=json.load(open("/tmp/zetruv-price-change.json")); assert x["code"]=="PRICE_CHANGED" and x["priceChanges"][0]["currentUnitPrice"]==15000'
-ACK=$(CHANGED="$CHANGED" python3 -c 'import os,json; x=json.loads(os.environ["CHANGED"]); x["items"][0]["acknowledgePriceChange"]=True; print(json.dumps(x))')
+STALE_ACK=$(CHANGED="$CHANGED" python3 -c 'import os,json; x=json.loads(os.environ["CHANGED"]); x["items"][0]["acknowledgePriceChange"]=True; print(json.dumps(x))')
+CODE=$(curl -sS -o /tmp/zetruv-price-stale-ack.json -w '%{http_code}' -X POST "http://127.0.0.1:$API/api/v1/checkout/orders" -H 'Content-Type: application/json' -d "$STALE_ACK")
+[[ "$CODE" == 409 ]] || { echo "FAIL: stale acknowledged quote returned $CODE (wanted 409)"; exit 1; }
+python3 -c 'import json; x=json.load(open("/tmp/zetruv-price-stale-ack.json")); assert x["code"]=="PRICE_CHANGED" and x["priceChanges"][0]["currentUnitPrice"]==15000'
+MISSING_PRICE_ACK=$(CHECKOUT_BODY="$CHECKOUT_BODY" python3 -c 'import os,json; x=json.loads(os.environ["CHECKOUT_BODY"]); x["items"][0]["acknowledgePriceChange"]=True; print(json.dumps(x))')
+CODE=$(curl -sS -o /tmp/zetruv-price-missing-ack.json -w '%{http_code}' -X POST "http://127.0.0.1:$API/api/v1/checkout/orders" -H 'Content-Type: application/json' -d "$MISSING_PRICE_ACK")
+[[ "$CODE" == 400 ]] || { echo "FAIL: unquoted acknowledgment returned $CODE (wanted 400)"; exit 1; }
+ACK=$(STALE_ACK="$STALE_ACK" python3 -c 'import os,json; x=json.loads(os.environ["STALE_ACK"]); x["items"][0]["expectedUnitPrice"]=15000; print(json.dumps(x))')
 CODE=$(curl -sS -o /tmp/zetruv-price-ack.json -w '%{http_code}' -X POST "http://127.0.0.1:$API/api/v1/checkout/orders" -H 'Content-Type: application/json' -d "$ACK")
-[[ "$CODE" == 201 ]] || { echo "FAIL: acknowledged price change returned $CODE"; exit 1; }
+[[ "$CODE" == 201 ]] || { echo "FAIL: latest-price acknowledgment returned $CODE"; exit 1; }
 python3 -c 'import json; x=json.load(open("/tmp/zetruv-price-ack.json")); assert x["items"][0]["unitPrice"]==15000'
-echo 'PASS: price mismatch rejects order; acknowledgment accepts server-side price'
+echo 'PASS: stale/missing-price acknowledgments rejected, latest quoted price accepted'
 
 echo 'PASS: catalog search + public gating + promo-aware PDP + checkout price parity'
