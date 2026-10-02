@@ -301,8 +301,18 @@ public sealed class CheckoutService(
         // Product Detail / Cart can show an earlier flash-sale or SKU price.
         // Refuse an unacknowledged change before writing orders or claiming vouchers.
         // Legacy clients without ExpectedUnitPrice keep their existing contract.
+        // An acknowledgment is only valid for the latest quoted unit price.
+        // Acknowledging an old quote must never silently accept a subsequent
+        // increase (or any other repricing) without another PRICE_CHANGED.
+        if (items.Any(item => item.AcknowledgePriceChange &&
+                              !item.ExpectedUnitPrice.HasValue))
+        {
+            return CreateCheckoutOrderResult.Failure(
+                "Price-change acknowledgment requires the latest expected unit price.");
+        }
+
         var priceChanges = items
-            .Where(item => item.ExpectedUnitPrice.HasValue && !item.AcknowledgePriceChange)
+            .Where(item => item.ExpectedUnitPrice.HasValue)
             .Select(item =>
             {
                 var variant = variantById[item.ProductVariantId];
