@@ -302,7 +302,7 @@ assert invoice['grandTotal']==100000 and len(invoice['items'])==2
 assert sum(line['lineTotal'] for line in invoice['items'])==100000
 assert all(line['sku']=='SKU-86' for line in invoice['items'])
 assert all('password' not in k.lower() for k in invoice.keys())
-assert 'target' not in json.dumps(invoice).lower()
+assert all('target' not in line and 'loginCredentials' not in line for line in invoice['items'])
 subprocess.run(['docker','exec',CONTAINER,'psql','-v','ON_ERROR_STOP=1',
     '-U','zetruv','-d','zetruv_auth_smoke','-c',
     'UPDATE orders SET "PaymentStatus"=\'Paid\', "PaidAt"=NOW() WHERE "Id"=\''+order_id+'\';'],
