@@ -288,6 +288,33 @@ expect(*api('GET','/api/v1/me/orders/e8000000-0000-0000-0000-000000000099',
     token=updated['accessToken']),404)
 print('PASS: owner-only order detail, duplicate SKU destination snapshots, no leaked credentials')
 
+# Figma Pending Payment: invoice data exists immediately after order creation;
+# Paid state adds paidAt and never leaks login/account validation snapshots.
+invoice_path=endpoint+'/invoice'
+expect(*api('GET',invoice_path),401)
+expect(*api('GET',invoice_path,token=admin['accessToken']),401)
+expect(*api('GET',invoice_path,token=second_verified['accessToken']),404)
+status,invoice=api('GET',invoice_path,token=updated['accessToken'])
+expect(status,invoice,200)
+assert invoice['invoiceNumber']=='ZTR-OWNER-TARGET'
+assert invoice['paymentStatus']=='Pending' and invoice['paidAt'] is None
+assert invoice['grandTotal']==100000 and len(invoice['items'])==2
+assert sum(line['lineTotal'] for line in invoice['items'])==100000
+assert all(line['sku']=='SKU-86' for line in invoice['items'])
+assert all('password' not in k.lower() for k in invoice.keys())
+assert 'target' not in json.dumps(invoice).lower()
+subprocess.run(['docker','exec',CONTAINER,'psql','-v','ON_ERROR_STOP=1',
+    '-U','zetruv','-d','zetruv_auth_smoke','-c',
+    'UPDATE orders SET "PaymentStatus"=\'Paid\', "PaidAt"=NOW() WHERE "Id"=\''+order_id+'\';'],
+    check=True,stdout=subprocess.DEVNULL)
+status,paid_invoice=api('GET',invoice_path,token=updated['accessToken'])
+expect(status,paid_invoice,200)
+assert paid_invoice['paymentStatus']=='Paid' and paid_invoice['paidAt'] is not None
+assert paid_invoice['grandTotal']==invoice['grandTotal']
+print('PASS: owner-only pending/paid invoice data without secret snapshots')
+
+
+
 print('PASS: customer register, verify, edit email, resend, cooldown, expiry, auto-login, JWT isolation,')
 print('PASS: forgot generic response, reset, password history, replay guard, old session revocation')
 PY
