@@ -204,7 +204,8 @@ time.sleep(1.2)
 before=files()
 expect(*api('POST','/api/v1/auth/resend-verification',{'email':second}),202)
 new_verify=new_link(before,second)
-expect(*api('POST','/api/v1/auth/verify-email',{'token':new_verify}),200)
+status,second_verified=api('POST','/api/v1/auth/verify-email',{'token':new_verify})
+expect(status,second_verified,200)
 
 old_email='typo-auth@zetruv.test'
 corrected_email='corrected-auth@zetruv.test'
@@ -232,6 +233,61 @@ assert corrected['customer']['email']==corrected_email
 expect(*api('POST','/api/v1/auth/change-registration-email',
     {'registrationToken':changed['registrationToken'],
      'newEmail':'after-verify@zetruv.test'}),400,'REGISTRATION_SESSION_INVALID')
+# Figma Digital Purchase: same SKU for two targets must remain distinguishable
+# in an authenticated, owner-only order detail. Admin tokens and another
+# customer must never be able to read the destination fields.
+fixture = """
+INSERT INTO products ("Id","CategoryId","Name","Slug","Kind","FulfillmentMethod",
+  "RequiresGameAccountValidation","IsActive","IsFeatured","SortOrder","CreatedAt","UpdatedAt")
+VALUES ('e8000000-0000-0000-0000-000000000001',
+  (SELECT "Id" FROM catalog_categories WHERE "Key"='top_up_games'),
+  'Order Target Fixture','order-target-fixture','TopUpGame','AUTO_ID',TRUE,TRUE,FALSE,1,NOW(),NOW());
+INSERT INTO orders ("Id","OrderNumber","Status","PaymentStatus","CustomerUserId",
+  "Subtotal","DiscountAmount","ShippingAmount","GrandTotal","Currency","CreatedAt","UpdatedAt")
+VALUES ('e8000000-0000-0000-0000-000000000002','ZTR-OWNER-TARGET','Pending','Pending',
+  (SELECT "Id" FROM customer_users WHERE "Email"='auth-test@zetruv.test'),
+  100000,0,0,100000,'IDR',NOW(),NOW());
+INSERT INTO order_items ("Id","OrderId","ProductId","ProductName","ProductSlug",
+  "ProductKind","FulfillmentMethod","FulfillmentStatus","VariantName","Sku","UnitPrice",
+  "Quantity","LineTotal","CreatedAt") VALUES
+('e8000000-0000-0000-0000-000000000003','e8000000-0000-0000-0000-000000000002',
+ 'e8000000-0000-0000-0000-000000000001','Topup','order-target-fixture','TopUpGame',
+ 'AUTO_ID','Pending','86 Diamond','SKU-86',50000,1,50000,NOW()),
+('e8000000-0000-0000-0000-000000000004','e8000000-0000-0000-0000-000000000002',
+ 'e8000000-0000-0000-0000-000000000001','Topup','order-target-fixture','TopUpGame',
+ 'AUTO_ID','Pending','86 Diamond','SKU-86',50000,1,50000,NOW());
+INSERT INTO game_account_validations ("Id","ProductId","OrderItemId","Provider",
+ "AccountDisplayName","InputJson","InputFingerprint","ValidatedAt","ExpiresAt","ConsumedAt",
+ "CreatedAt") VALUES
+('e8000000-0000-0000-0000-000000000005','e8000000-0000-0000-0000-000000000001',
+ 'e8000000-0000-0000-0000-000000000003','mock','FirstPlayer',
+ '{"userid":"111","zoneid":"123","password":"legacy-secret"}'::jsonb,'fixture',NOW(),NOW()+INTERVAL '1 hour',NOW(),NOW()),
+('e8000000-0000-0000-0000-000000000006','e8000000-0000-0000-0000-000000000001',
+ 'e8000000-0000-0000-0000-000000000004','mock','SecondPlayer',
+ '{"userid":"222","zoneid":"456"}'::jsonb,'fixture',NOW(),NOW()+INTERVAL '1 hour',NOW(),NOW());
+"""
+subprocess.run(['docker','exec','-i',CONTAINER,'psql','-v','ON_ERROR_STOP=1',
+    '-U','zetruv','-d','zetruv_auth_smoke'],
+    input=fixture.encode(),check=True,stdout=subprocess.DEVNULL)
+order_id='e8000000-0000-0000-0000-000000000002'
+endpoint='/api/v1/me/orders/'+order_id
+expect(*api('GET',endpoint),401)
+expect(*api('GET',endpoint,token=admin['accessToken']),401)
+expect(*api('GET',endpoint,token=second_verified['accessToken']),404)
+status,detail=api('GET',endpoint,token=updated['accessToken'])
+expect(status,detail,200)
+assert detail['grandTotal']==100000 and len(detail['items'])==2
+targets={x['target']['fields']['userid']:x['target'] for x in detail['items']}
+assert set(targets)=={'111','222'},targets
+assert targets['111']['fields']['zoneid']=='123'
+assert targets['222']['fields']['zoneid']=='456'
+assert targets['111']['accountDisplayName']=='FirstPlayer'
+assert all('password' not in x['fields'] for x in targets.values())
+assert all('loginCredentials' not in x for x in detail['items'])
+expect(*api('GET','/api/v1/me/orders/e8000000-0000-0000-0000-000000000099',
+    token=updated['accessToken']),404)
+print('PASS: owner-only order detail, duplicate SKU destination snapshots, no leaked credentials')
+
 print('PASS: customer register, verify, edit email, resend, cooldown, expiry, auto-login, JWT isolation,')
 print('PASS: forgot generic response, reset, password history, replay guard, old session revocation')
 PY
