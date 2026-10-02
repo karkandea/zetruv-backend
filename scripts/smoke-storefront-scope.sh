@@ -110,6 +110,22 @@ assert public['variants'][0]['groupName']=='Ranked'
 check(api('POST','/api/v1/checkout/orders',{'customerEmail':'guest@zetruv.test','items':[{'productVariantId':vid,'quantity':1}]}),400)
 print('PASS: grouped SKU projects in CMS/public PDP and WhatsApp required for digital checkout')
 
+# Figma Cart -> Login Gate -> Checkout: dedicated strict checkout entrypoint.
+# The old guest-compatible endpoint remains available during FE migration.
+strict_payload={'customerPhone':'+6281234567890',
+                'items':[{'productVariantId':vid,'quantity':1}]}
+check(api('POST','/api/v1/checkout/verified/orders',strict_payload),401)
+check(api('POST','/api/v1/checkout/verified/orders',strict_payload,admin),401)
+strict_order=check(api('POST','/api/v1/checkout/verified/orders',
+    strict_payload,first),201)
+assert strict_order['orderAccessToken'] and strict_order['paymentStatus']=='Pending'
+strict_detail=check(api('GET',f'/api/v1/me/orders/{strict_order["id"]}',token=first),200)
+assert strict_detail['orderNumber']==strict_order['orderNumber']
+check(api('GET',f'/api/v1/me/orders/{strict_order["id"]}',token=second),404)
+print('PASS: strict Figma checkout requires verified customer, preserves ownership and existing order flow')
+
+
+
 check(api('PUT',f'/api/v1/me/cart/items/{vid}',{'productVariantId':vid,'quantity':2},first),200)
 check(api('PUT',f'/api/v1/me/cart/items/{vid}',{'productVariantId':vid,'quantity':1},second),200)
 assert len(check(api('GET','/api/v1/me/cart',token=first),200)['items'])==1
