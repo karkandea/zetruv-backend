@@ -169,6 +169,34 @@ request_json() {
 LOGIN_JSON=$(request_json POST "admin login" "$BASE/api/v1/cms/auth/login" '{"email":"smoke-admin@zetruv.test","password":"SmokeAdmin123!"}')
 TOKEN=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["accessToken"])' <<< "$LOGIN_JSON")
 
+echo "=== MERCHANDISE ITEM + FORBIDDEN CMS COMPLETION ==="
+docker exec -i "$CONTAINER" psql -v ON_ERROR_STOP=1 -U zetruv -d "$DB" <<'SQL'
+INSERT INTO order_items (
+  "Id","OrderId","ProductName","ProductSlug","ProductKind",
+  "FulfillmentMethod","FulfillmentStatus","UnitPrice","Quantity",
+  "LineTotal","CreatedAt"
+) VALUES (
+  'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee',
+  'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+  'Shipment Test Merch','shipment-test-merch','Merchandise','MANUAL',
+  'Processing',200000,1,200000,NOW()
+);
+SQL
+DENIED=$(curl -sS -o /tmp/zetruv-merchant-override.json -w '%{http_code}' \
+  -X PUT "$BASE/api/v1/cms/orders/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/items/eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee/fulfillment" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"status":"Completed","reference":"FAKE-MANUAL-DELIVERY"}')
+[[ "$DENIED" == 409 ]] || { echo "FAIL: merchandise override allowed: $DENIED"; exit 1; }
+python3 - <<'PY'
+import json
+with open('/tmp/zetruv-merchant-override.json') as f: data=json.load(f)
+assert 'shipment-managed' in data['message']
+PY
+MERCH_STATUS=$(docker exec "$CONTAINER" psql -At -U zetruv -d "$DB" -c \
+  "SELECT \"FulfillmentStatus\" FROM order_items WHERE \"Id\"='eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee';")
+[[ "$MERCH_STATUS" == Processing ]]
+echo 'PASS: merchandise cannot be falsely completed through generic CMS fulfillment'
+
 echo "=== READY TO SHIP ==="
 READY_JSON=$(request_json PUT "ready to ship" "$BASE/api/v1/cms/orders/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/shipment" '{"status":"ReadyToShip"}')
 echo "$READY_JSON" | python3 -m json.tool
@@ -180,6 +208,12 @@ echo "$SHIPPED_JSON" | python3 -m json.tool
 echo "=== DELIVERED ==="
 DELIVERED_JSON=$(request_json PUT "delivered" "$BASE/api/v1/cms/orders/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/shipment" '{"status":"Delivered"}')
 echo "$DELIVERED_JSON" | python3 -m json.tool
+
+echo "=== MERCHANDISE FOLLOWS DELIVERY ==="
+DELIVERED_STATE=$(docker exec "$CONTAINER" psql -At -F '|' -U zetruv -d "$DB" -c \
+  "SELECT oi.\"FulfillmentStatus\",o.\"Status\" FROM order_items oi JOIN orders o ON o.\"Id\"=oi.\"OrderId\" WHERE oi.\"Id\"='eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee';")
+[[ "$DELIVERED_STATE" == 'Completed|Completed' ]]
+echo 'PASS: delivered shipment completes merchandise through shipment authority'
 
 echo "=== INVALID BACKWARD TRANSITION ==="
 INVALID_JSON=$(request_json PUT "invalid backward transition" "$BASE/api/v1/cms/orders/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/shipment" '{"status":"ReadyToShip"}' 4)
