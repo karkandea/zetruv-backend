@@ -11,7 +11,8 @@ public sealed record PaymentGatewayCreateRequest(
     string Currency,
     string? CustomerName,
     string? CustomerEmail,
-    string? CustomerPhone);
+    string? CustomerPhone,
+    string? MethodCode = null);
 
 public sealed record PaymentGatewayStatusRequest(
     Guid OrderId,

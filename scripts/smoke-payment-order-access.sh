@@ -73,6 +73,17 @@ CODE=$(curl -sS -o /tmp/payment-access-response.json -w '%{http_code}' -X POST "
 
 echo 'PASS: missing, invalid, and cross-order tokens are rejected'
 
+echo '=== PAYMENT METHOD SELECTION: MOCK MUST NOT PRETEND TO BE LIVE ==='
+for method in QRIS BCA_VIRTUAL_ACCOUNT GOPAY; do
+  method_code=$(curl -sS -o /tmp/payment-access-method.json -w '%{http_code}' -X POST \
+    "http://127.0.0.1:$API/api/v1/checkout/orders/$FIRST_ID/payment?methodCode=$method" \
+    -H "X-Order-Access-Token: $FIRST_TOKEN")
+  [[ "$method_code" == 400 ]] || { echo "FAIL: mock accepted $method"; exit 1; }
+done
+SELECTED_TX_COUNT=$(docker exec "$C" psql -At -U zetruv -d "$DB" -c "SELECT COUNT(*) FROM payment_transactions WHERE \"OrderId\"='$FIRST_ID';")
+[[ "$SELECTED_TX_COUNT" == 0 ]] || { echo "FAIL: mock selected method created a transaction"; exit 1; }
+echo 'PASS: QRIS, BCA VA, and GoPay are not accepted by mock gateway'
+
 echo '=== AUTHORIZED PAYMENT ==='
 CODE=$(curl -sS -o /tmp/payment-access-response.json -w '%{http_code}' -X POST "http://127.0.0.1:$API/api/v1/checkout/orders/$FIRST_ID/payment" -H "X-Order-Access-Token: $FIRST_TOKEN")
 cat /tmp/payment-access-response.json | python3 -m json.tool

@@ -74,7 +74,8 @@ public sealed class PaymentService(
 {
     public async Task<InitiatePaymentResult> InitiateAsync(
         Guid orderId,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? methodCode = null)
     {
         var connection = db.Database.GetDbConnection();
         var openedHere = connection.State != ConnectionState.Open;
@@ -93,7 +94,7 @@ public sealed class PaymentService(
 
         try
         {
-            return await InitiateLockedAsync(orderId, cancellationToken);
+            return await InitiateLockedAsync(orderId, methodCode, cancellationToken);
         }
         finally
         {
@@ -118,6 +119,7 @@ public sealed class PaymentService(
 
     private async Task<InitiatePaymentResult> InitiateLockedAsync(
         Guid orderId,
+        string? methodCode,
         CancellationToken cancellationToken)
     {
         var order = await db.Orders
@@ -185,6 +187,13 @@ public sealed class PaymentService(
 
         if (activePayment is not null)
         {
+            // A different method must not silently reuse an active payment.
+            // Resume the existing attempt by omitting methodCode, or wait for
+            // failure/expiry before choosing a new provider channel.
+            if (methodCode is not null)
+                return InitiatePaymentResult.Failure(
+                    "A payment session is already active. Resume it without methodCode before choosing a new method.");
+
             order.PaymentProvider = activePayment.Provider;
             order.PaymentReference = activePayment.ProviderReference;
             order.PaymentStatus = PaymentStatus.Pending;
@@ -211,6 +220,39 @@ public sealed class PaymentService(
                 isConfigurationError: true);
         }
 
+        // CMS display configuration alone does not make a payment channel live.
+        // Only a configured live gateway can accept an explicitly selected
+        // channel, and it must be enabled in CMS as well.
+        var selectedMethod = methodCode?.Trim().ToUpperInvariant();
+        if (methodCode is not null && (string.IsNullOrEmpty(selectedMethod) || selectedMethod.Length > 80))
+            return InitiatePaymentResult.Failure("Payment method code is invalid.");
+
+        if (gateway is ILivePaymentChannelGateway liveGateway)
+        {
+            if (!liveGateway.IsLiveConfigured)
+                return InitiatePaymentResult.Failure(
+                    "Live payment provider credentials are not configured.",
+                    isConfigurationError: true);
+
+            if (selectedMethod is null)
+                return InitiatePaymentResult.Failure("Choose a payment method before initiating payment.");
+
+            if (!liveGateway.SupportsChannel(selectedMethod))
+                return InitiatePaymentResult.Failure("Payment method is not supported by the active gateway.");
+
+            var enabledInCms = await db.SitePaymentMethods
+                .AsNoTracking()
+                .AnyAsync(x => x.IsActive && x.Code.ToUpper() == selectedMethod, cancellationToken);
+            if (!enabledInCms)
+                return InitiatePaymentResult.Failure("Payment method is not enabled in CMS.");
+        }
+        else if (selectedMethod is not null)
+        {
+            // The mock provider remains usable only by the legacy test flow
+            // without selected methods; never advertise QRIS/VA/GoPay mock.
+            return InitiatePaymentResult.Failure("Selected payment methods require a live gateway.");
+        }
+
         var reservation = await inventoryReservations.ReserveAsync(order, cancellationToken);
         if (!reservation.IsSuccess)
         {
@@ -226,7 +268,8 @@ public sealed class PaymentService(
                 order.Currency,
                 order.CustomerName,
                 order.CustomerEmail,
-                order.CustomerPhone),
+                order.CustomerPhone,
+                selectedMethod),
             cancellationToken);
 
         if (!gatewayResult.IsSuccess ||
