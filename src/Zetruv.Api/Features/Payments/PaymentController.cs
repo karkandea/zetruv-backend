@@ -15,6 +15,7 @@ public sealed class PaymentController(
     public async Task<ActionResult<InitiatePaymentResponse>> Initiate(
         Guid orderId,
         [FromHeader(Name = "X-Order-Access-Token")] string? orderAccessToken,
+        [FromQuery] string? methodCode,
         CancellationToken cancellationToken)
     {
         if (!orderAccessTokens.Validate(orderId, orderAccessToken))
@@ -25,7 +26,7 @@ public sealed class PaymentController(
             });
         }
 
-        var result = await paymentService.InitiateAsync(orderId, cancellationToken);
+        var result = await paymentService.InitiateAsync(orderId, cancellationToken, methodCode);
         if (result.Payment is not null)
         {
             return Ok(result.Payment);
