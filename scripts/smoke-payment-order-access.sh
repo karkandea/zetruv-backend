@@ -29,6 +29,8 @@ export ASPNETCORE_ENVIRONMENT=Staging
 dotnet run --project src/Zetruv.Api/Zetruv.Api.csproj --configuration Release --no-build --urls="http://127.0.0.1:$API" >/tmp/zetruv-payment-access.log 2>&1 & PID=$!
 for _ in $(seq 1 30); do curl -fsS "http://127.0.0.1:$API/health" >/dev/null && break; sleep 1; done
 curl -fsS "http://127.0.0.1:$API/health"; echo
+echo '=== PAYMENT READINESS: MOCK IS NEVER LIVE ==='
+curl -fsS "http://127.0.0.1:$API/api/v1/checkout/payment-options" | python3 -c 'import json,sys; x=json.load(sys.stdin); assert x["status"]=="DemoOnly" and not x["canAcceptLivePayments"] and x["availableMethods"]==[],x; print("PASS: mock provider exposes zero payable methods")'
 
 echo '=== SEED PRODUCT ==='
 docker exec -i "$C" psql -v ON_ERROR_STOP=1 -U zetruv -d "$DB" <<'SQL'
