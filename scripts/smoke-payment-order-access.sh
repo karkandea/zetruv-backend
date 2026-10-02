@@ -151,6 +151,19 @@ assert x['state']=='Pending' and x['hasActivePaymentSession'] is True
 PY
 echo 'PASS: Pending -> Expired -> same-order new payment attempt -> Pending'
 
+echo '=== ORDER LOOKUP RECOVERY ==='
+LOOKUP=$(curl -fsS -X POST "http://127.0.0.1:$API/api/v1/orders/lookup" \
+  -H 'Content-Type: application/json' \
+  -d "{\"orderNumber\":\"$FIRST_NO\",\"customerEmail\":\"access1@example.com\",\"customerPhone\":\"+6281234567890\"}")
+echo "$LOOKUP" | python3 -m json.tool
+LOOKUP_ID=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["orderId"])' <<<"$LOOKUP")
+LOOKUP_TOKEN=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["orderAccessToken"])' <<<"$LOOKUP")
+LOOKUP_EXP=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["orderAccessTokenExpiresAt"])' <<<"$LOOKUP")
+[[ "$LOOKUP_ID" == "$FIRST_ID" ]]
+[[ "$LOOKUP_TOKEN" == v1.* ]]
+[[ -n "$LOOKUP_EXP" ]]
+echo 'PASS: verified order lookup returns payment access token'
+
 echo '=== PAYMENT STATUS: PROVIDER FAILURE / SUCCESS ==='
 send_mock_webhook() {
   local reference="$1" event_status="$2" body sig
@@ -195,18 +208,5 @@ assert x['paymentStatus']=='Failed' and x['state']=='Failed'
 assert x['canRetry'] is True and x['hasActivePaymentSession'] is False
 PY
 echo 'PASS: verified provider callbacks update Paid / Failed without unsafe mutation'
-
-echo '=== ORDER LOOKUP RECOVERY ==='
-LOOKUP=$(curl -fsS -X POST "http://127.0.0.1:$API/api/v1/orders/lookup" \
-  -H 'Content-Type: application/json' \
-  -d "{\"orderNumber\":\"$FIRST_NO\",\"customerEmail\":\"access1@example.com\",\"customerPhone\":\"+6281234567890\"}")
-echo "$LOOKUP" | python3 -m json.tool
-LOOKUP_ID=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["orderId"])' <<<"$LOOKUP")
-LOOKUP_TOKEN=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["orderAccessToken"])' <<<"$LOOKUP")
-LOOKUP_EXP=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["orderAccessTokenExpiresAt"])' <<<"$LOOKUP")
-[[ "$LOOKUP_ID" == "$FIRST_ID" ]]
-[[ "$LOOKUP_TOKEN" == v1.* ]]
-[[ -n "$LOOKUP_EXP" ]]
-echo 'PASS: verified order lookup returns payment access token'
 
 echo 'PASS: payment order ownership access flow'
