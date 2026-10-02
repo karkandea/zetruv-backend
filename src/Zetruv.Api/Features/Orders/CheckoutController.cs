@@ -121,7 +121,16 @@ public sealed class CheckoutController(
         var result = await checkoutService.CreateOrderAsync(
             request, customerId, cancellationToken, keyHash, requestHash);
         if (result.Order is null)
+        {
+            if (result.PriceChanges is { Count: > 0 })
+                return Conflict(new
+                {
+                    code = "PRICE_CHANGED",
+                    message = result.Error,
+                    priceChanges = result.PriceChanges
+                });
             return BadRequest(new { message = result.Error });
+        }
         return StatusCode(StatusCodes.Status201Created, WithAccessToken(result.Order));
     }
 

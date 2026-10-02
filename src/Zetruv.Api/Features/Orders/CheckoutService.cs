@@ -298,6 +298,31 @@ public sealed class CheckoutService(
                 x => x.SalePrice,
                 cancellationToken);
 
+        // Product Detail / Cart can show an earlier flash-sale or SKU price.
+        // Refuse an unacknowledged change before writing orders or claiming vouchers.
+        // Legacy clients without ExpectedUnitPrice keep their existing contract.
+        var priceChanges = items
+            .Where(item => item.ExpectedUnitPrice.HasValue && !item.AcknowledgePriceChange)
+            .Select(item =>
+            {
+                var variant = variantById[item.ProductVariantId];
+                var current = variant.Price;
+                if (salePrices.TryGetValue(variant.Id, out var sale) &&
+                    sale >= 0 && sale <= current)
+                    current = sale;
+
+                return new CheckoutPriceChangeResponse(
+                    item.ProductVariantId,
+                    item.ExpectedUnitPrice!.Value,
+                    current);
+            })
+            .Where(change => change.ExpectedUnitPrice != change.CurrentUnitPrice)
+            .Distinct()
+            .ToList();
+
+        if (priceChanges.Count > 0)
+            return CreateCheckoutOrderResult.PricesChanged(priceChanges);
+
         decimal subtotal = 0;
         decimal discountAmount = 0;
         var orderItems = new List<OrderItem>(groupedItems.Count);

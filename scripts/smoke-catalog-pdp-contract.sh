@@ -104,11 +104,23 @@ PY
 [[ "$(curl -sS -o /dev/null -w '%{http_code}' "http://127.0.0.1:$API/api/v1/catalog/products/unconfigured-product")" == 404 ]]
 
 echo '=== CHECKOUT PRICE PARITY ==='
-ORDER=$(curl -fsS -X POST "http://127.0.0.1:$API/api/v1/checkout/orders" -H 'Content-Type: application/json' -d '{"customerEmail":"catalog@zetruv.local","customerPhone":"+6281234567890","items":[{"productVariantId":"a3000000-0000-0000-0000-000000000001","quantity":1,"loginCredentials":{"email":"player@example.com","password":"demo-password"}}]}')
+CHECKOUT_BODY='{"customerEmail":"catalog@zetruv.local","customerPhone":"+6281234567890","items":[{"productVariantId":"a3000000-0000-0000-0000-000000000001","quantity":1,"loginCredentials":{"email":"player@example.com","password":"demo-password"}}]}'
+ORDER=$(curl -fsS -X POST "http://127.0.0.1:$API/api/v1/checkout/orders" -H 'Content-Type: application/json' -d "$CHECKOUT_BODY")
 python3 - "$ORDER" <<'PY'
 import json,sys
 x=json.loads(sys.argv[1]); assert x['items'][0]['unitPrice']==15000
 assert x['subtotal']==16500 and x['discountAmount']==1500 and x['grandTotal']==15000
 PY
+
+echo '=== FIGMA PRICE CHANGE ==='
+CHANGED=$(CHECKOUT_BODY="$CHECKOUT_BODY" python3 -c 'import os,json; x=json.loads(os.environ["CHECKOUT_BODY"]); x["items"][0]["expectedUnitPrice"]=16500; print(json.dumps(x))')
+CODE=$(curl -sS -o /tmp/zetruv-price-change.json -w '%{http_code}' -X POST "http://127.0.0.1:$API/api/v1/checkout/orders" -H 'Content-Type: application/json' -d "$CHANGED")
+[[ "$CODE" == 409 ]] || { echo "FAIL: price changed must return 409, got $CODE"; exit 1; }
+python3 -c 'import json; x=json.load(open("/tmp/zetruv-price-change.json")); assert x["code"]=="PRICE_CHANGED" and x["priceChanges"][0]["currentUnitPrice"]==15000'
+ACK=$(CHANGED="$CHANGED" python3 -c 'import os,json; x=json.loads(os.environ["CHANGED"]); x["items"][0]["acknowledgePriceChange"]=True; print(json.dumps(x))')
+CODE=$(curl -sS -o /tmp/zetruv-price-ack.json -w '%{http_code}' -X POST "http://127.0.0.1:$API/api/v1/checkout/orders" -H 'Content-Type: application/json' -d "$ACK")
+[[ "$CODE" == 201 ]] || { echo "FAIL: acknowledged price change returned $CODE"; exit 1; }
+python3 -c 'import json; x=json.load(open("/tmp/zetruv-price-ack.json")); assert x["items"][0]["unitPrice"]==15000'
+echo 'PASS: price mismatch rejects order; acknowledgment accepts server-side price'
 
 echo 'PASS: catalog search + public gating + promo-aware PDP + checkout price parity'

@@ -7,7 +7,9 @@ public sealed record CheckoutItemRequest(
     Guid ProductVariantId,
     [Range(1, 99)] int Quantity,
     Guid? GameAccountValidationId = null,
-    IReadOnlyDictionary<string, string>? LoginCredentials = null);
+    IReadOnlyDictionary<string, string>? LoginCredentials = null,
+    [Range(typeof(decimal), "0", "999999999999")] decimal? ExpectedUnitPrice = null,
+    bool AcknowledgePriceChange = false);
 
 public sealed record CreateCheckoutOrderRequest(
     [MaxLength(120)] string? CustomerName,
@@ -50,6 +52,11 @@ public sealed record CreateCheckoutOrderResponse(
     public decimal VoucherDiscountAmount { get; init; }
 }
 
+public sealed record CheckoutPriceChangeResponse(
+    Guid ProductVariantId,
+    decimal ExpectedUnitPrice,
+    decimal CurrentUnitPrice);
+
 public sealed record CreateCheckoutOrderResult(
     CreateCheckoutOrderResponse? Order,
     string? Error)
@@ -57,6 +64,12 @@ public sealed record CreateCheckoutOrderResult(
     public static CreateCheckoutOrderResult Success(CreateCheckoutOrderResponse order) =>
         new(order, null);
 
+    public IReadOnlyList<CheckoutPriceChangeResponse>? PriceChanges { get; init; }
+
     public static CreateCheckoutOrderResult Failure(string error) =>
         new(null, error);
+
+    public static CreateCheckoutOrderResult PricesChanged(IReadOnlyList<CheckoutPriceChangeResponse> changes) =>
+        new(null, "One or more product prices changed. Review the latest prices before checkout.")
+        { PriceChanges = changes };
 }
