@@ -202,6 +202,17 @@ assert x['paymentStatus']=='Paid' and x['state']=='Paid' and x['canRetry'] is Fa
 assert x['paymentUrl'] is None and x['qrString'] is None
 PY
 
+# Explicit duplicate provider delivery remains Paid and cannot reenable retry.
+send_mock_webhook "$RETRY_REF" Paid
+REPLAY_PAID=$(curl -fsS "http://127.0.0.1:$API/api/v1/checkout/orders/$FIRST_ID/payment" -H "X-Order-Access-Token: $FIRST_TOKEN")
+python3 - "$REPLAY_PAID" <<'PY'
+import json,sys
+x=json.loads(sys.argv[1])
+assert x['paymentStatus']=='Paid' and x['state']=='Paid' and x['canRetry'] is False
+assert x['hasActivePaymentSession'] is False
+PY
+echo 'PASS: replayed provider Paid callback leaves terminal order state unchanged'
+
 SECOND_PAYMENT=$(curl -fsS -X POST "http://127.0.0.1:$API/api/v1/checkout/orders/$SECOND_ID/payment" \
   -H "X-Order-Access-Token: $(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["orderAccessToken"])' "$SECOND")")
 SECOND_REF=$(python3 - "$SECOND_PAYMENT" <<'PY'

@@ -43,6 +43,11 @@ jobs:
         run: bash scripts/smoke-production-provider-guard.sh
 
   integration:
+    # Self-hosted smoke tests bind ephemeral PostgreSQL ports; concurrent
+    # suites can choose the same free port before Docker binds it.
+    concurrency:
+      group: zetruv-backend-integration-global
+      cancel-in-progress: false
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     needs: build
     runs-on: [self-hosted, Linux, X64, zetruv-backend]
