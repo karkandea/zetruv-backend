@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Authentication;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Cryptography;
@@ -112,6 +113,53 @@ public sealed class CheckoutController(
                     $"SELECT pg_advisory_unlock(hashtext({scope}))", CancellationToken.None);
             await db.Database.CloseConnectionAsync();
         }
+    }
+
+    // A browser refresh may interrupt the original POST response. This read-only
+    // recovery returns an EXISTING idempotent order, never creates another one.
+    // Only the verified owner holding their own opaque UUID v4 may recover it.
+    [HttpGet("orders/recovery")]
+    [Authorize(AuthenticationSchemes = CustomerAuthConstants.Scheme)]
+    public async Task<ActionResult<CreateCheckoutOrderResponse>> RecoverOrder(
+        [FromHeader(Name = "Idempotency-Key")] string? supplied,
+        CancellationToken cancellationToken)
+    {
+        Response.Headers.CacheControl = "private, no-store";
+        if (!Guid.TryParse(supplied, out var key) ||
+            key.ToString("D")[14] != '4' ||
+            !"89ab".Contains(key.ToString("D")[19]))
+            return BadRequest(new { message = "Idempotency-Key must be a random UUID v4." });
+
+        if (!Guid.TryParse(User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value, out var customerId))
+            return Unauthorized();
+
+        var ownerIsVerified = await db.CustomerUsers.AsNoTracking().AnyAsync(
+            x => x.Id == customerId && x.IsActive && x.EmailVerifiedAt != null,
+            cancellationToken);
+        if (!ownerIsVerified) return Unauthorized();
+
+        var scope = "customer-checkout:" + customerId.ToString("N") + ":" + key.ToString("N");
+        var hashedKey = Sha256(scope);
+        var order = await db.Orders.AsNoTracking().Include(x => x.Items)
+            .SingleOrDefaultAsync(x => x.CustomerUserId == customerId &&
+                x.IdempotencyKeyHash == hashedKey, cancellationToken);
+        if (order is null) return NotFound(new { message = "No completed order was found for this checkout attempt." });
+
+        var items = order.Items.OrderBy(x => x.CreatedAt)
+            .Select(x => new CheckoutOrderItemResponse(
+                x.ProductVariantId!.Value, x.ProductName, x.ProductSlug,
+                x.ProductKind, x.FulfillmentMethod, x.FulfillmentStatus,
+                x.VariantName ?? "", x.ThumbnailUrl, x.GameName,
+                x.UnitPrice, x.Quantity, x.LineTotal))
+            .ToList();
+        return Ok(WithAccessToken(new CreateCheckoutOrderResponse(
+            order.Id, order.OrderNumber, order.Status, order.PaymentStatus,
+            order.Subtotal, order.DiscountAmount, order.ShippingAmount,
+            order.GrandTotal, order.Currency, items, order.CreatedAt)
+        {
+            VoucherCode = order.VoucherCode,
+            VoucherDiscountAmount = order.VoucherDiscountAmount
+        }));
     }
 
     private async Task<ActionResult<CreateCheckoutOrderResponse>> CreateFreshOrderAsync(
