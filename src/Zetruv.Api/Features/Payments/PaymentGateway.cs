@@ -12,7 +12,8 @@ public sealed record PaymentGatewayCreateRequest(
     string? CustomerName,
     string? CustomerEmail,
     string? CustomerPhone,
-    string? MethodCode = null);
+    string? MethodCode = null,
+    int AttemptNumber = 1);
 
 public sealed record PaymentGatewayStatusRequest(
     Guid OrderId,
