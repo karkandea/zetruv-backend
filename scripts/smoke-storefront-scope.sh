@@ -388,6 +388,16 @@ order_payload={'customerPhone':'+6281234567890','voucherCode':' welcome10 ',
 coupon_key={'Idempotency-Key':str(uuid.uuid4())}
 first_coupon=check(api('POST','/api/v1/checkout/orders',order_payload,first,coupon_key),201)
 replayed=check(api('POST','/api/v1/checkout/orders',order_payload,first,coupon_key),200)
+# Refresh/crash after an uncertain POST must recover ONLY the existing order,
+# with the same owner and UUID, never creating a second order or exposing secrets.
+recovered=check(api('GET','/api/v1/checkout/orders/recovery',token=first,extra_headers=coupon_key),200)
+assert recovered['id']==first_coupon['id'] and recovered['orderNumber']==first_coupon['orderNumber']
+assert recovered['orderAccessToken'].startswith('v1.')
+check(api('GET','/api/v1/checkout/orders/recovery',token=second,extra_headers=coupon_key),404)
+check(api('GET','/api/v1/checkout/orders/recovery',extra_headers=coupon_key),401)
+check(api('GET','/api/v1/checkout/orders/recovery',token=first,extra_headers={'Idempotency-Key':'not-a-uuid'}),400)
+print('PASS: customer-only read-only checkout recovery, with no duplicate order')
+
 assert replayed['id']==first_coupon['id'] and replayed['orderNumber']==first_coupon['orderNumber']
 assert replayed['grandTotal']==first_coupon['grandTotal'] and replayed['orderAccessToken']
 check(api('POST','/api/v1/checkout/orders',{**order_payload,'items':[{'productVariantId':vid,'quantity':2}]},first,coupon_key),409)
