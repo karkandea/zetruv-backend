@@ -314,6 +314,9 @@ builder.Services.AddScoped<ShippingService>();
 builder.Services.AddScoped<ShipmentFulfillmentService>();
 builder.Services.Configure<PaymentReconciliationOptions>(
     builder.Configuration.GetSection(PaymentReconciliationOptions.SectionName));
+// Real Xendit channel adapter: enabled only with provider credentials and a
+// verified environment-specific configuration. No fallback to mock payments.
+builder.Services.AddScoped<IPaymentGateway, XenditPaymentGateway>();
 builder.Services.AddScoped<PaymentGatewayResolver>();
 builder.Services.AddScoped<PaymentReadinessService>();
 builder.Services.AddScoped<PaymentWebhookEventLedger>();

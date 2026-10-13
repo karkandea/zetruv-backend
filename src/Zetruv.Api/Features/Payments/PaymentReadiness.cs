@@ -17,12 +17,19 @@ public interface ILivePaymentChannelGateway
 public sealed record CheckoutPaymentOption(
     string Code,
     string Name,
-    string? IconUrl);
+    string? IconUrl)
+{
+    // Null means not quoted; never infer a zero-fee checkout on the client.
+    public decimal? PaymentFee { get; init; }
+}
 
 public sealed record CheckoutPaymentReadinessResponse(
     bool CanAcceptLivePayments,
     string Status,
-    IReadOnlyList<CheckoutPaymentOption> AvailableMethods);
+    IReadOnlyList<CheckoutPaymentOption> AvailableMethods)
+{
+    public bool IsSandbox { get; init; }
+}
 
 public sealed record CmsPaymentChannelReadiness(
     Guid Id,
@@ -88,21 +95,32 @@ public sealed class PaymentReadinessService(
 [ApiController]
 [Route("api/v1/checkout/payment-options")]
 public sealed class CheckoutPaymentOptionsController(
-    PaymentReadinessService readiness) : ControllerBase
+    PaymentReadinessService readiness,
+    PaymentGatewayResolver gatewayResolver,
+    IConfiguration configuration) : ControllerBase
 {
     [HttpGet]
     public async Task<IActionResult> Get(CancellationToken ct)
     {
         var current = await readiness.GetAsync(ct);
         Response.Headers.CacheControl = "no-store";
+        var gateway = gatewayResolver.Resolve() as XenditPaymentGateway;
+        var merchantAbsorbsFees = gateway is { IsLiveConfigured: true } &&
+            configuration.GetValue<bool>("Payments:Xendit:MerchantAbsorbsFees");
         return Ok(new CheckoutPaymentReadinessResponse(
             current.CanAcceptLivePayments,
             current.Status,
             current.ConfiguredMethods
                 .Where(x => x.Operational)
                 .Select(x => new CheckoutPaymentOption(
-                    x.Code, x.Name, null))
-                .ToList()));
+                    x.Code, x.Name, null)
+                {
+                    PaymentFee = merchantAbsorbsFees ? 0m : null
+                })
+                .ToList())
+        {
+            IsSandbox = gateway?.IsSandbox == true
+        });
     }
 }
 
