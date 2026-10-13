@@ -44,13 +44,13 @@ Payments__Xendit__Enabled=true
 Payments__Xendit__Mode=Sandbox
 Payments__Xendit__ApiKey=<xnd_development_secret_key>
 Payments__Xendit__WebhookToken=<unique-dashboard-callback-token>
-Payments__Xendit__ReturnUrl=https://dev.zetruv.com/checkout
+Payments__Xendit__ReturnUrl=https://dev.zetruv.com/payment
 Payments__Xendit__Channels__0=QRIS
 Payments__Xendit__Channels__1=GOPAY
 Payments__Xendit__MerchantAbsorbsFees=true
 ```
 
-The merchant absorption policy must be explicitly confirmed; otherwise the method has no customer fee quote and checkout remains blocked. The readiness response exposes `IsSandbox` to prevent the UI from claiming real payments.
+The merchant absorption policy must be explicitly confirmed; otherwise the method has no customer fee quote and checkout remains blocked. For GoPay, open the provider payment URL in the **same browser tab** (not a new tab) and configure its success return URL as `https://dev.zetruv.com/payment` so the tab-scoped, non-sensitive order session can be restored. Returning to `/checkout` loses the payment-focused recovery UI. The readiness response exposes `IsSandbox` to prevent the UI from claiming real payments.
 
 `BCA_VA` remains unsupported by this adapter until a dedicated **VA account-number/payment instruction** model and frontend are implemented and tested. Never list VA as available just because a CMS icon exists.
 
