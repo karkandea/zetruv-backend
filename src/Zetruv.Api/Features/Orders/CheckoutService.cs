@@ -11,6 +11,7 @@ public sealed class CheckoutService(
     ZetruvDbContext db,
     ShippingService shippingService,
     ManualLoginCredentialService manualLoginCredentials,
+    ManualLoginReadinessService manualLoginReadiness,
     DiscountVoucherService discountVouchers)
 {
     public async Task<CreateCheckoutOrderResult> CreateOrderAsync(
@@ -174,6 +175,9 @@ public sealed class CheckoutService(
 
             if (variant.ProductFulfillmentMethod == FulfillmentMethod.MANUAL_LOGIN)
             {
+                if (!manualLoginReadiness.IsReady(variant.ProductId))
+                    return CreateCheckoutOrderResult.Failure(
+                        "This login-based service is not approved or ready for processing.");
                 inputFieldsByProduct.TryGetValue(variant.ProductId, out var schema);
                 var schemaResult = ProductInputFieldRules.NormalizePayload(
                     schema ?? [],

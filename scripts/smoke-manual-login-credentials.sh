@@ -25,6 +25,11 @@ export GameAccountValidation__Provider=mock
 export ManualLogin__EncryptionKey
 ManualLogin__EncryptionKey=$(printf '%s' '0123456789abcdef0123456789abcdef' | openssl base64 -A)
 export ManualLogin__RetentionHours=24
+# Synthetic account data only; the integration smoke explicitly authorizes
+# its own disposable seeded product in the isolated test environment.
+export ManualLogin__ProviderAuthorizationConfirmed=true
+export ManualLogin__OperatorsReady=true
+export ManualLogin__AuthorizedProductIds__0='92000000-0000-0000-0000-000000000001'
 export Shipping__Provider=mock
 export ASPNETCORE_ENVIRONMENT=Staging
 
