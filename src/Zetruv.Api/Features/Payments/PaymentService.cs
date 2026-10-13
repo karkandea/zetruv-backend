@@ -260,6 +260,11 @@ public sealed class PaymentService(
                 reservation.Error ?? "Inventory could not be reserved.");
         }
 
+        // Each failed/expired attempt gets a NEW provider idempotency key.
+        // Network retries within the same attempt reuse the same key while the
+        // order-level advisory lock prevents concurrent duplicate attempts.
+        var paymentAttempt = order.Transactions.Count(x =>
+            x.Type == PaymentTransactionType.Payment) + 1;
         var gatewayResult = await gateway.CreatePaymentAsync(
             new PaymentGatewayCreateRequest(
                 order.Id,
@@ -269,7 +274,8 @@ public sealed class PaymentService(
                 order.CustomerName,
                 order.CustomerEmail,
                 order.CustomerPhone,
-                selectedMethod),
+                selectedMethod,
+                paymentAttempt),
             cancellationToken);
 
         if (!gatewayResult.IsSuccess ||

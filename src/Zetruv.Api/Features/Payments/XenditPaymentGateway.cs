@@ -72,8 +72,9 @@ public sealed class XenditPaymentGateway(
             parsed.Scheme != Uri.UriSchemeHttps))
             return PaymentGatewayCreateResult.Failure("Payment return URL is not configured.");
 
+        var referenceId = request.OrderNumber + "-A" + request.AttemptNumber.ToString(CultureInfo.InvariantCulture);
         var body = new Dictionary<string, object> {
-            ["reference_id"] = request.OrderNumber,
+            ["reference_id"] = referenceId,
             ["type"] = "PAY",
             ["country"] = "ID",
             ["currency"] = "IDR",
@@ -87,13 +88,17 @@ public sealed class XenditPaymentGateway(
             using var message = new HttpRequestMessage(HttpMethod.Post, "v3/payment_requests") {
                 Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json")
             };
-            message.Headers.TryAddWithoutValidation("idempotency-key", request.OrderId.ToString("D"));
+            message.Headers.TryAddWithoutValidation("idempotency-key",
+                request.OrderId.ToString("D") + "-A" + request.AttemptNumber.ToString(CultureInfo.InvariantCulture));
             using var response = await http.SendAsync(message, ct);
             if (!response.IsSuccessStatusCode)
                 return PaymentGatewayCreateResult.Failure("Payment provider could not create a payment.");
             using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
             var root = json.RootElement;
-            if (!TryString(root, "id", out var refId) || !refId.StartsWith("pr-", StringComparison.Ordinal))
+            if (!TryString(root, "payment_request_id", out var refId) ||
+                !refId.StartsWith("pr-", StringComparison.Ordinal) ||
+                !TryString(root, "reference_id", out var returnedRef) ||
+                returnedRef != referenceId)
                 return PaymentGatewayCreateResult.Failure("Payment provider returned an invalid reference.");
             string? url = null, qr = null;
             if (root.TryGetProperty("actions", out var actions) &&
@@ -110,8 +115,18 @@ public sealed class XenditPaymentGateway(
             }
             if (url is null && qr is null)
                 return PaymentGatewayCreateResult.Failure("Payment instructions are not yet available.");
+            // Provider channel expiry is authoritative. Never invent a 30-minute
+            // deadline that might be longer or shorter than a real QR expiry.
+            DateTimeOffset? expiresAt = null;
+            if (root.TryGetProperty("channel_properties", out var properties) &&
+                TryString(properties, "expires_at", out var channelExpiry) &&
+                DateTimeOffset.TryParse(channelExpiry, CultureInfo.InvariantCulture,
+                    DateTimeStyles.AssumeUniversal, out var parsedExpiry)) expiresAt = parsedExpiry;
+            else if (TryString(root, "expires_at", out var rootExpiry) &&
+                DateTimeOffset.TryParse(rootExpiry, CultureInfo.InvariantCulture,
+                    DateTimeStyles.AssumeUniversal, out var parsedRootExpiry)) expiresAt = parsedRootExpiry;
             return PaymentGatewayCreateResult.Success(refId, paymentUrl:url, qrString:qr,
-                expiresAt:DateTimeOffset.UtcNow.AddMinutes(30));
+                expiresAt:expiresAt);
         } catch (OperationCanceledException) when (!ct.IsCancellationRequested) {
             return PaymentGatewayCreateResult.Failure("Payment provider timed out; check the existing order before retrying.");
         } catch (HttpRequestException) {
@@ -135,7 +150,7 @@ public sealed class XenditPaymentGateway(
             using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
             var root = json.RootElement;
             if (!TryString(root,"status",out var status) ||
-                !TryString(root,"id",out var providerId) ||
+                !TryString(root,"payment_request_id",out var providerId) ||
                 providerId != request.ProviderReference ||
                 !TryString(root,"currency",out var currency) ||
                 !string.Equals(currency,request.Currency,StringComparison.OrdinalIgnoreCase) ||
