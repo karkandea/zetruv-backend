@@ -1,4 +1,6 @@
 using System.ComponentModel.DataAnnotations;
+using System.Security.Cryptography;
+using System.Text;
 using System.IdentityModel.Tokens.Jwt;
 using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
@@ -47,11 +49,15 @@ public sealed record CartItemResponse(
     public string? GameName { get; init; }
 }
 
-public sealed record CustomerCartResponse(IReadOnlyList<CartItemResponse> Items);
+public sealed record CustomerCartResponse(IReadOnlyList<CartItemResponse> Items)
+{
+    public string Revision { get; init; } = string.Empty;
+}
 
 // Contains no raw account credentials; target IDs are issued by the account-validator API.
 public sealed record CustomerCartBatchRequest(
-    [Required] IReadOnlyList<CartItemInput> Items);
+    [Required] IReadOnlyList<CartItemInput> Items,
+    string? Revision = null);
 
 [ApiController]
 [Authorize(AuthenticationSchemes = CustomerAuthConstants.Scheme)]
@@ -105,6 +111,7 @@ public sealed class CustomerStorefrontController(ZetruvDbContext db) : Controlle
                 GameName = x.ProductVariant.Product.Game != null ? x.ProductVariant.Product.Game.Name : null,
                 x.Quantity,
                 x.GameAccountValidationId,
+                x.UpdatedAt,
                 FulfillmentMethod = x.ProductVariant.Product.FulfillmentMethod,
                 RequiresValidation = x.ProductVariant.Product.RequiresGameAccountValidation,
                 BaseAvailable =
@@ -205,7 +212,11 @@ public sealed class CustomerStorefrontController(ZetruvDbContext db) : Controlle
         }).ToList();
 
         Response.Headers.CacheControl = "private, no-store";
-        return Ok(new CustomerCartResponse(items));
+        return Ok(new CustomerCartResponse(items)
+        {
+            Revision = ComputeCartRevision(rawItems.Select(x => (
+                x.Id, x.ProductVariantId, x.GameAccountValidationId, x.Quantity, x.UpdatedAt)))
+        });
     }
 
     [HttpPut("cart/items/{variantId:guid}")]
@@ -370,6 +381,11 @@ public sealed class CustomerStorefrontController(ZetruvDbContext db) : Controlle
 
         var existing = await db.CustomerCartItems
             .Where(x => x.CustomerUserId == customerId).ToListAsync(ct);
+        var currentRevision = ComputeCartRevision(existing.Select(x => (
+            x.Id, x.ProductVariantId, x.GameAccountValidationId, x.Quantity, x.UpdatedAt)));
+        if (!merge && !string.Equals(request.Revision, currentRevision, StringComparison.Ordinal))
+            return Conflict(new { code = "CART_CHANGED",
+                message = "Cart changed in another session. Reload and review before retrying." });
         var variants = await db.ProductVariants.AsNoTracking()
             .Where(x => incomingIds.Contains(x.Id))
             .Select(x => new
@@ -440,6 +456,23 @@ public sealed class CustomerStorefrontController(ZetruvDbContext db) : Controlle
                 // Repeat import is idempotent; preserve existing line and use
                 // higher quantity instead of blindly incrementing it.
                 oldRow.Quantity = Math.Max(oldRow.Quantity, entry.Quantity);
+                if (entry.GameAccountValidationId.HasValue &&
+                    oldRow.GameAccountValidationId != entry.GameAccountValidationId)
+                {
+                    // A previous same-destination capability may have expired,
+                    // been consumed, or been attached to an order. Replace ONLY
+                    // that unusable target with the newly verified capability.
+                    var priorUsable = oldRow.GameAccountValidationId.HasValue &&
+                        validations.TryGetValue(oldRow.GameAccountValidationId.Value, out var prior) &&
+                        prior.ProductId == variant.ProductId &&
+                        prior.ExpiresAt > now && !prior.ConsumedAt.HasValue &&
+                        !prior.OrderItemId.HasValue;
+                    if (!priorUsable)
+                    {
+                        oldRow.GameAccountValidationId = entry.GameAccountValidationId;
+                        oldRow.LineKey = BuildLineKey(entry.ProductVariantId, entry.GameAccountValidationId);
+                    }
+                }
                 oldRow.UpdatedAt = now;
             }
             else
@@ -471,7 +504,20 @@ public sealed class CustomerStorefrontController(ZetruvDbContext db) : Controlle
         await db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
         Response.Headers.CacheControl = "private, no-store";
-        return Ok(new { count = next.Count });
+        return Ok(new
+        {
+            count = next.Count,
+            revision = ComputeCartRevision(next.Values.Select(x => (
+                x.Id, x.ProductVariantId, x.GameAccountValidationId, x.Quantity, x.UpdatedAt)))
+        });
+    }
+
+    private static string ComputeCartRevision(
+        IEnumerable<(Guid Id, Guid VariantId, Guid? TargetId, int Quantity, DateTimeOffset UpdatedAt)> items)
+    {
+        var fingerprint = string.Join("|", items.OrderBy(x => x.Id)
+            .Select(x => $"{x.Id:N}:{x.VariantId:N}:{x.TargetId?.ToString("N")}:{x.Quantity}:{x.UpdatedAt.UtcTicks}"));
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(fingerprint)));
     }
 
     private static string BuildLineKey(
