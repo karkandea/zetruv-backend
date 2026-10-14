@@ -40,9 +40,18 @@ public sealed record CartItemResponse(
     string? ThumbnailUrl, decimal UnitPrice, int Quantity, bool IsAvailable)
 {
     public CartTargetResponse? Target { get; init; }
+    public FulfillmentMethod FulfillmentMethod { get; init; }
+    public decimal RegularPrice { get; init; }
+    public int? StockQuantity { get; init; }
+    public bool RequiresGameAccountValidation { get; init; }
+    public string? GameName { get; init; }
 }
 
 public sealed record CustomerCartResponse(IReadOnlyList<CartItemResponse> Items);
+
+// Contains no raw account credentials; target IDs are issued by the account-validator API.
+public sealed record CustomerCartBatchRequest(
+    [Required] IReadOnlyList<CartItemInput> Items);
 
 [ApiController]
 [Authorize(AuthenticationSchemes = CustomerAuthConstants.Scheme)]
@@ -92,6 +101,8 @@ public sealed class CustomerStorefrontController(ZetruvDbContext db) : Controlle
                 Kind = x.ProductVariant.Product.Kind,
                 ThumbnailUrl = x.ProductVariant.Product.ThumbnailUrl,
                 UnitPrice = x.ProductVariant.Price,
+                x.ProductVariant.StockQuantity,
+                GameName = x.ProductVariant.Product.Game != null ? x.ProductVariant.Product.Game.Name : null,
                 x.Quantity,
                 x.GameAccountValidationId,
                 FulfillmentMethod = x.ProductVariant.Product.FulfillmentMethod,
@@ -184,7 +195,12 @@ public sealed class CustomerStorefrontController(ZetruvDbContext db) : Controlle
                 x.Quantity,
                 x.BaseAvailable && targetAvailable)
             {
-                Target = target
+                Target = target,
+                FulfillmentMethod = x.FulfillmentMethod,
+                RegularPrice = x.UnitPrice,
+                StockQuantity = x.StockQuantity,
+                RequiresGameAccountValidation = x.RequiresValidation,
+                GameName = x.GameName
             };
         }).ToList();
 
@@ -312,6 +328,150 @@ public sealed class CustomerStorefrontController(ZetruvDbContext db) : Controlle
             .Where(x => x.CustomerUserId == CustomerId)
             .ExecuteDeleteAsync(ct);
         return NoContent();
+    }
+
+
+    /// <summary>
+    /// Complete authenticated cart snapshot. Used for single-device edits and
+    /// remote-device convergence. Invalid or expired target IDs fail CLOSED.
+    /// Only non-sensitive validated account targets may be persisted.
+    /// </summary>
+    [HttpPut("cart")]
+    public Task<IActionResult> ReplaceCart(
+        CustomerCartBatchRequest request, CancellationToken ct) =>
+        ApplyCartBatchAsync(request, merge: false, ct);
+
+    /// <summary>
+    /// Atomically merge a guest cart with the owner's existing cart on login.
+    /// Same logical SKU+destination uses MAX quantity, never SUM, to avoid
+    /// multiplying purchases after repeat login or concurrent browser replay.
+    /// </summary>
+    [HttpPost("cart/merge")]
+    public Task<IActionResult> MergeGuestCart(
+        CustomerCartBatchRequest request, CancellationToken ct) =>
+        ApplyCartBatchAsync(request, merge: true, ct);
+
+    private async Task<IActionResult> ApplyCartBatchAsync(
+        CustomerCartBatchRequest request, bool merge, CancellationToken ct)
+    {
+        if (request?.Items is null || request.Items.Count > 50)
+            return BadRequest(new { message = "Cart must contain no more than 50 lines." });
+
+        var customerId = CustomerId;
+        var now = DateTimeOffset.UtcNow;
+        var incomingIds = request.Items.Select(x => x.ProductVariantId).Distinct().ToArray();
+        if (request.Items.Any(x => x.ProductVariantId == Guid.Empty ||
+            x.Quantity < 1 || x.Quantity > 99))
+            return BadRequest(new { message = "Cart contains an invalid SKU or quantity." });
+
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        await db.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT pg_advisory_xact_lock(hashtext({customerId.ToString()}))", ct);
+
+        var existing = await db.CustomerCartItems
+            .Where(x => x.CustomerUserId == customerId).ToListAsync(ct);
+        var variants = await db.ProductVariants.AsNoTracking()
+            .Where(x => incomingIds.Contains(x.Id))
+            .Select(x => new
+            {
+                x.Id,
+                x.ProductId,
+                x.StockQuantity,
+                x.IsActive,
+                x.Product.Kind,
+                x.Product.FulfillmentMethod,
+                x.Product.RequiresGameAccountValidation,
+                ProductActive = x.Product.IsActive && x.Product.Category.IsActive &&
+                    (x.Product.Game == null || x.Product.Game.IsActive)
+            }).ToDictionaryAsync(x => x.Id, ct);
+
+        var validationIds = existing.Where(x => x.GameAccountValidationId.HasValue)
+            .Select(x => x.GameAccountValidationId!.Value)
+            .Concat(request.Items.Where(x => x.GameAccountValidationId.HasValue)
+                .Select(x => x.GameAccountValidationId!.Value))
+            .Distinct().ToArray();
+        var validations = await db.Set<GameAccountValidation>().AsNoTracking()
+            .Where(x => validationIds.Contains(x.Id))
+            .ToDictionaryAsync(x => x.Id, ct);
+
+        // Build the canonical target identity from validator fingerprint, not
+        // from raw client supplied user ID or a newly issued validation UUID.
+        string Identity(Guid variantId, Guid? validationId)
+        {
+            if (!validationId.HasValue) return $"{variantId:N}:default";
+            if (!validations.TryGetValue(validationId.Value, out var verified) ||
+                string.IsNullOrWhiteSpace(verified.InputFingerprint))
+                return $"{variantId:N}:{validationId.Value:N}";
+            return $"{variantId:N}:{verified.InputFingerprint}";
+        }
+
+        var next = new Dictionary<string, CustomerCartItem>(StringComparer.Ordinal);
+        if (merge)
+            foreach (var old in existing)
+            {
+                var identity = Identity(old.ProductVariantId, old.GameAccountValidationId);
+                if (!next.ContainsKey(identity)) next[identity] = old;
+            }
+
+        foreach (var entry in request.Items)
+        {
+            if (!variants.TryGetValue(entry.ProductVariantId, out var variant) ||
+                !variant.IsActive || !variant.ProductActive ||
+                (variant.StockQuantity.HasValue && variant.StockQuantity.Value < entry.Quantity) ||
+                (variant.Kind == ProductKind.GameAccount &&
+                    (entry.Quantity != 1 || variant.StockQuantity != 1)))
+                return Conflict(new { message = "Cart SKU is unavailable or stock has changed." });
+
+            var requiresTarget = variant.FulfillmentMethod == FulfillmentMethod.AUTO_ID &&
+                variant.RequiresGameAccountValidation;
+            if (requiresTarget != entry.GameAccountValidationId.HasValue)
+                return BadRequest(new { message = "Cart target must match the product validation policy." });
+            if (entry.GameAccountValidationId.HasValue)
+            {
+                if (!validations.TryGetValue(entry.GameAccountValidationId.Value, out var verified) ||
+                    verified.ProductId != variant.ProductId || verified.ExpiresAt <= now ||
+                    verified.ConsumedAt.HasValue || verified.OrderItemId.HasValue)
+                    return Conflict(new { message = "Account target has expired or is not valid for this SKU." });
+            }
+
+            var identity = Identity(entry.ProductVariantId, entry.GameAccountValidationId);
+            if (next.TryGetValue(identity, out var oldRow))
+            {
+                // Repeat import is idempotent; preserve existing line and use
+                // higher quantity instead of blindly incrementing it.
+                oldRow.Quantity = Math.Max(oldRow.Quantity, entry.Quantity);
+                oldRow.UpdatedAt = now;
+            }
+            else
+            {
+                next[identity] = new CustomerCartItem
+                {
+                    CustomerUserId = customerId,
+                    ProductVariantId = entry.ProductVariantId,
+                    GameAccountValidationId = entry.GameAccountValidationId,
+                    LineKey = BuildLineKey(entry.ProductVariantId, entry.GameAccountValidationId),
+                    Quantity = entry.Quantity,
+                    UpdatedAt = now
+                };
+            }
+        }
+
+        if (next.Count > 50)
+            return Conflict(new { message = "Cart supports at most 50 distinct lines." });
+
+        // Detect aliasing if an existing target has already received a newer
+        // validation ID; only the canonical one remains.
+        var kept = next.Values.ToHashSet();
+        foreach (var old in existing.Where(x => !kept.Contains(x)))
+            db.CustomerCartItems.Remove(old);
+        foreach (var added in next.Values.Where(x => x.Id != Guid.Empty &&
+            !existing.Any(old => old.Id == x.Id)))
+            db.CustomerCartItems.Add(added);
+
+        await db.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
+        Response.Headers.CacheControl = "private, no-store";
+        return Ok(new { count = next.Count });
     }
 
     private static string BuildLineKey(
