@@ -43,7 +43,7 @@ for _ in $(seq 1 50); do
 done
 if [[ "$ready" != true ]]; then tail -65 "$TMP/api.log" >&2; exit 1; fi
 python3 - <<'PY'
-import glob, html, json, os, re, subprocess, urllib.error, urllib.parse, urllib.request
+import glob, html, json, os, re, subprocess, urllib.error, urllib.parse, urllib.request, uuid
 from pathlib import Path
 BASE=os.environ['TEST_API']
 MAIL=Path(os.environ['TEST_MAIL'])
@@ -173,6 +173,43 @@ check(api('PUT',f'/api/v1/me/cart/items/{target_vid}',{
 check(api('PUT',f'/api/v1/me/cart/items/{vid}',{
     'productVariantId':vid,'quantity':1,
     'gameAccountValidationId':target_a['validationId']},first),400)
+# Atomic authenticated cart: merging a guest cart is idempotent and
+# same SKU + same *logical* account never doubles the quantity.
+a_again=validate_target('10001','2001','AlphaTarget')
+incoming={'items':[
+    {'productVariantId':target_vid,'quantity':2,'gameAccountValidationId':a_again['validationId']},
+    {'productVariantId':target_vid,'quantity':1,'gameAccountValidationId':target_b['validationId']}
+]}
+check(api('POST','/api/v1/me/cart/merge',incoming,first),200)
+check(api('POST','/api/v1/me/cart/merge',incoming,first),200)
+rows=[x for x in check(api('GET','/api/v1/me/cart',token=first),200)['items']
+      if x['productVariantId']==target_vid]
+assert len(rows)==2 and sorted(x['quantity'] for x in rows)==[2,3],rows
+assert all(x['fulfillmentMethod']=='AUTO_ID' and x['regularPrice']==20000 for x in rows)
+assert all(x['gameName']=='Cart Target Game' for x in rows)
+assert not [x for x in check(api('GET','/api/v1/me/cart',token=second),200)['items']
+            if x['productVariantId']==target_vid]
+# Complete replacement is atomic and visible after a fresh GET / new device.
+replacement={'revision':check(api('GET','/api/v1/me/cart',token=first),200)['revision'],
+             'items':[{'productVariantId':target_vid,'quantity':1,
+                       'gameAccountValidationId':target_a['validationId']},
+                      {'productVariantId':target_vid,'quantity':2,
+                       'gameAccountValidationId':target_b['validationId']}]}
+check(api('PUT','/api/v1/me/cart',replacement,first),200)
+rows=[x for x in check(api('GET','/api/v1/me/cart',token=first),200)['items']
+      if x['productVariantId']==target_vid]
+assert len(rows)==2 and sorted(x['quantity'] for x in rows)==[1,2]
+check(api('PUT','/api/v1/me/cart',{'revision':check(api('GET','/api/v1/me/cart',token=first),200)['revision'],
+    'items':[{'productVariantId':target_vid,'quantity':1}]},first),400)
+check(api('PUT','/api/v1/me/cart',replacement,first),409) # stale revision must not overwrite other device
+check(api('POST','/api/v1/me/cart/merge',{'items':[{'productVariantId':target_vid,
+    'quantity':1,'gameAccountValidationId':str(uuid.uuid4())}]},first),409)
+check(api('POST','/api/v1/me/cart/merge',incoming),401)
+rows_after=[x for x in check(api('GET','/api/v1/me/cart',token=first),200)['items']
+            if x['productVariantId']==target_vid]
+assert len(rows_after)==2
+print('PASS: atomic guest merge, dedup fingerprint, replacement, owner isolation and invalid target fail-closed')
+
 # Checkout already supports same SKU with different validation IDs as distinct order lines.
 target_order=check(api('POST','/api/v1/checkout/orders',{
     'customerPhone':'+6281234567890','items':[
