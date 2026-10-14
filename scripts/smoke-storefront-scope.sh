@@ -43,7 +43,7 @@ for _ in $(seq 1 50); do
 done
 if [[ "$ready" != true ]]; then tail -65 "$TMP/api.log" >&2; exit 1; fi
 python3 - <<'PY'
-import glob, html, json, os, re, subprocess, urllib.error, urllib.parse, urllib.request
+import glob, html, json, os, re, subprocess, urllib.error, urllib.parse, urllib.request, uuid
 from pathlib import Path
 BASE=os.environ['TEST_API']
 MAIL=Path(os.environ['TEST_MAIL'])
