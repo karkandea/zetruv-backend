@@ -190,7 +190,8 @@ assert all(x['gameName']=='Cart Target Game' for x in rows)
 assert not [x for x in check(api('GET','/api/v1/me/cart',token=second),200)['items']
             if x['productVariantId']==target_vid]
 # Complete replacement is atomic and visible after a fresh GET / new device.
-replacement={'items':[{'productVariantId':target_vid,'quantity':1,
+replacement={'revision':check(api('GET','/api/v1/me/cart',token=first),200)['revision'],
+             'items':[{'productVariantId':target_vid,'quantity':1,
                        'gameAccountValidationId':target_a['validationId']},
                       {'productVariantId':target_vid,'quantity':2,
                        'gameAccountValidationId':target_b['validationId']}]}
@@ -198,8 +199,9 @@ check(api('PUT','/api/v1/me/cart',replacement,first),200)
 rows=[x for x in check(api('GET','/api/v1/me/cart',token=first),200)['items']
       if x['productVariantId']==target_vid]
 assert len(rows)==2 and sorted(x['quantity'] for x in rows)==[1,2]
-check(api('PUT','/api/v1/me/cart',{'items':[{'productVariantId':target_vid,
-    'quantity':1}]},first),400)
+check(api('PUT','/api/v1/me/cart',{'revision':check(api('GET','/api/v1/me/cart',token=first),200)['revision'],
+    'items':[{'productVariantId':target_vid,'quantity':1}]},first),400)
+check(api('PUT','/api/v1/me/cart',replacement,first),409) # stale revision must not overwrite other device
 check(api('POST','/api/v1/me/cart/merge',{'items':[{'productVariantId':target_vid,
     'quantity':1,'gameAccountValidationId':str(uuid.uuid4())}]},first),409)
 check(api('POST','/api/v1/me/cart/merge',incoming),401)
