@@ -4,7 +4,7 @@ cd "$(dirname "$0")/.."
 
 C=zetruv-pg-manual-login
 DB=zetruv_manual_login_test
-PORT=56440
+PORT='' # Let Docker allocate an available loopback port to avoid test collisions.
 API=18188
 PID=""
 cleanup(){ [[ -n "$PID" ]] && kill "$PID" >/dev/null 2>&1 || true; docker rm -fv "$C" >/dev/null 2>&1 || true; }
@@ -12,7 +12,9 @@ trap cleanup EXIT
 
 dotnet build src/Zetruv.Api/Zetruv.Api.csproj --configuration Release --nologo
 docker rm -fv "$C" >/dev/null 2>&1 || true
-docker run -d --name "$C" -e POSTGRES_USER=zetruv -e POSTGRES_PASSWORD=zetruvtest -e POSTGRES_DB="$DB" -p 127.0.0.1:$PORT:5432 postgres:17-alpine >/dev/null
+docker run -d --name "$C" -e POSTGRES_USER=zetruv -e POSTGRES_PASSWORD=zetruvtest -e POSTGRES_DB="$DB" -p 127.0.0.1::5432 postgres:17-alpine >/dev/null
+PORT=$(docker port "$C" 5432/tcp | sed -E 's/^.*:([0-9]+)$/\1/')
+[[ "$PORT" =~ ^[0-9]+$ ]] || { echo 'Could not determine ephemeral PostgreSQL host port' >&2; exit 1; }
 until docker exec "$C" pg_isready -U zetruv -d "$DB" >/dev/null 2>&1; do sleep 1; done
 
 export ConnectionStrings__Postgres="Host=127.0.0.1;Port=$PORT;Database=$DB;Username=zetruv;Password=zetruvtest"
