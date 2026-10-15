@@ -1,25 +1,43 @@
-# Digital purchase contract — Figma Digital Purchase Flow
+# Zetruv — Digital Purchase Figma / backend parity matrix
 
-Reference: https://www.figma.com/design/HVAurT3YUzZfZb7b5yUBla/Zetruv---Redesign--Web-Phase-1-?node-id=3064-8
+Source of truth: [Figma Digital Purchase Flow, node 3064:8](https://www.figma.com/design/HVAurT3YUzZfZb7b5yUBla/Zetruv---Redesign--Web-Phase-1-?node-id=3064-8).
+Reviewed against Figma sections "Top Up Via ID", "Top Up Via Login", "Game Accounts", "Joki Game", "Voucher Game", "Validation States", "Payment States", and "Other States & Handoff" on **2 October 2026**.
 
-Scope of this PR: backend contract and existing admin CMS. This PR does **not** implement customer storefront screens or claim visual 1:1 of those screens.
+**Scope of this matrix:** REST API/business rules and existing CMS backend. Matching visual pixels/layouts, user-facing FE routing, and payment-provider sandbox/live activation are NOT validated here. Do not call the end-to-end product "1:1" until those separately pass QA.
 
-## Verified in this PR
-- Per-variant optional `groupName` (e.g. Diamonds / Starlight): configured by CMS, returned in CMS product detail and public PDP. Existing variants remain ungrouped, with no destructive data migration.
-- Digital order creation requires customer WhatsApp/phone. Merchandise-only shipping flow keeps existing validation.
-- The existing dynamic per-product account validation fields, checkout-time encrypted MANUAL_LOGIN fields, per-item fulfillment state machine, inventory reservations, provider reconciliation and paid-order history remain in place and regression-tested.
-- Automated backend integration suite exercises old and new flows, including grouped SKU round-trip and missing WhatsApp rejection.
+| Figma flow/state | Backend contract & evidence | State |
+| --- | --- | --- |
+| Browse categories, grouped Diamonds/Starlight SKU, sale price | Public catalog/PDP + CMS groupName. `smoke-catalog-pdp-contract.sh` | Implemented |
+| Top Up Via ID: dynamic User ID/Zone fields, validation errors, verified nickname | `POST /api/v1/game-account/validate`; field-scoped schema, verified/404/503 results. `smoke-storefront-scope.sh`, `smoke-auto-id-fulfillment.sh` | Implemented for configured adapter; real game nickname provider is not enabled |
+| Top Up Via Login: login credentials required, encrypted at checkout, clear after fulfillment | `CheckoutService`, `ManualLoginCredentialService`; `smoke-manual-login-credentials.sh` | Implemented |
+| Same SKU for different destination accounts | Per-target stable cart lines, protected CMS order target snapshots and owner-only order detail, PRs #64, #65, #71. `smoke-storefront-scope.sh`, `smoke-customer-auth.sh` | Implemented |
+| Cart: change User ID/Zone resets verification of **only edited line**; re-verify restores eligibility | `PATCH /api/v1/me/cart/lines/{cartItemId}/target`, explicit `targetStatus` and per-line availability, PR #74 | **In review / CI**, not yet in dev |
+| Cart: empty/no selection, selected item checkboxes, disabled buttons | Cart API returns lines and `isAvailable`; selection and button state are customer FE behavior | FE scope, not backend-verified |
+| Login gate before ALL digital checkouts | Strict `POST /api/v1/checkout/verified/orders` proposed in PR #75; customer JWT + verified email + order ownership | **In review / CI**. Legacy `POST /api/v1/checkout/orders` still allows some guest digital purchases; strict Figma gate **not globally enforced** |
+| Checkout voucher code apply/revoke/usage concurrency | `DiscountVoucherService`, voucher preview, atomic claim & cancellation release. `smoke-storefront-scope.sh` | Implemented |
+| Checkout create error/double click/idempotency | Verified principal-scoped UUID v4 key, replay and request hash, locking. `smoke-storefront-scope.sh` | Implemented for signed-in client |
+| Checkout PRICE CHANGE / acknowledgment | `expectedUnitPrice`, HTTP 409 `PRICE_CHANGED`, and latest-priced ACK enforcement, PRs #68/#73. `smoke-catalog-pdp-contract.sh` | Implemented |
+| Game Account: unique stock, detail attributes, owner purchase/history | Per-game/listing typed fields, stock=1, reservation, personalized history. `smoke-storefront-scope.sh` | Implemented |
+| Joki/Manual fulfillment; AUTO_ID provider fulfillment | Manual post-paid fulfillment, encrypted login, mapped AUTO_ID execution and retry. Provider authority blocked from generic CMS override, PR #72 | Implemented for configured/mock providers; real fulfillment adapter separate |
+| Voucher Game: secure code stock and post-paid reveal | Encrypted inventory, paid allocation and customer authorized reveal. `smoke-game-voucher-inventory.sh` | Implemented |
+| Payment method not selected: Pay disabled; only live methods advertised | `GET /api/v1/checkout/payment-options`; mock shows zero payable channels, PR #66; methodCode validates provider/CMS, PR #70 | Backend readiness implemented, no real payable method enabled |
+| Payment Pending → Paid / Failed / Expired; retry on same order | `GET/POST /api/v1/checkout/orders/{id}/payment`, signed order access token, PR #69, webhook/reconciliation; `smoke-payment-order-access.sh` | Implemented in mock/integration tests |
+| Manual CMS spoofing of Paid and premature fulfillment blocked | Payment route HTTP 410 (#67), fulfillment authority (#72); smoke CI | Implemented |
+| VA number, QRIS QR, GoPay deeplink and verified provider delivery | No configured real Xendit gateway. No mock QR/VA details shown as payable, and credentials are not invented | **Explicitly parked by project owner** |
+| Figma provider cannot check nickname: show warning and allow user decision | Warning + explicit acknowledge contract proposed in PR #77; checked provider mapping, no faked nickname/reference; validation errors fail closed | **PR #77 in review / CI**, not yet in DEV |
+| "Unduh Invoice" in pending/paid payment states | Owner-only invoice JSON snapshot proposed in PR #78 for Pending/Paid. Actual downloadable PDF + FE wiring still missing | **PR #78 in review / CI**; PDF/UI still To Do |
+| Live/sandbox payment E2E | Requires Xendit sandbox credentials/channels and external verification | **Parked with Xendit** |
 
-## Exact Figma gaps not yet implemented
-- CMS-configured discount **voucher codes** with validity, eligibility, usage and concurrency-safe redemption; current promotion CMS only handles scheduled flash-sale prices. Do not fake applied discounts.
-- Redeemable **Game Voucher stock/code delivery** and post-payment reveal; GameVoucher products currently use MANUAL fulfillment.
-- Selected payment-channel API (QRIS, BCA virtual account, GoPay), real Xendit integration and provider availability. Current gateway abstraction has `mock` only. No fake QR/VA or paid-state simulation.
-- Idempotent create-order key and same-SKU/different-destination cart rows; existing cart is keyed by customer+variant only.
-- Explicit price-changed acknowledgment, pending payment outcome/status polling contract and complete customer-facing state fidelity.
-- Customer FE route/render changes are intentionally out of scope. This Figma page illustrates customer screens, not CMS mockups; CMS layout reuses the existing admin design system instead of asserting an unavailable 1:1 admin design.
+## Release gates
+1. Merge only after `.NET build`, migration check, and backend integration suite pass.
+2. DEV deployment workflow must complete successfully; PR merge alone is **not** verification of deployed behavior.
+3. For API/client parity, customer frontend must adopt strict checkout route, per-line re-verification, payment status polling, and checkout states. **This backend-only project must not edit FE.**
+4. No claims of successful live payment, nickname provider verification, invoice download, or pixel-level 1:1 while those are not implemented/tested.
 
-## Safety / operational rules
-- Admin UI must never mutate payment status to simulate provider settlement. Payment comes from provider/webhook/reconciliation.
-- Per-item fulfillment only after Paid and using system-supported status transitions.
-- Game Account remains unique inventory quantity=1 with reservation and release/consume handled by backend.
-- Login credentials stay encrypted; no raw credential storage in cart or operational notes.
+## Immediate non-Xendit queue
+- PR #74: cart edit and re-verification, integration QA then merge.
+- PR #75: strict verified checkout entrypoint, integration QA then merge; legacy route cutover **separate** and requires FE migration.
+- PR #77: nickname unsupported warning/acknowledgment, provider mapping fail-closed, integration QA.
+- PR #78: authorized Pending/Paid invoice data JSON, integration QA; PDF download still a separate gap.
+
+Historical TODO items for discount coupons, encrypted Game Voucher inventory, order idempotency, price change, payment polling, and multi-target cart are **not open anymore**; this document supersedes the September initial-gap checklist.
