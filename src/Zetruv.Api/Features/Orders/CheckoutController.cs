@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authorization;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Cryptography;
 using System.Text;
@@ -18,6 +19,16 @@ public sealed class CheckoutController(
     OrderAccessTokenService orderAccessTokens,
     ZetruvDbContext db) : ControllerBase
 {
+    // Figma Digital Purchase: the Cart -> Login Gate -> Checkout path
+    // requires a VERIFIED customer. Expose it separately while legacy guest
+    // clients migrate, rather than silently breaking the existing v1 route.
+    [HttpPost("verified/orders")]
+    [Authorize(AuthenticationSchemes = CustomerAuthConstants.Scheme)]
+    public Task<ActionResult<CreateCheckoutOrderResponse>> CreateVerifiedOrder(
+        CreateCheckoutOrderRequest request,
+        CancellationToken cancellationToken) =>
+        CreateOrder(request, cancellationToken);
+
     [HttpPost("orders")]
     public async Task<ActionResult<CreateCheckoutOrderResponse>> CreateOrder(
         CreateCheckoutOrderRequest request,
