@@ -1,6 +1,24 @@
 # Zetruv Backend
 
-Backend API for Zetruv.
+**ASP.NET Core e-commerce API** covering catalog management, guest checkout,
+payment reconciliation, and inventory reservation. This repository is a
+backend engineering case study; see [architecture and transaction flows](docs/architecture.md)
+for the implementation details.
+
+**Status:** Active development. The default branch includes a development
+`mock` payment gateway; a live payment-provider integration must not be assumed
+from the abstraction alone. No production-readiness claim is made here.
+
+### Engineering at a glance
+
+| Concern | Implementation |
+| --- | --- |
+| API | ASP.NET Core 10, domain-oriented feature modules |
+| Data | PostgreSQL, EF Core migrations, server-side pricing |
+| Authentication | JWT-protected CMS endpoints; restricted public order lookup |
+| Consistency | Checkout snapshots, stock reservation lifecycle, transactional payment reconciliation |
+| Integration | `IPaymentGateway` and `IGameAccountValidator` provider boundaries |
+| Evidence | [CI workflow](.github/workflows/ci.yml), [smoke scripts](scripts/), [architecture](docs/architecture.md) |
 
 ## Current stack
 
@@ -167,3 +185,43 @@ At minimum for staging/production:
 - `GameAccountValidation__Provider`
 
 `mock` is intended only for development/staging provider configuration. Do not commit real credentials or production provider secrets.
+
+## Reproduce and verify
+
+Requires the **.NET 10 SDK** for a host build, or Docker Engine with Compose v2
+for the local API and PostgreSQL stack.
+
+```bash
+dotnet restore src/Zetruv.Api/Zetruv.Api.csproj
+dotnet build src/Zetruv.Api/Zetruv.Api.csproj --configuration Release --no-restore
+```
+
+The [CI workflow](.github/workflows/ci.yml) performs the same restore and
+build on a designated self-hosted runner. The repository has shell-based
+integration/smoke checks under `scripts/` that require additional disposable
+services and environment setup; there is **no standalone xUnit test project**
+on this default-branch snapshot. Do not interpret a build-only CI run as a
+complete integration-test result.
+
+The local Compose instructions above require a private `.env` copied from
+`.env.example`. Never put provider credentials into committed configuration.
+
+## Engineering decisions and limits
+
+- **Modular monolith:** one deployable API with feature-local controllers,
+  services, and models; the persistence context is currently shared.
+- **Server-owned order totals:** prices and eligible promotions are checked
+  against the catalog at checkout, then an order-item snapshot preserves the
+  sale data.
+- **Payment boundaries:** payment creation and signed-webhook parsing are
+  provider-facing abstractions. The checked-in implementation provides the
+  mock adapter, not proof of a live-gateway production integration.
+- **Inventory:** bounded stock is reserved at payment initiation and consumed
+  or released according to reconciliation outcome; expired reservations are
+  subject to cleanup.
+- **Limitations:** production provider adapters, end-to-end external payment
+  certification, and a conventional automated unit/integration test project
+  are not demonstrated by this default branch.
+
+For authorship and ownership of individual changes, refer to the repository's
+commit and pull-request history. This README does not imply sole authorship.
