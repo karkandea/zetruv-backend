@@ -21,9 +21,16 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: 10.0.x
+      - name: Verify preinstalled .NET 10 SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk_version="$(dotnet --version)"
+          if [[ "${sdk_version}" != 10.* ]]; then
+            echo "Runner must provide a .NET 10 SDK; found ${sdk_version}." >&2
+            exit 1
+          fi
+          echo "Using preinstalled .NET SDK ${sdk_version}"
       - name: Restore
         run: dotnet restore src/Zetruv.Api/Zetruv.Api.csproj
       - name: Build
