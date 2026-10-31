@@ -18,7 +18,7 @@ from the abstraction alone. No production-readiness claim is made here.
 | Authentication | JWT-protected CMS endpoints; restricted public order lookup |
 | Consistency | Checkout snapshots, stock reservation lifecycle, transactional payment reconciliation |
 | Integration | `IPaymentGateway` and `IGameAccountValidator` provider boundaries |
-| Evidence | [CI workflow](.github/workflows/ci.yml), [smoke scripts](scripts/), [architecture](docs/architecture.md) |
+| Evidence | [VPS-native verification](docs/VPS_CI.md), [smoke scripts](scripts/), [architecture](docs/architecture.md) |
 
 ## Current stack
 
@@ -202,12 +202,7 @@ dotnet restore src/Zetruv.Api/Zetruv.Api.csproj
 dotnet build src/Zetruv.Api/Zetruv.Api.csproj --configuration Release --no-restore
 ```
 
-The [CI workflow](.github/workflows/ci.yml) performs the same restore and
-build on a designated self-hosted runner. The repository has shell-based
-integration/smoke checks under `scripts/` that require additional disposable
-services and environment setup; there is **no standalone xUnit test project**
-on this default-branch snapshot. Do not interpret a build-only CI run as a
-complete integration-test result.
+Build and smoke verification run **directly on the authorized VPS** from an isolated checkout; this repository intentionally does not use GitHub Actions. See the [VPS-native verification procedure](docs/VPS_CI.md). Shell-based integration/smoke checks under `scripts/` require disposable services and additional Docker permissions; there is **no standalone xUnit test project** on this snapshot. Do not interpret a build-only result as complete integration-test coverage.
 
 The local Compose instructions above require a private `.env` copied from
 `.env.example`. Never put provider credentials into committed configuration.
