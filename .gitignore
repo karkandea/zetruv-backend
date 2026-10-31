@@ -4,6 +4,9 @@
 .vscode/
 .idea/
 .env
+.env.*
+!.env.example
+**/appsettings.*.local.json
 *.user
 *.suo
 *.log

@@ -5,7 +5,7 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-zetruv}
       POSTGRES_USER: ${POSTGRES_USER:-zetruv}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-zetruv}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in the runtime .env}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -23,7 +23,7 @@ services:
       ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Staging}
       ASPNETCORE_URLS: http://+:8080
       ASPNETCORE_FORWARDEDHEADERS_ENABLED: ${FORWARDED_HEADERS_ENABLED:-false}
-      ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=${POSTGRES_DB:-zetruv};Username=${POSTGRES_USER:-zetruv};Password=${POSTGRES_PASSWORD:-zetruv}
+      ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=${POSTGRES_DB:-zetruv};Username=${POSTGRES_USER:-zetruv};Password=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in the runtime .env}
       Jwt__Key: ${JWT_KEY}
       CmsAdmin__Email: ${CMS_ADMIN_EMAIL}
       CmsAdmin__Password: ${CMS_ADMIN_PASSWORD}
