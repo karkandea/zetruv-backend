@@ -7,8 +7,13 @@ public sealed class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<Zet
 {
     public ZetruvDbContext CreateDbContext(string[] args)
     {
-        var connectionString = Environment.GetEnvironmentVariable("ConnectionStrings__Postgres")
-            ?? "Host=127.0.0.1;Port=5432;Database=zetruv_design;Username=postgres;Password=postgres";
+        // Migrations must use an explicitly configured, private database credential.
+        var connectionString = Environment.GetEnvironmentVariable("ConnectionStrings__Postgres");
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            throw new InvalidOperationException(
+                "ConnectionStrings__Postgres must be set before running EF Core migrations.");
+        }
 
         var options = new DbContextOptionsBuilder<ZetruvDbContext>()
             .UseNpgsql(connectionString)

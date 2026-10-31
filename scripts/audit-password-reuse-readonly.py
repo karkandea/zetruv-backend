@@ -8,6 +8,10 @@ import subprocess
 from pathlib import Path
 
 
+# Pin the pre-remediation revision. HEAD no longer has the exposed password after this PR.
+# A missing historical revision must make this comparison inconclusive, never report NO.
+EXPOSED_CONFIG_REVISION = "62530ed30ba974581c5a83cff3f59f411203d8d5"
+
 ENVIRONMENTS = {
     "DEV": ("/opt/zetruv-backend-dev", "zetruv-dev-postgres-1", "zetruv-dev-api-1"),
     "STAGING": ("/opt/zetruv-backend-staging", "zetruv-staging-postgres-1", "zetruv-staging-api-1"),
@@ -54,7 +58,7 @@ def pg_password_from_connection_string(value):
 
 def tracked_password(repo):
     result = run(["git", "-c", f"safe.directory={repo}", "-C", repo,
-                  "show", "HEAD:src/Zetruv.Api/appsettings.json"])
+                  "show", f"{EXPOSED_CONFIG_REVISION}:src/Zetruv.Api/appsettings.json"])
     if result is None or result.returncode != 0:
         return None
     try:
@@ -80,6 +84,9 @@ if os.geteuid() != 0:
 
 known_public_passwords = {p for repo, _, _ in ENVIRONMENTS.values()
                           if (p := tracked_password(repo))}
+if not known_public_passwords:
+    raise SystemExit("INCONCLUSIVE: Historical tracked credential unavailable; no comparison performed.")
+
 print("ZETRUV P0 AUDIT — READ ONLY; NO SECRETS PRINTED")
 print("Tracked appsettings passwords discovered:", len(known_public_passwords))
 observed = {}
