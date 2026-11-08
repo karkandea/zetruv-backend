@@ -84,7 +84,7 @@ assert check(api('GET','/api/v1/homepage'),200)['recentlyPurchased']==[]
 hero={'title':'Test','subtitle':'Test subtitle','imageUrl':'https://example.test/hero.png','primaryCtaLabel':'Shop','primaryCtaUrl':'/search','secondaryCtaLabel':None,'secondaryCtaUrl':None,'isActive':False,'sortOrder':0,'startsAt':None,'endsAt':None}
 check(api('POST','/api/v1/cms/homepage/heroes',hero),401)
 check(api('POST','/api/v1/cms/homepage/heroes',{**hero,'primaryCtaUrl':'javascript:alert(1)'},admin),400)
-for i in range(10):
+for i in range(50):
     check(api('POST','/api/v1/cms/homepage/heroes',{**hero,'title':str(i),'sortOrder':i},admin),201)
 assert check(api('POST','/api/v1/cms/homepage/heroes',hero,admin),409)['code']=='HERO_LIMIT_REACHED'
 assert check(api('GET','/api/v1/homepage'),200)['heroes']==[]
@@ -479,5 +479,5 @@ assert sorted(x[0] for x in same_results)==[200,201],same_results
 assert same_results[0][1]['id']==same_results[1][1]['id']
 print('PASS: customer idempotency replay, conflict, auth gate, concurrent same-key order + coupon claim once')
 print('PASS: voucher CMS, quote, persisted discount, per-customer usage, unpaid cancellation, concurrent cap, disable')
-print('PASS: 10 total heroes, CTA safety, personal purchase isolation, customer cart, checkout owner, spend leaderboard, paid sales, verified moderated rating, search, dynamic per-game/per-listing account attributes, refunds, hero scheduling')
+print('PASS: 50 total heroes, CTA safety, personal purchase isolation, customer cart, checkout owner, spend leaderboard, paid sales, verified moderated rating, search, dynamic per-game/per-listing account attributes, refunds, hero scheduling')
 PY
