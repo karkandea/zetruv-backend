@@ -13,6 +13,7 @@ cleanup(){
   docker rm -fv "$C" >/dev/null 2>&1 || true
   rm -rf "$MEDIA_DIR"
   rm -f /tmp/zetruv-media-*.json /tmp/zetruv-media-*.png /tmp/zetruv-media-*.bin /tmp/zetruv-media-*.headers
+  rm -f /tmp/zetruv-banner-*.json /tmp/zetruv-banner-*.png /tmp/zetruv-banner-*.webp
 }
 trap cleanup EXIT
 
@@ -47,6 +48,15 @@ png = base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4
 open('/tmp/zetruv-media-valid.png','wb').write(png)
 open('/tmp/zetruv-media-fake.png','wb').write(b'not really an image')
 open('/tmp/zetruv-media-large.bin','wb').write(b'\x89PNG\r\n\x1a\n' + b'x' * 70000)
+
+# The dedicated banner endpoint rejects tiny images: create a genuine 640x320 PNG.
+import struct, zlib
+def chunk(kind, data):
+    return struct.pack('>I', len(data)) + kind + data + struct.pack('>I', zlib.crc32(kind+data) & 0xffffffff)
+width, height = 640, 320
+scan = b''.join(b'\0' + (bytes([24, 68, 164]) * width) for _ in range(height))
+banner = b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>2I5B', width, height, 8, 2, 0, 0, 0)) + chunk(b'IDAT', zlib.compress(scan, 9)) + chunk(b'IEND', b'')
+open('/tmp/zetruv-banner-valid.png','wb').write(banner)
 PY
 
 echo '=== CMS AUTH REQUIRED ==='
@@ -86,6 +96,43 @@ CODE=$(curl -sS -o /tmp/zetruv-media-fake.json -w '%{http_code}' -X POST "http:/
 echo '=== OVERSIZE REJECTED ==='
 CODE=$(curl -sS -o /tmp/zetruv-media-large.json -w '%{http_code}' -X POST "http://127.0.0.1:$API/api/v1/cms/media"   -H "Authorization: Bearer $TOKEN"   -F "file=@/tmp/zetruv-media-large.bin;type=image/png")
 [[ "$CODE" == 413 ]]
+
+echo '=== BANNER CAPABILITIES AND SERVER-SIDE WEBP OPTIMIZATION ==='
+curl -fsS "http://127.0.0.1:$API/api/v1/cms/media/banner/capabilities" -H "Authorization: Bearer $TOKEN" > /tmp/zetruv-banner-capabilities.json
+python3 - <<'PY'
+import json
+data=json.load(open('/tmp/zetruv-banner-capabilities.json'))
+assert data['enabled'] and data['maxUploadBytes']==3*1024*1024
+assert data['maxBanners']==50 and data['storageQuotaBytes']==100*1024*1024
+PY
+CODE=$(curl -sS -o /tmp/zetruv-banner-upload.json -w '%{http_code}' -X POST "http://127.0.0.1:$API/api/v1/cms/media/banner" -H "Authorization: Bearer $TOKEN" -F "file=@/tmp/zetruv-banner-valid.png;type=image/png")
+[[ "$CODE" == 201 ]] || { echo "Banner upload failed: $CODE"; sed -n '1,12p' /tmp/zetruv-banner-upload.json; exit 1; }
+BANNER_ID=$(python3 -c 'import json; x=json.load(open("/tmp/zetruv-banner-upload.json")); assert x["contentType"]=="image/webp"; assert x["sizeBytes"]<=500*1024; print(x["id"])')
+BANNER_URL=$(python3 -c 'import json; print(json.load(open("/tmp/zetruv-banner-upload.json"))["url"])')
+[[ "$BANNER_URL" == http://127.0.0.1:$API/media/banners/* ]]
+curl -fsS "$BANNER_URL" -o /tmp/zetruv-banner-download.webp
+python3 - <<'PY'
+data=open('/tmp/zetruv-banner-download.webp','rb').read()
+assert data[:4]==b'RIFF' and data[8:12]==b'WEBP'
+PY
+
+echo '=== SAVED BANNER IMAGE CANNOT BE DELETED WHILE REFERENCED ==='
+python3 - <<'PY'
+import json
+image=json.load(open('/tmp/zetruv-banner-upload.json'))['url']
+with open('/tmp/zetruv-banner-hero.json','w') as f:
+    json.dump({'title':'Banner smoke', 'subtitle':'Safe image', 'imageUrl':image, 'isActive':True, 'sortOrder':10},f)
+PY
+CODE=$(curl -sS -o /tmp/zetruv-banner-hero-result.json -w '%{http_code}' -X POST "http://127.0.0.1:$API/api/v1/cms/homepage/heroes" -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' --data-binary @/tmp/zetruv-banner-hero.json)
+[[ "$CODE" == 201 ]] || { echo "Banner create failed: $CODE"; exit 1; }
+HERO_ID=$(python3 -c 'import json; print(json.load(open("/tmp/zetruv-banner-hero-result.json"))["id"])')
+CODE=$(curl -sS -o /tmp/zetruv-banner-protected.json -w '%{http_code}' -X DELETE "http://127.0.0.1:$API/api/v1/cms/media/$BANNER_ID" -H "Authorization: Bearer $TOKEN")
+[[ "$CODE" == 409 ]]
+CODE=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE "http://127.0.0.1:$API/api/v1/cms/homepage/heroes/$HERO_ID" -H "Authorization: Bearer $TOKEN")
+[[ "$CODE" == 204 ]]
+CODE=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE "http://127.0.0.1:$API/api/v1/cms/media/$BANNER_ID" -H "Authorization: Bearer $TOKEN")
+[[ "$CODE" == 204 ]]
+
 echo '=== DELETE ==='
 CODE=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE "http://127.0.0.1:$API/api/v1/cms/media/$ASSET_ID" -H "Authorization: Bearer $TOKEN")
 [[ "$CODE" == 204 ]]
