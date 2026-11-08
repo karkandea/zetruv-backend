@@ -235,7 +235,13 @@ namespace Zetruv.Api.Features.Home
                 uri.Scheme == Uri.UriSchemeHttps && string.IsNullOrEmpty(uri.UserInfo);
             var validLocal = imageUrl.StartsWith('/') && !imageUrl.StartsWith("//") &&
                 !imageUrl.Contains('\\');
-            if (!validHttps && !validLocal)
+            // Local integration/dev servers may return http:// for media served
+            // by this same API host. External insecure HTTP links stay blocked.
+            var validSameOriginMedia = markerIndex >= 0 && uri is not null &&
+                uri.Scheme is "http" or "https" &&
+                string.Equals(uri.Authority, Request.Host.Value, StringComparison.OrdinalIgnoreCase) &&
+                string.IsNullOrEmpty(uri.UserInfo);
+            if (!validHttps && !validLocal && !validSameOriginMedia)
                 return false;
 
             if (markerIndex < 0) return true; // Backward-compatible legacy URLs.

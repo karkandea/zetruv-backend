@@ -152,5 +152,6 @@ PY
 DB_STATE=$(docker exec "$C" psql -At -F '|' -U zetruv -d "$DB" -c 'SELECT "Provider","ContentType","SizeBytes","DeletedAt" IS NOT NULL FROM media_assets;')
 echo "DB_STATE=$DB_STATE"
 [[ "$DB_STATE" == local\|image/png\|*\|t ]]
+[[ "$DB_STATE" == *local\|image/webp\|*\|t* ]]
 
 echo 'PASS: authenticated media upload + signature validation + public immutable serving + listing + delete'
