@@ -117,6 +117,8 @@ assert data[:4]==b'RIFF' and data[8:12]==b'WEBP'
 PY
 
 echo '=== SAVED BANNER IMAGE CANNOT BE DELETED WHILE REFERENCED ==='
+CODE=$(curl -sS -o /tmp/zetruv-banner-invalid.json -w '%{http_code}' -X POST "http://127.0.0.1:$API/api/v1/cms/homepage/heroes" -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d '{"title":"Invalid banner","subtitle":"Must not publish","imageUrl":"asofdjtogjesf","isActive":true,"sortOrder":200}')
+[[ "$CODE" == 400 ]]
 python3 - <<'PY'
 import json
 image=json.load(open('/tmp/zetruv-banner-upload.json'))['url']

@@ -8,7 +8,7 @@
 - `MediaAssets` holds only metadata and a `banners/yyyy/MM/{guid}.webp` storage key. No image blobs are saved in PostgreSQL.
 - Maximum 50 **banner records** includes disabled banners. The image storage quota is 100 MiB per environment. The number of image files may temporarily be greater than 50 during replacements.
 - `PUT /api/v1/cms/homepage/heroes/reorder` and `/sections/reorder` update ordering in one transaction, without rewriting banner or section content.
-- New active banners must reference a valid uploaded banner asset. Inactive legacy records can be repaired without publishing broken images.
+- The new CMS editor only uses stored uploads. Existing REST clients keep support for syntactically valid HTTPS or local image paths, while malformed strings (e.g. `asofdjtogjesf`) cannot be published. Stored banner assets are checked against the database. Client-side load errors also prevent a broken image from being saved as active.
 - `DELETE /api/v1/cms/media/{id}` refuses to remove an uploaded banner image still referenced by any saved banner (HTTP 409).
 
 ## DEV/PROD separation

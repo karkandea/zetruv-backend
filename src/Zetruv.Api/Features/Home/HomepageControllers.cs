@@ -3,7 +3,6 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.IdentityModel.Tokens.Jwt;
 using Zetruv.Api.Features.Auth;
-using Zetruv.Api.Features.Media;
 using Zetruv.Api.Persistence;
 
 namespace Zetruv.Api.Features.Home
@@ -229,10 +228,17 @@ namespace Zetruv.Api.Features.Home
             var imageUrl = request.ImageUrl?.Trim() ?? string.Empty;
             const string marker = "/media/banners/";
             var markerIndex = imageUrl.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
-            if (markerIndex < 0 ||
-                !(imageUrl.StartsWith('/') ||
-                  (Uri.TryCreate(imageUrl, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps)))
+            // Keep the existing REST contract: older banners may use valid HTTPS or
+            // local image paths. The new admin editor only exposes stored uploads.
+            // Invalid strings such as "asofdjtogjesf" must never be publishable.
+            var validHttps = Uri.TryCreate(imageUrl, UriKind.Absolute, out var uri) &&
+                uri.Scheme == Uri.UriSchemeHttps && string.IsNullOrEmpty(uri.UserInfo);
+            var validLocal = imageUrl.StartsWith('/') && !imageUrl.StartsWith("//") &&
+                !imageUrl.Contains('\\');
+            if (!validHttps && !validLocal)
                 return false;
+
+            if (markerIndex < 0) return true; // Backward-compatible legacy URLs.
 
             var storageKey = imageUrl[(markerIndex + "/media/".Length)..];
             return await db.MediaAssets.AnyAsync(
