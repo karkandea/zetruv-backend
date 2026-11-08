@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.IdentityModel.Tokens.Jwt;
 using Zetruv.Api.Features.Auth;
+using Zetruv.Api.Features.Media;
 using Zetruv.Api.Persistence;
 
 namespace Zetruv.Api.Features.Home
@@ -35,6 +36,54 @@ namespace Zetruv.Api.Features.Home
     [Route("api/v1/admin/homepage")]
     public sealed class AdminHomepageController(ZetruvDbContext db) : ControllerBase
     {
+        public sealed record HeroPosition(Guid Id);
+        public sealed record SectionPosition(string Key);
+
+        [HttpPut("heroes/reorder")]
+        public async Task<IActionResult> ReorderHeroes(
+            [FromBody] List<HeroPosition> positions,
+            CancellationToken cancellationToken)
+        {
+            await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+            await db.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock(8234710321)", cancellationToken);
+            var heroes = await db.HomeHeroes.ToListAsync(cancellationToken);
+            if (positions.Count != heroes.Count || positions.Select(x => x.Id).Distinct().Count() != positions.Count)
+                return BadRequest(new { message = "Daftar urutan banner tidak lengkap. Muat ulang halaman dan coba lagi." });
+            var byId = heroes.ToDictionary(x => x.Id);
+            for (var i = 0; i < positions.Count; i++)
+            {
+                if (!byId.TryGetValue(positions[i].Id, out var hero))
+                    return BadRequest(new { message = "Banner tidak ditemukan. Muat ulang halaman dan coba lagi." });
+                hero.SortOrder = (i + 1) * 10;
+                hero.UpdatedAt = DateTimeOffset.UtcNow;
+            }
+            await db.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return NoContent();
+        }
+
+        [HttpPut("sections/reorder")]
+        public async Task<IActionResult> ReorderSections(
+            [FromBody] List<SectionPosition> positions,
+            CancellationToken cancellationToken)
+        {
+            await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+            var sections = await db.HomeSections.ToListAsync(cancellationToken);
+            if (positions.Count != sections.Count || positions.Select(x => x.Key).Distinct().Count() != positions.Count)
+                return BadRequest(new { message = "Daftar bagian beranda tidak lengkap. Muat ulang halaman dan coba lagi." });
+            var byKey = sections.ToDictionary(x => x.Key);
+            for (var i = 0; i < positions.Count; i++)
+            {
+                if (!byKey.TryGetValue(positions[i].Key, out var section))
+                    return BadRequest(new { message = "Bagian tidak ditemukan. Muat ulang halaman dan coba lagi." });
+                section.SortOrder = (i + 1) * 10;
+                section.UpdatedAt = DateTimeOffset.UtcNow;
+            }
+            await db.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return NoContent();
+        }
+
         [HttpGet("heroes")]
         public async Task<ActionResult<IReadOnlyList<HomeHero>>> GetHeroes(
             CancellationToken cancellationToken)
@@ -65,12 +114,14 @@ namespace Zetruv.Api.Features.Home
 
             if (!ValidHeroLinks(request))
                 return BadRequest(new { message = "CTA URLs must be local paths or HTTPS URLs, with paired labels." });
+            if (!await ValidHeroImage(request, cancellationToken))
+                return BadRequest(new { message = "Gambar banner belum valid. Unggah gambar dari halaman Banner sebelum menayangkan." });
             await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
-            // Serialize concurrent CMS inserts so two requests cannot both create banner #10.
+            // Serialize concurrent CMS inserts so the stored banner quota is deterministic.
             await db.Database.ExecuteSqlRawAsync(
                 "SELECT pg_advisory_xact_lock(8234710321)", cancellationToken);
-            if (await db.HomeHeroes.CountAsync(cancellationToken) >= 10)
-                return Conflict(new { code = "HERO_LIMIT_REACHED", message = "Maximum 10 hero banners in total, including inactive banners." });
+            if (await db.HomeHeroes.CountAsync(cancellationToken) >= 50)
+                return Conflict(new { code = "HERO_LIMIT_REACHED", message = "Maksimal 50 banner, termasuk banner nonaktif." });
             var hero = new HomeHero();
             Apply(hero, request);
             db.HomeHeroes.Add(hero);
@@ -103,6 +154,8 @@ namespace Zetruv.Api.Features.Home
 
             if (!ValidHeroLinks(request))
                 return BadRequest(new { message = "CTA URLs must be local paths or HTTPS URLs, with paired labels." });
+            if (!await ValidHeroImage(request, cancellationToken))
+                return BadRequest(new { message = "Gambar banner tidak valid. Unggah ulang gambar sebelum menayangkan." });
             Apply(hero, request);
             await db.SaveChangesAsync(cancellationToken);
 
@@ -169,6 +222,23 @@ namespace Zetruv.Api.Features.Home
         private static bool ValidHeroLinks(UpsertHeroRequest request) =>
             ValidLink(request.PrimaryCtaLabel, request.PrimaryCtaUrl) &&
             ValidLink(request.SecondaryCtaLabel, request.SecondaryCtaUrl);
+
+        private async Task<bool> ValidHeroImage(UpsertHeroRequest request, CancellationToken cancellationToken)
+        {
+            if (!request.IsActive) return true; // Hidden drafts and legacy images can be repaired.
+            var imageUrl = request.ImageUrl?.Trim() ?? string.Empty;
+            const string marker = "/media/banners/";
+            var markerIndex = imageUrl.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+            if (markerIndex < 0 ||
+                !(imageUrl.StartsWith('/') ||
+                  (Uri.TryCreate(imageUrl, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps)))
+                return false;
+
+            var storageKey = imageUrl[(markerIndex + "/media/".Length)..];
+            return await db.MediaAssets.AnyAsync(
+                asset => asset.StorageKey == storageKey && asset.DeletedAt == null,
+                cancellationToken);
+        }
 
         private static bool ValidLink(string? label, string? url)
         {

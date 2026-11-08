@@ -157,6 +157,11 @@ public sealed class MediaService(
             return true;
         }
 
+        // An uploaded banner may be shared by several heroes. Never remove a live image.
+        if (asset.StorageKey.StartsWith("banners/", StringComparison.Ordinal) &&
+            await db.HomeHeroes.AnyAsync(x => x.ImageUrl.EndsWith("/" + asset.StorageKey), cancellationToken))
+            throw new InvalidOperationException("Gambar masih digunakan oleh banner. Ganti atau hapus banner terlebih dahulu.");
+
         var storage = resolver.ResolveByName(asset.Provider);
         if (storage is null)
         {

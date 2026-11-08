@@ -18,8 +18,33 @@ public sealed record MediaAssetResponse(
 [Route("api/v1/cms/media")]
 public sealed class CmsMediaController(
     MediaService mediaService,
+    BannerMediaService bannerMediaService,
     IOptions<MediaOptions> options) : ControllerBase
 {
+    [HttpGet("banner/capabilities")]
+    public IActionResult BannerCapabilities() => Ok(new
+    {
+        enabled = true,
+        maxUploadBytes = BannerMediaService.InputLimit,
+        targetBytes = BannerMediaService.OutputTarget,
+        maxBanners = BannerMediaService.BannerLimit,
+        storageQuotaBytes = BannerMediaService.StorageQuota,
+        formats = new[] { "image/jpeg", "image/png", "image/webp" }
+    });
+
+    [HttpPost("banner")]
+    [Consumes("multipart/form-data")]
+    [RequestSizeLimit(4 * 1024 * 1024)]
+    public async Task<ActionResult<MediaAssetResponse>> UploadBanner(
+        [FromForm] IFormFile file,
+        CancellationToken cancellationToken)
+    {
+        var result = await bannerMediaService.UploadAsync(file, cancellationToken);
+        return result.Asset is null
+            ? StatusCode(result.StatusCode, new { message = result.Error })
+            : StatusCode(StatusCodes.Status201Created, ToResponse(result.Asset));
+    }
+
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<MediaAssetResponse>>> List(
         [FromQuery] int limit = 50,
@@ -53,8 +78,15 @@ public sealed class CmsMediaController(
         Guid id,
         CancellationToken cancellationToken)
     {
-        var deleted = await mediaService.DeleteAsync(id, cancellationToken);
-        return deleted ? NoContent() : NotFound();
+        try
+        {
+            var deleted = await mediaService.DeleteAsync(id, cancellationToken);
+            return deleted ? NoContent() : NotFound();
+        }
+        catch (InvalidOperationException ex) when (ex.Message.StartsWith("Gambar masih digunakan", StringComparison.Ordinal))
+        {
+            return Conflict(new { message = ex.Message });
+        }
     }
 
     private MediaAssetResponse ToResponse(MediaAsset asset) =>
