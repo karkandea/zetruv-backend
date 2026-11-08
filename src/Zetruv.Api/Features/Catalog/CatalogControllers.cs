@@ -672,6 +672,11 @@ public sealed class CmsCatalogController(ZetruvDbContext db) : ControllerBase
             return BadRequest(new { message = "Product kind must match its category kind." });
         }
 
+        if (currentProductId.HasValue &&
+            await db.Products.AnyAsync(x => x.Id == currentProductId.Value && x.Kind != request.Kind, cancellationToken) &&
+            await db.ProductVariants.AnyAsync(x => x.ProductId == currentProductId.Value, cancellationToken))
+            return Conflict(new { message = "Jenis produk tidak bisa diubah karena sudah memiliki varian atau riwayat penjualan. Buat produk baru untuk jenis berbeda." });
+
         if (!IsFulfillmentMethodAllowed(request.Kind, request.FulfillmentMethod))
         {
             return BadRequest(new

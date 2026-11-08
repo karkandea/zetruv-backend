@@ -45,6 +45,28 @@ public sealed class CmsMediaController(
             : StatusCode(StatusCodes.Status201Created, ToResponse(result.Asset));
     }
 
+    [HttpGet("catalog/capabilities")]
+    public IActionResult CatalogCapabilities() => Ok(new
+    {
+        enabled = true,
+        maxUploadBytes = BannerMediaService.InputLimit,
+        targetBytes = BannerMediaService.OutputTarget,
+        storageQuotaBytes = BannerMediaService.StorageQuota,
+        formats = new[] { "image/jpeg", "image/png", "image/webp" }
+    });
+
+    [HttpPost("catalog")]
+    [Consumes("multipart/form-data")]
+    [RequestSizeLimit(4 * 1024 * 1024)]
+    public async Task<ActionResult<MediaAssetResponse>> UploadCatalog(
+        [FromForm] IFormFile file, CancellationToken cancellationToken)
+    {
+        var result = await bannerMediaService.UploadCatalogAsync(file, cancellationToken);
+        return result.Asset is null
+            ? StatusCode(result.StatusCode, new { message = result.Error })
+            : StatusCode(StatusCodes.Status201Created, ToResponse(result.Asset));
+    }
+
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<MediaAssetResponse>>> List(
         [FromQuery] int limit = 50,

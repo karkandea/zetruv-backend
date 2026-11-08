@@ -6,7 +6,7 @@ using Zetruv.Api.Persistence;
 namespace Zetruv.Api.Features.Media;
 
 /// <summary>
-/// Banner-specific limits are intentionally independent of the generic CMS media uploader.
+/// Optimized, quota-limited CMS uploads are independent of the legacy generic uploader.
 /// The persisted image is always a validated, server-encoded WebP file.
 /// </summary>
 public sealed class BannerMediaService(
@@ -19,7 +19,13 @@ public sealed class BannerMediaService(
     public const long StorageQuota = 100 * 1024 * 1024;
     public const int BannerLimit = 50; // Homepage controller enforces the number of banners.
 
-    public async Task<MediaUploadResult> UploadAsync(IFormFile file, CancellationToken ct)
+    public Task<MediaUploadResult> UploadAsync(IFormFile file, CancellationToken ct) =>
+        UploadOptimizedAsync(file, "banners", ct);
+
+    public Task<MediaUploadResult> UploadCatalogAsync(IFormFile file, CancellationToken ct) =>
+        UploadOptimizedAsync(file, "catalog", ct);
+
+    private async Task<MediaUploadResult> UploadOptimizedAsync(IFormFile file, string category, CancellationToken ct)
     {
         if (file is null || file.Length == 0)
             return MediaUploadResult.Failure("Pilih gambar untuk diunggah.", 400);
@@ -71,15 +77,16 @@ public sealed class BannerMediaService(
 
         var storage = resolver.Resolve();
         if (storage is null || storage.Name != "local")
-            return MediaUploadResult.Failure("Penyimpanan gambar banner belum tersedia.", 503);
+            return MediaUploadResult.Failure("Penyimpanan gambar belum tersedia.", 503);
 
         // Both storage quota checks and writes are serialized within the DEV/PROD database.
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
         await db.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock(8234710350)", ct);
-        var assets = db.MediaAssets.Where(x => x.DeletedAt == null && x.StorageKey.StartsWith("banners/"));
+        var prefix = category + "/";
+        var assets = db.MediaAssets.Where(x => x.DeletedAt == null && x.StorageKey.StartsWith(prefix));
         var storedBytes = await assets.SumAsync(x => (long?)x.SizeBytes, ct) ?? 0;
         if (storedBytes + optimized.LongLength > StorageQuota)
-            return MediaUploadResult.Failure("Kuota penyimpanan banner 100 MB sudah penuh.", 409);
+            return MediaUploadResult.Failure("Kuota penyimpanan gambar 100 MB sudah penuh.", 409);
 
         var asset = new MediaAsset
         {
@@ -91,7 +98,7 @@ public sealed class BannerMediaService(
         await using var content = new MemoryStream(optimized, writable: false);
         try
         {
-            asset.StorageKey = await storage.StoreAsync(new MediaStoreRequest(asset.Id, ".webp", content, "banners"), ct);
+            asset.StorageKey = await storage.StoreAsync(new MediaStoreRequest(asset.Id, ".webp", content, category), ct);
             db.MediaAssets.Add(asset);
             await db.SaveChangesAsync(ct);
             await transaction.CommitAsync(ct);

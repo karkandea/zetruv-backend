@@ -14,6 +14,7 @@ cleanup(){
   rm -rf "$MEDIA_DIR"
   rm -f /tmp/zetruv-media-*.json /tmp/zetruv-media-*.png /tmp/zetruv-media-*.bin /tmp/zetruv-media-*.headers
   rm -f /tmp/zetruv-banner-*.json /tmp/zetruv-banner-*.png /tmp/zetruv-banner-*.webp
+  rm -f /tmp/zetruv-catalog-*.json /tmp/zetruv-catalog-*.webp
 }
 trap cleanup EXIT
 
@@ -133,6 +134,24 @@ CODE=$(curl -sS -o /tmp/zetruv-banner-protected.json -w '%{http_code}' -X DELETE
 CODE=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE "http://127.0.0.1:$API/api/v1/cms/homepage/heroes/$HERO_ID" -H "Authorization: Bearer $TOKEN")
 [[ "$CODE" == 204 ]]
 CODE=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE "http://127.0.0.1:$API/api/v1/cms/media/$BANNER_ID" -H "Authorization: Bearer $TOKEN")
+[[ "$CODE" == 204 ]]
+
+echo '=== CATALOG CAPABILITIES, WEBP OPTIMIZATION, INVALID FILE REJECTION ==='
+curl -fsS "http://127.0.0.1:$API/api/v1/cms/media/catalog/capabilities" -H "Authorization: Bearer $TOKEN" > /tmp/zetruv-catalog-capabilities.json
+python3 - <<'PY'
+import json
+x=json.load(open('/tmp/zetruv-catalog-capabilities.json'))
+assert x['enabled'] and x['maxUploadBytes']==3*1024*1024 and x['targetBytes']==500*1024
+PY
+CODE=$(curl -sS -o /tmp/zetruv-catalog-invalid.json -w '%{http_code}' -X POST "http://127.0.0.1:$API/api/v1/cms/media/catalog" -H "Authorization: Bearer $TOKEN" -F "file=@/tmp/zetruv-media-fake.png;type=image/png")
+[[ "$CODE" == 415 ]]
+CODE=$(curl -sS -o /tmp/zetruv-catalog-upload.json -w '%{http_code}' -X POST "http://127.0.0.1:$API/api/v1/cms/media/catalog" -H "Authorization: Bearer $TOKEN" -F "file=@/tmp/zetruv-banner-valid.png;type=image/png")
+[[ "$CODE" == 201 ]] || { echo "Catalog upload failed: $CODE"; exit 1; }
+CATALOG_ID=$(python3 -c 'import json; x=json.load(open("/tmp/zetruv-catalog-upload.json")); assert x["contentType"]=="image/webp" and x["sizeBytes"]<=500*1024; print(x["id"])')
+CATALOG_URL=$(python3 -c 'import json; print(json.load(open("/tmp/zetruv-catalog-upload.json"))["url"])')
+[[ "$CATALOG_URL" == http://127.0.0.1:$API/media/catalog/* ]]
+curl -fsS "$CATALOG_URL" -o /tmp/zetruv-catalog-download.webp
+CODE=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE "http://127.0.0.1:$API/api/v1/cms/media/$CATALOG_ID" -H "Authorization: Bearer $TOKEN")
 [[ "$CODE" == 204 ]]
 
 echo '=== DELETE ==='
