@@ -91,8 +91,16 @@ server {
 
     client_max_body_size 20m;
 
-    # Banner images have a stricter limit than existing generic media APIs.
+    # Optimized banner and catalog images use a stricter limit than generic media APIs.
     location = /api/v1/cms/media/banner {
+        client_max_body_size 4m;
+        proxy_pass http://127.0.0.1:$API_PORT;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+
+    location = /api/v1/cms/media/catalog {
         client_max_body_size 4m;
         proxy_pass http://127.0.0.1:$API_PORT;
         proxy_set_header Host \$host;

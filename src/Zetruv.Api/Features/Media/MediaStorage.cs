@@ -56,8 +56,8 @@ public sealed class LocalMediaStorage(
         CancellationToken cancellationToken = default)
     {
         var now = DateTimeOffset.UtcNow;
-        var relativeDirectory = request.Category == "banners"
-            ? Path.Combine("banners", now.ToString("yyyy"), now.ToString("MM"))
+        var relativeDirectory = request.Category is "banners" or "catalog"
+            ? Path.Combine(request.Category, now.ToString("yyyy"), now.ToString("MM"))
             : Path.Combine(now.ToString("yyyy"), now.ToString("MM"));
         var fileName = $"{request.AssetId:N}{request.Extension}";
         var storageKey = Path.Combine(relativeDirectory, fileName)

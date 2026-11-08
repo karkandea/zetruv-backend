@@ -162,6 +162,16 @@ public sealed class MediaService(
             await db.HomeHeroes.AnyAsync(x => x.ImageUrl.EndsWith("/" + asset.StorageKey), cancellationToken))
             throw new InvalidOperationException("Gambar masih digunakan oleh banner. Ganti atau hapus banner terlebih dahulu.");
 
+        if (asset.StorageKey.StartsWith("catalog/", StringComparison.Ordinal))
+        {
+            var reference = "/" + asset.StorageKey;
+            if (await db.Products.AnyAsync(x => x.ThumbnailUrl != null && x.ThumbnailUrl.EndsWith(reference), cancellationToken) ||
+                await db.ProductImages.AnyAsync(x => x.Url.EndsWith(reference), cancellationToken) ||
+                await db.CatalogCategories.AnyAsync(x => x.IconUrl != null && x.IconUrl.EndsWith(reference), cancellationToken) ||
+                await db.Games.AnyAsync(x => x.ImageUrl != null && x.ImageUrl.EndsWith(reference), cancellationToken))
+                throw new InvalidOperationException("Gambar masih digunakan di katalog. Ganti gambar pada produk, kategori, atau game terlebih dahulu.");
+        }
+
         var storage = resolver.ResolveByName(asset.Provider);
         if (storage is null)
         {

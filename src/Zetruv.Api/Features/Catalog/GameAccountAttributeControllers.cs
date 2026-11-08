@@ -12,6 +12,30 @@ namespace Zetruv.Api.Features.Catalog;
 [Route("api/v1/cms/catalog/games/{gameId:guid}/account-attributes")]
 public sealed class CmsGameAccountAttributeController(ZetruvDbContext db) : ControllerBase
 {
+    public sealed record AttributePosition(Guid Id);
+
+    [HttpPut("reorder")]
+    public async Task<IActionResult> Reorder(Guid gameId, [FromBody] List<AttributePosition> positions, CancellationToken ct)
+    {
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        await db.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT pg_advisory_xact_lock(hashtext({gameId.ToString()}))", ct);
+        var all = await db.GameAccountAttributeDefinitions.Where(x => x.GameId == gameId).ToListAsync(ct);
+        if (all.Count != positions.Count || positions.Select(x => x.Id).Distinct().Count() != all.Count)
+            return BadRequest(new { message = "Urutan informasi tidak lengkap. Muat ulang dan coba lagi." });
+        var byId = all.ToDictionary(x => x.Id);
+        for (var i = 0; i < positions.Count; i++)
+        {
+            if (!byId.TryGetValue(positions[i].Id, out var item))
+                return BadRequest(new { message = "Informasi akun tidak ditemukan. Muat ulang dan coba lagi." });
+            item.SortOrder = (i + 1) * 10;
+            item.UpdatedAt = DateTimeOffset.UtcNow;
+        }
+        await db.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
+        return NoContent();
+    }
+
     [HttpGet]
     public async Task<IActionResult> Get(Guid gameId, CancellationToken ct)
     {
