@@ -27,7 +27,8 @@ public sealed class MediaAsset
 public sealed record MediaStoreRequest(
     Guid AssetId,
     string Extension,
-    Stream Content);
+    Stream Content,
+    string? Category = null);
 
 public interface IMediaStorage
 {
@@ -55,9 +56,9 @@ public sealed class LocalMediaStorage(
         CancellationToken cancellationToken = default)
     {
         var now = DateTimeOffset.UtcNow;
-        var relativeDirectory = Path.Combine(
-            now.ToString("yyyy"),
-            now.ToString("MM"));
+        var relativeDirectory = request.Category == "banners"
+            ? Path.Combine("banners", now.ToString("yyyy"), now.ToString("MM"))
+            : Path.Combine(now.ToString("yyyy"), now.ToString("MM"));
         var fileName = $"{request.AssetId:N}{request.Extension}";
         var storageKey = Path.Combine(relativeDirectory, fileName)
             .Replace(Path.DirectorySeparatorChar, '/');

@@ -298,6 +298,7 @@ builder.Services.AddHostedService<InventoryReservationCleanupService>();
 builder.Services.AddScoped<IMediaStorage, LocalMediaStorage>();
 builder.Services.AddScoped<MediaStorageResolver>();
 builder.Services.AddScoped<MediaService>();
+builder.Services.AddScoped<BannerMediaService>();
 
 if (!builder.Environment.IsProduction())
 {
