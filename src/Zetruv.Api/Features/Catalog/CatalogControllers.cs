@@ -927,12 +927,28 @@ public sealed class CmsPromotionsController(ZetruvDbContext db) : ControllerBase
             return BadRequest(new { message = "Promotion end time must be after start time." });
         }
 
+        if (request.IsFlashSale && request.Items.Count == 0)
+        {
+            return BadRequest(new { message = "Flash Sale harus memiliki minimal satu varian." });
+        }
+
         var slug = CatalogText.NormalizeSlug(request.Slug);
         if (await db.Promotions.AnyAsync(
                 x => x.Id != currentPromotionId && x.Slug == slug,
                 cancellationToken))
         {
             return Conflict(new { message = "Promotion slug already exists." });
+        }
+
+        // Only one active Flash Sale can own a time window. The storefront
+        // currently selects one campaign, so overlapping schedules would be ambiguous.
+        if (request.IsFlashSale && request.IsActive &&
+            await db.Promotions.AnyAsync(
+                x => x.Id != currentPromotionId && x.IsFlashSale && x.IsActive &&
+                     x.StartsAt <= request.EndsAt && x.EndsAt >= request.StartsAt,
+                cancellationToken))
+        {
+            return Conflict(new { message = "Jadwal Flash Sale bertabrakan dengan promo aktif lain. Ubah jadwal atau nonaktifkan salah satunya." });
         }
 
         if (request.Items.Select(x => x.ProductVariantId).Distinct().Count() != request.Items.Count)
@@ -951,9 +967,19 @@ public sealed class CmsPromotionsController(ZetruvDbContext db) : ControllerBase
             return BadRequest(new { message = "One or more promotion variants do not exist." });
         }
 
+        if (request.IsFlashSale && await db.ProductVariants.AnyAsync(
+                x => variantIds.Contains(x.Id) &&
+                     (!x.IsActive || !x.Product.IsActive ||
+                      (x.Product.Game != null && !x.Product.Game.IsActive)),
+                cancellationToken))
+        {
+            return BadRequest(new { message = "Varian atau produk nonaktif tidak dapat ditambahkan ke Flash Sale." });
+        }
+
         foreach (var item in request.Items)
         {
-            if (item.SalePrice > variants[item.ProductVariantId].Price)
+            if (item.SalePrice > variants[item.ProductVariantId].Price ||
+                (request.IsFlashSale && (item.SalePrice <= 0 || item.SalePrice >= variants[item.ProductVariantId].Price)))
             {
                 return BadRequest(new { message = "Flash-sale price cannot exceed the normal price." });
             }
