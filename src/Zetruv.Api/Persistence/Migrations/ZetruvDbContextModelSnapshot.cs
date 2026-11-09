@@ -719,6 +719,10 @@ namespace Zetruv.Api.Persistence.Migrations
                         .HasMaxLength(80)
                         .HasColumnType("character varying(80)");
 
+                    b.Property<string>("IconUrl")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
 

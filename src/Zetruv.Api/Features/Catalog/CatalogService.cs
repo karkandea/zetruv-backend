@@ -466,7 +466,8 @@ public sealed class CatalogService(ZetruvDbContext db)
             hasOffer ? offer!.PromotionName : null,
             hasOffer ? offer!.EndsAt : null,
             variant.SortOrder,
-            variant.GroupName);
+            variant.GroupName,
+            variant.IconUrl);
     }
 
     private static bool IsVariantAvailable(ProductVariant variant) =>

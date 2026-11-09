@@ -16,6 +16,8 @@ public sealed class BannerMediaService(
 {
     public const long InputLimit = 3 * 1024 * 1024;
     public const long OutputTarget = 500 * 1024;
+    public const long VariantIconOutputTarget = 100 * 1024;
+    public const int VariantIconMaxDimension = 256;
     public const long StorageQuota = 100 * 1024 * 1024;
     public const int BannerLimit = 50; // Homepage controller enforces the number of banners.
 
@@ -25,7 +27,11 @@ public sealed class BannerMediaService(
     public Task<MediaUploadResult> UploadCatalogAsync(IFormFile file, CancellationToken ct) =>
         UploadOptimizedAsync(file, "catalog", ct);
 
-    private async Task<MediaUploadResult> UploadOptimizedAsync(IFormFile file, string category, CancellationToken ct)
+    public Task<MediaUploadResult> UploadVariantIconAsync(IFormFile file, CancellationToken ct) =>
+        UploadOptimizedAsync(file, "catalog", ct, VariantIconMaxDimension, VariantIconOutputTarget);
+
+    private async Task<MediaUploadResult> UploadOptimizedAsync(
+        IFormFile file, string category, CancellationToken ct, int maxDimension = 0, long targetBytes = OutputTarget)
     {
         if (file is null || file.Length == 0)
             return MediaUploadResult.Failure("Pilih gambar untuk diunggah.", 400);
@@ -57,17 +63,33 @@ public sealed class BannerMediaService(
             if (bitmap is null)
                 return MediaUploadResult.Failure("Gambar tidak dapat dibaca. Pilih file gambar lain.", 422);
 
-            using var image = SKImage.FromBitmap(bitmap);
+            using var iconSurface = maxDimension > 0
+                ? SKSurface.Create(new SKImageInfo(
+                    Math.Max(1, (int)Math.Round(bitmap.Width * Math.Min(1d, maxDimension / (double)Math.Max(bitmap.Width, bitmap.Height)))),
+                    Math.Max(1, (int)Math.Round(bitmap.Height * Math.Min(1d, maxDimension / (double)Math.Max(bitmap.Width, bitmap.Height)))),
+                    SKColorType.Rgba8888, SKAlphaType.Premul))
+                : null;
+            if (maxDimension > 0 && iconSurface is null)
+                return MediaUploadResult.Failure("Ikon gambar tidak dapat dioptimasi.", 422);
+
+            if (iconSurface is not null)
+            {
+                iconSurface.Canvas.Clear(SKColors.Transparent);
+                using var paint = new SKPaint { IsAntialias = true, FilterQuality = SKFilterQuality.High };
+                iconSurface.Canvas.DrawBitmap(bitmap,
+                    new SKRect(0, 0, iconSurface.Canvas.DeviceClipBounds.Width, iconSurface.Canvas.DeviceClipBounds.Height), paint);
+            }
+            using var image = iconSurface is null ? SKImage.FromBitmap(bitmap) : iconSurface.Snapshot();
             optimized = Array.Empty<byte>();
             foreach (var quality in new[] { 86, 78, 70, 62, 54, 46, 38, 30, 22 })
             {
                 using var webp = image.Encode(SKEncodedImageFormat.Webp, quality);
                 if (webp is null) continue;
                 optimized = webp.ToArray();
-                if (optimized.Length <= OutputTarget) break;
+                if (optimized.Length <= targetBytes) break;
             }
 
-            if (optimized.Length == 0 || optimized.Length > OutputTarget)
+            if (optimized.Length == 0 || optimized.Length > targetBytes)
                 return MediaUploadResult.Failure("Gambar terlalu kompleks untuk dioptimasi. Coba gambar dengan dimensi lebih kecil.", 422);
         }
         catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)

@@ -167,9 +167,10 @@ public sealed class MediaService(
             var reference = "/" + asset.StorageKey;
             if (await db.Products.AnyAsync(x => x.ThumbnailUrl != null && x.ThumbnailUrl.EndsWith(reference), cancellationToken) ||
                 await db.ProductImages.AnyAsync(x => x.Url.EndsWith(reference), cancellationToken) ||
+                await db.ProductVariants.AnyAsync(x => x.IconUrl != null && x.IconUrl.EndsWith(reference), cancellationToken) ||
                 await db.CatalogCategories.AnyAsync(x => x.IconUrl != null && x.IconUrl.EndsWith(reference), cancellationToken) ||
                 await db.Games.AnyAsync(x => x.ImageUrl != null && x.ImageUrl.EndsWith(reference), cancellationToken))
-                throw new InvalidOperationException("Gambar masih digunakan di katalog. Ganti gambar pada produk, kategori, atau game terlebih dahulu.");
+                throw new InvalidOperationException("Gambar masih digunakan di katalog. Ganti gambar pada produk, varian, kategori, atau game terlebih dahulu.");
         }
 
         var storage = resolver.ResolveByName(asset.Provider);

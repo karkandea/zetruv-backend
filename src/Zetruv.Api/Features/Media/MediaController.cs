@@ -51,6 +51,8 @@ public sealed class CmsMediaController(
         enabled = true,
         maxUploadBytes = BannerMediaService.InputLimit,
         targetBytes = BannerMediaService.OutputTarget,
+        variantIconTargetBytes = BannerMediaService.VariantIconOutputTarget,
+        variantIconMaxDimension = BannerMediaService.VariantIconMaxDimension,
         storageQuotaBytes = BannerMediaService.StorageQuota,
         formats = new[] { "image/jpeg", "image/png", "image/webp" }
     });
@@ -62,6 +64,18 @@ public sealed class CmsMediaController(
         [FromForm] IFormFile file, CancellationToken cancellationToken)
     {
         var result = await bannerMediaService.UploadCatalogAsync(file, cancellationToken);
+        return result.Asset is null
+            ? StatusCode(result.StatusCode, new { message = result.Error })
+            : StatusCode(StatusCodes.Status201Created, ToResponse(result.Asset));
+    }
+
+    [HttpPost("catalog/variant-icon")]
+    [Consumes("multipart/form-data")]
+    [RequestSizeLimit(4 * 1024 * 1024)]
+    public async Task<ActionResult<MediaAssetResponse>> UploadVariantIcon(
+        [FromForm] IFormFile file, CancellationToken cancellationToken)
+    {
+        var result = await bannerMediaService.UploadVariantIconAsync(file, cancellationToken);
         return result.Asset is null
             ? StatusCode(result.StatusCode, new { message = result.Error })
             : StatusCode(StatusCodes.Status201Created, ToResponse(result.Asset));
