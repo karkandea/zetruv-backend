@@ -88,6 +88,7 @@ public sealed class OrderService(ZetruvDbContext db)
                 x.Currency,
                 x.Items.Sum(i => i.Quantity),
                 x.Items.Any(i => i.FulfillmentStatus == FulfillmentStatus.Failed),
+                x.Items.Any(i => i.FulfillmentStatus == FulfillmentStatus.Pending),
                 x.CreatedAt,
                 x.PaidAt,
                 x.CompletedAt))

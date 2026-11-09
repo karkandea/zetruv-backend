@@ -156,6 +156,7 @@ public sealed record OrderListItemResponse(
     string Currency,
     int ItemCount,
     bool HasFulfillmentIssue,
+    bool HasPendingFulfillment,
     DateTimeOffset CreatedAt,
     DateTimeOffset? PaidAt,
     DateTimeOffset? CompletedAt);
