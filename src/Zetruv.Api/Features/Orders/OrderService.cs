@@ -94,6 +94,25 @@ public sealed class OrderService(ZetruvDbContext db)
                 x.CompletedAt))
             .ToListAsync(cancellationToken);
 
+        // A single order can have several payment attempts. Project the
+        // session state in a bounded batch, without changing order status.
+        var orderIds = items.Select(x => x.Id).ToArray();
+        var sessions = await db.PaymentTransactions.AsNoTracking()
+            .Where(x => orderIds.Contains(x.OrderId) && x.Type == PaymentTransactionType.Payment)
+            .Select(x => new { x.OrderId, x.Status, x.ExpiresAt, x.ProcessedAt, x.CreatedAt })
+            .ToListAsync(cancellationToken);
+        var byOrder = sessions.GroupBy(x => x.OrderId).ToDictionary(
+            group => group.Key,
+            group => group.Select(x => new PaymentSessionSnapshot(
+                x.Status, x.ExpiresAt, x.ProcessedAt, x.CreatedAt)).ToList());
+        var now = DateTimeOffset.UtcNow;
+        items = items.Select(item => item with
+        {
+            PaymentState = PaymentSessionState.Resolve(
+                item.PaymentStatus, item.Status,
+                byOrder.TryGetValue(item.Id, out var attempts) ? attempts : [], now)
+        }).ToList();
+
         return new OrderPageResponse(
             items,
             page,
@@ -194,7 +213,7 @@ public sealed class OrderService(ZetruvDbContext db)
                         t.LastReconciliationAttemptAt,
                         t.NextReconciliationAt,
                         t.ReconciliationMessage,
-                        t.CreatedAt))
+                        t.CreatedAt) { ExpiresAt = t.ExpiresAt })
                     .ToList())
             {
                 VoucherCode = x.VoucherCode,
@@ -229,6 +248,12 @@ public sealed class OrderService(ZetruvDbContext db)
 
         return detail with
         {
+            PaymentState = PaymentSessionState.Resolve(
+                detail.PaymentStatus, detail.Status,
+                detail.Transactions.Where(tx => tx.Type == PaymentTransactionType.Payment)
+                    .Select(tx => new PaymentSessionSnapshot(
+                        tx.Status, tx.ExpiresAt, tx.ProcessedAt, tx.CreatedAt)),
+                DateTimeOffset.UtcNow),
             Items = detail.Items.Select(item =>
                 targets.TryGetValue(item.Id, out var target)
                     ? item with { AccountTarget = target }

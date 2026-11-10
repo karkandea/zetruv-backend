@@ -32,7 +32,8 @@ public enum PaymentTransactionStatus
 {
     Pending,
     Succeeded,
-    Failed
+    Failed,
+    Expired
 }
 
 public enum FulfillmentStatus
@@ -159,7 +160,10 @@ public sealed record OrderListItemResponse(
     bool HasPendingFulfillment,
     DateTimeOffset CreatedAt,
     DateTimeOffset? PaidAt,
-    DateTimeOffset? CompletedAt);
+    DateTimeOffset? CompletedAt)
+{
+    public string PaymentState { get; init; } = "NotStarted";
+}
 
 public sealed record OrderItemResponse(
     Guid Id,
@@ -208,7 +212,10 @@ public sealed record PaymentTransactionResponse(
     DateTimeOffset? LastReconciliationAttemptAt,
     DateTimeOffset? NextReconciliationAt,
     string? ReconciliationMessage,
-    DateTimeOffset CreatedAt);
+    DateTimeOffset CreatedAt)
+{
+    public DateTimeOffset? ExpiresAt { get; init; }
+}
 
 public sealed record OrderDetailResponse(
     Guid Id,
@@ -236,6 +243,7 @@ public sealed record OrderDetailResponse(
 {
     public string? VoucherCode { get; init; }
     public decimal VoucherDiscountAmount { get; init; }
+    public string PaymentState { get; init; } = "NotStarted";
 }
 
 public sealed record OrderPageResponse(

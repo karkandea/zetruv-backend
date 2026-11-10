@@ -64,26 +64,10 @@ public sealed class CustomerPaymentStatusController(
             x.Status == PaymentTransactionStatus.Pending &&
             (!x.ExpiresAt.HasValue || x.ExpiresAt.Value > now));
 
-        // A failed provider attempt is Failed, even if it is read after its
-        // original deadline. Expired means the payment window elapsed before
-        // settlement, including an attempt released by payment initiation.
-        var failedBeforeExpiry = latest?.Status == PaymentTransactionStatus.Failed &&
-            (!latest.ExpiresAt.HasValue ||
-             (latest.ProcessedAt.HasValue && latest.ProcessedAt < latest.ExpiresAt));
-
-        var state = order.PaymentStatus switch
-        {
-            PaymentStatus.Paid => "Paid",
-            PaymentStatus.Refunded => "Refunded",
-            _ when order.Status == OrderStatus.Cancelled => "Cancelled",
-            _ when active is not null => "Pending",
-            _ when latest is null && order.PaymentStatus == PaymentStatus.Failed => "Failed",
-            _ when latest is null => "NotStarted",
-            _ when failedBeforeExpiry => "Failed",
-            _ when latest.ExpiresAt.HasValue && latest.ExpiresAt.Value <= now => "Expired",
-            _ when latest.Status == PaymentTransactionStatus.Failed => "Failed",
-            _ => "Pending"
-        };
+        var state = PaymentSessionState.Resolve(
+            order.PaymentStatus, order.Status,
+            transactions.Select(x => new PaymentSessionSnapshot(
+                x.Status, x.ExpiresAt, x.ProcessedAt, x.CreatedAt)), now);
 
         var credentialsUsable = order.Items.All(x =>
             x.FulfillmentMethod != FulfillmentMethod.MANUAL_LOGIN ||

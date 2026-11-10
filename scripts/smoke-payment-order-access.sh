@@ -22,6 +22,8 @@ export ConnectionStrings__Postgres="Host=127.0.0.1;Port=$PORT;Database=$DB;Usern
 export Jwt__Key='0123456789abcdef0123456789abcdef'
 export Payments__Provider=mock
 export Payments__Mock__WebhookSecret=smoke-secret
+export Payments__Reconciliation__Enabled=true
+export Payments__Reconciliation__PollIntervalSeconds=5
 export Shipping__Provider=mock
 export GameAccountValidation__Provider=mock
 export ASPNETCORE_ENVIRONMENT=Staging
@@ -147,6 +149,24 @@ x=json.loads(sys.argv[1])
 assert x['state']=='Expired' and x['hasActivePaymentSession'] is False
 assert x['canRetry'] is True and x['paymentUrl'] is None and x['qrString'] is None
 PY
+echo '=== EXPIRED SESSION: AUTOMATIC CLEANUP WITHOUT ORDER FAILURE OR RE-POLL ==='
+# Let the worker perform its next cycle; no mock provider query should occur
+# for the expired row, and its reconciliation count must stop increasing.
+for _ in $(seq 1 12); do
+  EXPIRY_ROW=$(docker exec "$C" psql -At -U zetruv -d "$DB" -c \
+    "SELECT \"Status\"||'|'||COALESCE(\"NextReconciliationAt\"::text,'NULL')||'|'||\"ReconciliationAttemptCount\" FROM payment_transactions WHERE \"OrderId\"='$FIRST_ID' AND \"ExpiresAt\"<NOW();")
+  [[ "$EXPIRY_ROW" == Expired\|NULL\|* ]] && break
+  sleep 1
+done
+[[ "$EXPIRY_ROW" == Expired\|NULL\|* ]] || { echo "FAIL: expired payment was not cleaned up: $EXPIRY_ROW"; exit 1; }
+EXPIRED_ATTEMPTS=${EXPIRY_ROW##*|}
+sleep 6
+AFTER_EXPIRY=$(docker exec "$C" psql -At -U zetruv -d "$DB" -c \
+  "SELECT \"Status\"||'|'||COALESCE(\"NextReconciliationAt\"::text,'NULL')||'|'||\"ReconciliationAttemptCount\" FROM payment_transactions WHERE \"OrderId\"='$FIRST_ID' AND \"ExpiresAt\"<NOW();")
+[[ "$AFTER_EXPIRY" == "Expired|NULL|$EXPIRED_ATTEMPTS" ]] || { echo "FAIL: expired payment was re-polled: $AFTER_EXPIRY"; exit 1; }
+ORDER_PAYMENT=$(docker exec "$C" psql -At -U zetruv -d "$DB" -c "SELECT \"PaymentStatus\" FROM orders WHERE \"Id\"='$FIRST_ID';")
+[[ "$ORDER_PAYMENT" == Pending ]] || { echo "FAIL: expired attempt changed order status to $ORDER_PAYMENT"; exit 1; }
+echo 'PASS: worker marks attempt Expired, stops polling, preserves pending order'
 RETRY=$(curl -fsS -X POST "http://127.0.0.1:$API/api/v1/checkout/orders/$FIRST_ID/payment" \
   -H "X-Order-Access-Token: $FIRST_TOKEN")
 python3 - "$RETRY" <<'PY'

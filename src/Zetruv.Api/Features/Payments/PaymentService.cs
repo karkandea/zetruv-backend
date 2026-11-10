@@ -176,8 +176,10 @@ public sealed class PaymentService(
 
         foreach (var expired in expiredPayments)
         {
-            expired.Status = PaymentTransactionStatus.Failed;
+            expired.Status = PaymentTransactionStatus.Expired;
             expired.ProcessedAt ??= now;
+            expired.NextReconciliationAt = null;
+            expired.ReconciliationMessage = "Payment session expired.";
             expired.UpdatedAt = now;
         }
 
@@ -202,14 +204,6 @@ public sealed class PaymentService(
 
             return InitiatePaymentResult.Success(
                 ToInitiateResponse(order, activePayment, isRecovery: true));
-        }
-
-        if (expiredPayments.Count > 0 && order.PaymentStatus == PaymentStatus.Pending)
-        {
-            order.PaymentStatus = PaymentStatus.Failed;
-            order.UpdatedAt = now;
-            await db.SaveChangesAsync(cancellationToken);
-            await inventoryReservations.ReleaseAsync(order.Id, cancellationToken);
         }
 
         var gateway = gatewayResolver.Resolve();
@@ -729,12 +723,35 @@ public sealed class PaymentService(
             Math.Clamp(settings.InitialDelaySeconds, 5, 3600));
         var batchSize = Math.Clamp(settings.MaxBatchSize, 1, 200);
 
+        // Clean up expired attempts without querying their provider. This also
+        // repairs legacy pending rows on the first worker cycle after deploy.
+        var expiredIds = await db.PaymentTransactions.AsNoTracking()
+            .Where(x => x.Type == PaymentTransactionType.Payment &&
+                x.Status == PaymentTransactionStatus.Pending &&
+                x.ExpiresAt.HasValue && x.ExpiresAt <= now)
+            .OrderBy(x => x.ExpiresAt)
+            .Select(x => x.Id)
+            .Take(batchSize)
+            .ToListAsync(cancellationToken);
+
+        var expiredCount = expiredIds.Count == 0 ? 0 : await db.PaymentTransactions
+            .Where(x => expiredIds.Contains(x.Id) &&
+                x.Status == PaymentTransactionStatus.Pending &&
+                x.ExpiresAt.HasValue && x.ExpiresAt <= now)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(x => x.Status, PaymentTransactionStatus.Expired)
+                .SetProperty(x => x.ProcessedAt, x => x.ProcessedAt ?? now)
+                .SetProperty(x => x.NextReconciliationAt, (DateTimeOffset?)null)
+                .SetProperty(x => x.ReconciliationMessage, "Payment session expired.")
+                .SetProperty(x => x.UpdatedAt, now), cancellationToken);
+
         var dueIds = await db.PaymentTransactions
             .AsNoTracking()
             .Where(x =>
                 x.Type == PaymentTransactionType.Payment &&
                 x.Status == PaymentTransactionStatus.Pending &&
                 x.ProviderReference != null &&
+                (!x.ExpiresAt.HasValue || x.ExpiresAt > now) &&
                 ((x.NextReconciliationAt.HasValue && x.NextReconciliationAt <= now) ||
                  (!x.NextReconciliationAt.HasValue && x.CreatedAt <= now - initialDelay)))
             .OrderBy(x => x.NextReconciliationAt ?? x.CreatedAt)
@@ -769,7 +786,7 @@ public sealed class PaymentService(
             }
         }
 
-        return dueIds.Count;
+        return expiredCount + dueIds.Count;
     }
 
     public async Task<PaymentReconciliationAttemptResult> ReconcileTransactionAsync(
@@ -848,6 +865,7 @@ public sealed class PaymentService(
                 x.Status,
                 x.Amount,
                 x.Currency,
+                x.ExpiresAt,
                 x.ReconciliationAttemptCount
             })
             .SingleOrDefaultAsync(cancellationToken);
@@ -881,6 +899,23 @@ public sealed class PaymentService(
         }
 
         var now = DateTimeOffset.UtcNow;
+        if (snapshot.ExpiresAt.HasValue && snapshot.ExpiresAt.Value <= now)
+        {
+            // Manual reconcile follows the same expiry rule as the worker.
+            // This attempt becomes terminal without touching order.PaymentStatus.
+            await db.PaymentTransactions
+                .Where(x => x.Id == snapshot.Id && x.Status == PaymentTransactionStatus.Pending)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(x => x.Status, PaymentTransactionStatus.Expired)
+                    .SetProperty(x => x.ProcessedAt, x => x.ProcessedAt ?? now)
+                    .SetProperty(x => x.NextReconciliationAt, (DateTimeOffset?)null)
+                    .SetProperty(x => x.ReconciliationMessage, "Payment session expired.")
+                    .SetProperty(x => x.UpdatedAt, now), cancellationToken);
+            return PaymentReconciliationAttemptResult.Failure(
+                "Payment session has expired. Start a new payment attempt if the order is eligible.",
+                isConflict: true);
+        }
+
         var gateway = gatewayResolver.ResolveByName(snapshot.Provider);
         if (gateway is null)
         {
