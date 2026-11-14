@@ -136,7 +136,7 @@ PROMO_ID=$(extract_id <<<"$PROMO")
 BAD_PROMO=$(python3 - "$VARIANT_ID" "$START" "$END" <<'PY'
 import json,sys
 print(json.dumps({
-  "name":"Bad Promo","slug":"bad-promo","isFlashSale":True,"isActive":True,
+  "name":"Bad Promo","slug":"bad-promo","isFlashSale":True,"isActive":False,
   "startsAt":sys.argv[2],"endsAt":sys.argv[3],
   "items":[{"productVariantId":sys.argv[1],"salePrice":999999,"sortOrder":1}]
 }))
