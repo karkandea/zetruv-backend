@@ -57,15 +57,17 @@ BASE=os.environ['TEST_API']
 MAIL=Path(os.environ['TEST_MAIL'])
 CONTAINER=os.environ['TEST_CONTAINER']
 
-def api(method, path, payload=None, token=None):
-    headers={'Content-Type':'application/json'}
+def api(method, path, payload=None, token=None, headers=None, response_headers=None):
+    headers={'Content-Type':'application/json', **(headers or {})}
     if token: headers['Authorization']='Bearer '+token
     req=urllib.request.Request(BASE+path,
         data=json.dumps(payload).encode() if payload is not None else None,
         headers=headers, method=method)
     try:
         with urllib.request.urlopen(req,timeout=12) as resp:
-            return resp.status,json.loads(resp.read())
+            if response_headers is not None: response_headers.update(resp.headers)
+            raw=resp.read()
+            return resp.status,(json.loads(raw) if raw else {})
     except urllib.error.HTTPError as exc:
         raw=exc.read()
         return exc.code,(json.loads(raw) if raw else {})
@@ -130,10 +132,35 @@ for reply in replies: expect(*reply,202)
 replacement=new_link(before,email)
 expect(*api('POST','/api/v1/auth/verify-email',{'token':initial}),
        400,'VERIFICATION_LINK_INVALID')
-status,verified=api('POST','/api/v1/auth/verify-email',{'token':replacement})
+cookie_headers={}
+status,verified=api('POST','/api/v1/auth/verify-email',{'token':replacement},
+                    response_headers=cookie_headers)
 expect(status,verified,200)
 jwt=verified['accessToken']
 assert verified['customer']['email']==email and verified['customer']['emailVerified']
+session_path='/api/v1/auth/session'
+session_cookie=cookie_headers['Set-Cookie']
+assert session_cookie.startswith('__Secure-zetruv-customer-session=')
+assert all(flag in session_cookie.lower() for flag in
+           ('secure', 'httponly', 'samesite=lax', 'path='+session_path, 'expires='))
+cookie={'Cookie':session_cookie.split(';',1)[0]}
+expect(*api('GET',session_path),401)
+expect(*api('GET',session_path,token=jwt),401)
+session_headers={}
+status,restored=api('GET',session_path,headers=cookie,response_headers=session_headers)
+expect(status,restored,200)
+assert restored['accessToken']==jwt and restored['customer']==verified['customer']
+assert 'no-store' in session_headers['Cache-Control']
+expect(*api('GET','/api/v1/auth/me',headers=cookie),401)
+restored_headers={}
+expect(*api('PUT',session_path,token=jwt,response_headers=restored_headers),204)
+assert restored_headers['Set-Cookie'].split(';',1)[0]==cookie['Cookie']
+expect(*api('PUT',session_path,token=jwt,headers=cookie),409)
+expect(*api('DELETE',session_path,headers={'Origin':'https://other.example'}),403)
+logout_headers={}
+expect(*api('DELETE',session_path,headers={'Origin':'https://dev.zetruv.com',**cookie},
+            response_headers=logout_headers),204)
+assert '__Secure-zetruv-customer-session=;' in logout_headers['Set-Cookie']
 expect(*api('POST','/api/v1/auth/verify-email',{'token':replacement}),
        400,'VERIFICATION_LINK_INVALID')
 expect(*api('GET','/api/v1/auth/me',token=jwt),200)
@@ -173,6 +200,7 @@ expect(*api('POST','/api/v1/auth/reset-password',
     {'token':reset_token,'newPassword':'Another1234','confirmPassword':'Another1234'}),
     400,'RESET_LINK_INVALID')
 expect(*api('GET','/api/v1/auth/me',token=jwt),401)
+expect(*api('GET',session_path,headers=cookie),401)
 expect(*api('POST','/api/v1/auth/login',
     {'email':email,'password':'Start1234'}),401,'INVALID_CREDENTIALS')
 status,updated=api('POST','/api/v1/auth/login',

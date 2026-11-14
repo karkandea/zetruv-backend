@@ -219,6 +219,20 @@ builder.Services
         };
         options.Events = new JwtBearerEvents
         {
+            OnMessageReceived = context =>
+            {
+                if (HttpMethods.IsGet(context.Request.Method) &&
+                    string.Equals(context.Request.Path.Value?.TrimEnd('/'),
+                        CustomerAuthConstants.SessionPath, StringComparison.OrdinalIgnoreCase))
+                {
+                    if (context.Request.Cookies.TryGetValue(CustomerAuthConstants.SessionCookie,
+                            out var token))
+                        context.Token = token;
+                    else
+                        context.NoResult();
+                }
+                return Task.CompletedTask;
+            },
             OnTokenValidated = async context =>
             {
                 var sub = context.Principal?.FindFirst(
@@ -267,7 +281,8 @@ builder.Services.AddCors(options =>
         policy
             .WithOrigins(allowedOrigins)
             .AllowAnyHeader()
-            .AllowAnyMethod();
+            .AllowAnyMethod()
+            .AllowCredentials();
     });
 });
 
