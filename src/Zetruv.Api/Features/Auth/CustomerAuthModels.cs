@@ -5,6 +5,8 @@ namespace Zetruv.Api.Features.Auth;
 public static class CustomerAuthConstants
 {
     public const string Scheme = "CustomerBearer";
+    public const string SessionCookie = "__Secure-zetruv-customer-session";
+    public const string SessionPath = "/api/v1/auth/session";
 }
 
 public sealed class CustomerUser

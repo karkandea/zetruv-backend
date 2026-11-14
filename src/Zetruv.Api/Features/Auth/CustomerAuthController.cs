@@ -2,6 +2,7 @@ using System.Net;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -16,6 +17,7 @@ namespace Zetruv.Api.Features.Auth;
 [ApiController]
 [Route("api/v1/auth")]
 [EnableRateLimiting("customer-auth")]
+[ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 public sealed class CustomerAuthController(
     ZetruvDbContext db,
     CustomerJwtTokenService tokens,
@@ -117,7 +119,7 @@ public sealed class CustomerAuthController(
             customer.UpdatedAt = DateTimeOffset.UtcNow;
             await db.SaveChangesAsync(ct);
         }
-        return Ok(tokens.Create(customer));
+        return StartSession(customer);
     }
 
     [HttpPost("resend-verification")]
@@ -240,8 +242,70 @@ public sealed class CustomerAuthController(
             .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.ConsumedAt, now), ct);
         await db.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
-        return Ok(tokens.Create(customer));
+        return StartSession(customer);
     }
+
+    [Authorize(AuthenticationSchemes = CustomerAuthConstants.Scheme)]
+    [DisableRateLimiting]
+    [HttpGet("session")]
+    public async Task<IActionResult> GetSession(CancellationToken ct)
+    {
+        if (Request.Headers.ContainsKey("Origin") && !IsStorefrontRequest())
+            return StatusCode(StatusCodes.Status403Forbidden);
+
+        var accessToken = Request.Cookies[CustomerAuthConstants.SessionCookie]!;
+        var id = Guid.Parse(User.FindFirstValue(JwtRegisteredClaimNames.Sub)!);
+        var customer = await db.CustomerUsers.AsNoTracking().SingleAsync(x => x.Id == id, ct);
+        return Ok(new CustomerLoginResponse(accessToken, SessionExpiry(),
+            new CustomerIdentity(customer.Id, customer.Name, customer.Email, true)));
+    }
+
+    [Authorize(AuthenticationSchemes = CustomerAuthConstants.Scheme)]
+    [HttpPut("session")]
+    public async Task<IActionResult> RestoreExistingSession()
+    {
+        var accessToken = await HttpContext.GetTokenAsync(CustomerAuthConstants.Scheme, "access_token");
+        if (Request.Cookies.ContainsKey(CustomerAuthConstants.SessionCookie))
+            return Conflict();
+        Response.Cookies.Append(CustomerAuthConstants.SessionCookie, accessToken!,
+            SessionCookieOptions(SessionExpiry()));
+        return NoContent();
+    }
+
+    [HttpDelete("session")]
+    public IActionResult EndSession()
+    {
+        if (!IsStorefrontRequest()) return StatusCode(StatusCodes.Status403Forbidden);
+
+        Response.Cookies.Delete(CustomerAuthConstants.SessionCookie, SessionCookieOptions());
+        return NoContent();
+    }
+
+    private IActionResult StartSession(CustomerUser customer)
+    {
+        var response = tokens.Create(customer);
+        Response.Cookies.Append(CustomerAuthConstants.SessionCookie, response.AccessToken,
+            SessionCookieOptions(response.ExpiresAt));
+        return Ok(response);
+    }
+
+    private DateTimeOffset SessionExpiry() => DateTimeOffset.FromUnixTimeSeconds(
+        long.Parse(User.FindFirstValue(JwtRegisteredClaimNames.Exp)!));
+
+    private static CookieOptions SessionCookieOptions(DateTimeOffset? expiry = null) => new()
+    {
+        HttpOnly = true,
+        Secure = true,
+        SameSite = SameSiteMode.Lax,
+        Path = CustomerAuthConstants.SessionPath,
+        Expires = expiry
+    };
+
+    private bool IsStorefrontRequest() =>
+        string.Equals(Request.Headers.Origin.ToString(),
+            _options.FrontendBaseUrl.TrimEnd('/'), StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(Request.Headers.Origin.ToString(),
+            $"{Request.Scheme}://{Request.Host}", StringComparison.OrdinalIgnoreCase);
 
     [HttpPost("forgot-password")]
     public async Task<IActionResult> ForgotPassword(
