@@ -66,12 +66,15 @@ public sealed class OrderTrackingService(
             return null;
         }
 
+        var normalizedNumber = orderNumber.ToUpperInvariant();
+        var normalizedEmail = email?.ToUpperInvariant();
         var now = DateTimeOffset.UtcNow;
         var order = await db.Orders
             .AsNoTracking()
             .Where(x =>
-                EF.Functions.ILike(x.OrderNumber, orderNumber) &&
-                ((email != null && x.CustomerEmail != null && EF.Functions.ILike(x.CustomerEmail, email)) ||
+                x.CustomerUserId == null &&
+                x.OrderNumber.ToUpper() == normalizedNumber &&
+                ((normalizedEmail != null && x.CustomerEmail != null && x.CustomerEmail.ToUpper() == normalizedEmail) ||
                  (phone != null && x.CustomerPhone != null && x.CustomerPhone == phone)))
             .Select(x => new TrackOrderResponse(
                 x.Id,
@@ -164,6 +167,7 @@ public sealed class OrderTrackingController(OrderTrackingService trackingService
         TrackOrderRequest request,
         CancellationToken cancellationToken)
     {
+        Response.Headers.CacheControl = "private, no-store";
         if (string.IsNullOrWhiteSpace(request.CustomerEmail) &&
             string.IsNullOrWhiteSpace(request.CustomerPhone))
         {

@@ -16,15 +16,24 @@ public static class PaymentSessionState
         IEnumerable<PaymentSessionSnapshot> sessions,
         DateTimeOffset now)
     {
+        var attempts = sessions.OrderByDescending(x => x.CreatedAt).ToList();
+        var hasActiveAttempt = attempts.Any(x => x.Status == PaymentTransactionStatus.Pending &&
+            (!x.ExpiresAt.HasValue || x.ExpiresAt.Value > now));
+
+        return Resolve(paymentStatus, orderStatus, hasActiveAttempt, attempts.FirstOrDefault(), now);
+    }
+
+    public static string Resolve(
+        PaymentStatus paymentStatus,
+        OrderStatus orderStatus,
+        bool hasActiveAttempt,
+        PaymentSessionSnapshot? latest,
+        DateTimeOffset now)
+    {
         if (paymentStatus == PaymentStatus.Paid) return "Paid";
         if (paymentStatus == PaymentStatus.Refunded) return "Refunded";
         if (orderStatus == OrderStatus.Cancelled) return "Cancelled";
-
-        var attempts = sessions.OrderByDescending(x => x.CreatedAt).ToList();
-        if (attempts.Any(x => x.Status == PaymentTransactionStatus.Pending &&
-            (!x.ExpiresAt.HasValue || x.ExpiresAt.Value > now))) return "Pending";
-
-        var latest = attempts.FirstOrDefault();
+        if (hasActiveAttempt) return "Pending";
         if (latest is null) return paymentStatus == PaymentStatus.Failed ? "Failed" : "NotStarted";
 
         if (latest.Status == PaymentTransactionStatus.Expired ||

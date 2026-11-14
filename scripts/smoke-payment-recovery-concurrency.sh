@@ -73,10 +73,10 @@ REF2=$(python3 -c 'import json; print(json.load(open("/tmp/zetruv-prc-4.json"))[
 REC4=$(python3 -c 'import json; print(str(json.load(open("/tmp/zetruv-prc-4.json"))["isRecovery"]).lower())')
 [[ "$REF2" != "$REF1" ]]
 [[ "$REC4" == false ]]
-STATE=$(docker exec "$C" psql -At -F '|' -U zetruv -d "$DB" -c "SELECT count(*) FILTER (WHERE \"Status\"='Failed'),count(*) FILTER (WHERE \"Status\"='Pending') FROM payment_transactions WHERE \"OrderId\"='$OID';")
+STATE=$(docker exec "$C" psql -At -F '|' -U zetruv -d "$DB" -c "SELECT count(*) FILTER (WHERE \"Status\"='Expired'),count(*) FILTER (WHERE \"Status\"='Pending') FROM payment_transactions WHERE \"OrderId\"='$OID';")
 [[ "$STATE" == '1|1' ]]
 
 LOOKUP=$(curl -fsS -X POST "http://127.0.0.1:$API/api/v1/orders/lookup" -H 'Content-Type: application/json' -d "{\"orderNumber\":\"$ONO\",\"customerEmail\":\"recovery@zetruv.local\",\"customerPhone\":null}")
-python3 -c 'import json,sys; x=json.loads(sys.argv[1]); assert x["hasActivePaymentSession"] is True; assert x["canInitiatePayment"] is True; assert x["activePaymentExpiresAt"]; print("PASS: expired session is failed and replaced with one new active session")' "$LOOKUP"
+python3 -c 'import json,sys; x=json.loads(sys.argv[1]); assert x["hasActivePaymentSession"] is True; assert x["canInitiatePayment"] is True; assert x["activePaymentExpiresAt"]; print("PASS: expired session is marked Expired and replaced with one active session")' "$LOOKUP"
 
 echo 'PASS: payment recovery concurrency + expiry replacement'
