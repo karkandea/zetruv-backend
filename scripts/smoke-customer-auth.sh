@@ -146,6 +146,7 @@ assert all(flag in session_cookie.lower() for flag in
 cookie={'Cookie':session_cookie.split(';',1)[0]}
 expect(*api('GET',session_path),401)
 expect(*api('GET',session_path,token=jwt),401)
+expect(*api('GET',session_path,headers={'Origin':'https://other.example',**cookie}),403)
 session_headers={}
 status,restored=api('GET',session_path,headers=cookie,response_headers=session_headers)
 expect(status,restored,200)

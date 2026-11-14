@@ -250,6 +250,9 @@ public sealed class CustomerAuthController(
     [HttpGet("session")]
     public async Task<IActionResult> GetSession(CancellationToken ct)
     {
+        if (Request.Headers.ContainsKey("Origin") && !IsStorefrontRequest())
+            return StatusCode(StatusCodes.Status403Forbidden);
+
         var accessToken = Request.Cookies[CustomerAuthConstants.SessionCookie]!;
         var id = Guid.Parse(User.FindFirstValue(JwtRegisteredClaimNames.Sub)!);
         var customer = await db.CustomerUsers.AsNoTracking().SingleAsync(x => x.Id == id, ct);
