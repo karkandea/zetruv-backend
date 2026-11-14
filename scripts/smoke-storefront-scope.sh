@@ -247,8 +247,43 @@ oid=order['id']
 other=check(api('POST','/api/v1/checkout/orders',{'customerPhone':'+6281234567890','items':[{'productVariantId':vid,'quantity':1}]},second),201)
 oid2=other['id']
 guest=check(api('POST','/api/v1/checkout/orders',{'customerEmail':'guest@zetruv.test','customerPhone':'+6281234567890','items':[{'productVariantId':vid,'quantity':1}]}),201)
+guest_same_email=check(api('POST','/api/v1/checkout/orders',{'customerEmail':'first@zetruv.test','customerPhone':'+6281234567890','items':[{'productVariantId':vid,'quantity':1}]}),201)
+orders_endpoint='/api/v1/me/orders'
+check(api('GET',orders_endpoint),401)
+check(api('GET',orders_endpoint,token=admin),401)
+check(api('GET',orders_endpoint+'?group=invalid',token=first),400)
+check(api('GET',orders_endpoint+'?limit=51',token=first),400)
+check(api('GET',orders_endpoint+'?offset=-1',token=first),400)
+initial=check(api('GET',orders_endpoint,token=first),200)
+assert [x['id'] for x in initial['items']]==[oid,target_order['id']],initial
+assert not initial['hasMore'] and initial['items'][0]['paymentState']=='NotStarted'
+assert initial['items'][0]['firstItem']['productName'] and initial['items'][0]['itemCount']==1
+assert all('customerEmail' not in x and 'orderAccessToken' not in x for x in initial['items'])
+first_page=check(api('GET',orders_endpoint+'?limit=1',token=first),200)
+assert first_page['hasMore'] and first_page['items'][0]['id']==oid
+next_page=check(api('GET',orders_endpoint+'?limit=1&offset=1',token=first),200)
+assert not next_page['hasMore'] and next_page['items'][0]['id']==target_order['id']
+assert check(api('GET',orders_endpoint+'?group=history',token=first),200)['items']==[]
+assert [x['id'] for x in check(api('GET',orders_endpoint,token=second),200)['items']]==[oid2]
+check(api('GET',f'{orders_endpoint}/{oid}',token=second),404)
+check(api('GET',f'{orders_endpoint}/{guest_same_email["id"]}',token=first),404)
+check(api('POST','/api/v1/orders/lookup',{'orderNumber':order['orderNumber'],'customerPhone':'+6281234567890'}),404)
+check(api('POST','/api/v1/orders/lookup',{'orderNumber':guest['orderNumber'].lower(),'customerEmail':'GUEST@ZETRUV.TEST'}),200)
+check(api('POST','/api/v1/orders/lookup',{'orderNumber':guest['orderNumber'],'customerEmail':'%@zetruv.test'}),404)
+sql("""INSERT INTO payment_transactions ("Id","OrderId","Provider","Type","Status","Amount","Currency",
+ "ExpiresAt","CreatedAt","UpdatedAt") VALUES (gen_random_uuid(),'"""+oid+"""','mock','Payment',
+ 'Expired',100000,'IDR',now()-interval '1 minute',now()-interval '2 minutes',now());""")
+expired=check(api('GET',orders_endpoint,token=first),200)['items'][0]
+assert expired['id']==oid and expired['paymentState']=='Expired' and expired['status']=='Pending',expired
+pending_detail=check(api('GET',f'{orders_endpoint}/{oid}',token=first),200)
+assert pending_detail['paymentStatus']=='Pending' and pending_detail['paymentState']=='Expired',pending_detail
 # Isolated DB fixture simulates payment+fulfillment completion to exercise aggregated read models.
 sql('UPDATE orders SET "PaymentStatus"=\'Paid\', "Status"=\'Completed\', "PaidAt"=now(), "CompletedAt"=now() WHERE "Id" IN (\''+oid+'\',\''+oid2+'\',\''+guest['id']+'\');')
+history=check(api('GET',orders_endpoint+'?group=history',token=first),200)
+assert [x['id'] for x in history['items']]==[oid] and history['items'][0]['paymentState']=='Paid',history
+assert [x['id'] for x in check(api('GET',orders_endpoint,token=first),200)['items']]==[target_order['id']]
+assert check(api('GET',f'{orders_endpoint}/{oid}',token=first),200)['status']=='Completed'
+print('PASS: account checkout to active/history, expired attempt, pagination, guest fallback and account isolation')
 first_history=check(api('GET','/api/v1/me/recent-purchases',token=first),200)
 second_history=check(api('GET','/api/v1/me/recent-purchases',token=second),200)
 assert len(first_history)==1 and len(second_history)==1

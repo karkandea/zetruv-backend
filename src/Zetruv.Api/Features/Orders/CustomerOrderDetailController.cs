@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using System.IdentityModel.Tokens.Jwt;
 using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
@@ -6,6 +7,7 @@ using Microsoft.EntityFrameworkCore;
 using Zetruv.Api.Features.Auth;
 using Zetruv.Api.Features.Catalog;
 using Zetruv.Api.Features.GameAccounts;
+using Zetruv.Api.Features.Shipping;
 using Zetruv.Api.Persistence;
 
 namespace Zetruv.Api.Features.Orders;
@@ -24,7 +26,10 @@ public sealed record CustomerOrderDetailItem(
     int Quantity,
     decimal UnitPrice,
     decimal LineTotal,
-    CustomerOrderTarget? Target);
+    CustomerOrderTarget? Target)
+{
+    public string? ThumbnailUrl { get; init; }
+}
 
 public sealed record CustomerOrderDetail(
     Guid Id,
@@ -40,13 +45,75 @@ public sealed record CustomerOrderDetail(
     DateTimeOffset CreatedAt,
     DateTimeOffset? PaidAt,
     DateTimeOffset? CompletedAt,
-    IReadOnlyList<CustomerOrderDetailItem> Items);
+    IReadOnlyList<CustomerOrderDetailItem> Items)
+{
+    public string PaymentState { get; init; } = string.Empty;
+    public bool HasFulfillmentIssue { get; init; }
+    public ShipmentTrackingResponse? Shipment { get; init; }
+}
+
+public enum CustomerOrderGroup { Active, History }
+
+public sealed record CustomerOrderPreview(string ProductName, string? VariantName, string? ThumbnailUrl);
+
+public sealed record CustomerOrderSummary(
+    Guid Id, string OrderNumber, OrderStatus Status, string PaymentState,
+    decimal GrandTotal, string Currency, DateTimeOffset CreatedAt,
+    int ItemCount, bool HasFulfillmentIssue, CustomerOrderPreview? FirstItem);
+
+public sealed record CustomerOrderPage(IReadOnlyList<CustomerOrderSummary> Items, bool HasMore);
 
 [ApiController]
 [Authorize(AuthenticationSchemes = CustomerAuthConstants.Scheme)]
 [Route("api/v1/me/orders")]
 public sealed class CustomerOrderDetailController(ZetruvDbContext db) : ControllerBase
 {
+    [HttpGet]
+    public async Task<ActionResult<CustomerOrderPage>> List(
+        [FromQuery] CustomerOrderGroup group = CustomerOrderGroup.Active,
+        [FromQuery, Range(0, int.MaxValue)] int offset = 0,
+        [FromQuery, Range(1, 50)] int limit = 20,
+        CancellationToken ct = default)
+    {
+        Response.Headers.CacheControl = "private, no-store";
+        if (!Guid.TryParse(User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value, out var customerId))
+            return Unauthorized();
+
+        var owned = db.Orders.AsNoTracking().Where(x => x.CustomerUserId == customerId);
+        var orders = group == CustomerOrderGroup.Active
+            ? owned.Where(x => x.Status != OrderStatus.Completed && x.Status != OrderStatus.Cancelled &&
+                x.PaymentStatus != PaymentStatus.Refunded)
+            : owned.Where(x => x.Status == OrderStatus.Completed || x.Status == OrderStatus.Cancelled ||
+                x.PaymentStatus == PaymentStatus.Refunded);
+        var now = DateTimeOffset.UtcNow;
+        var page = await orders
+            .OrderByDescending(x => x.CreatedAt).ThenByDescending(x => x.Id)
+            .Skip(offset).Take(limit + 1)
+            .Select(x => new
+            {
+                x.Id, x.OrderNumber, x.Status, x.PaymentStatus, x.GrandTotal, x.Currency, x.CreatedAt,
+                ItemCount = x.Items.Sum(i => i.Quantity),
+                HasFulfillmentIssue = x.Items.Any(i => i.FulfillmentStatus == FulfillmentStatus.Failed),
+                FirstItem = x.Items.OrderBy(i => i.CreatedAt).ThenBy(i => i.Id)
+                    .Select(i => new CustomerOrderPreview(i.ProductName, i.VariantName, i.ThumbnailUrl))
+                    .FirstOrDefault(),
+                HasActiveAttempt = x.Transactions.Any(t => t.Type == PaymentTransactionType.Payment &&
+                    t.Status == PaymentTransactionStatus.Pending && (!t.ExpiresAt.HasValue || t.ExpiresAt > now)),
+                LatestAttempt = x.Transactions.Where(t => t.Type == PaymentTransactionType.Payment)
+                    .OrderByDescending(t => t.CreatedAt).ThenByDescending(t => t.Id)
+                    .Select(t => new PaymentSessionSnapshot(t.Status, t.ExpiresAt, t.ProcessedAt, t.CreatedAt))
+                    .FirstOrDefault()
+            })
+            .ToListAsync(ct);
+
+        var items = page.Take(limit).Select(x => new CustomerOrderSummary(
+            x.Id, x.OrderNumber, x.Status,
+            PaymentSessionState.Resolve(x.PaymentStatus, x.Status, x.HasActiveAttempt, x.LatestAttempt, now),
+            x.GrandTotal, x.Currency, x.CreatedAt, x.ItemCount, x.HasFulfillmentIssue, x.FirstItem))
+            .ToList();
+        return Ok(new CustomerOrderPage(items, page.Count > limit));
+    }
+
     // Destination fields are copied from the account-validation contract,
     // never from encrypted MANUAL_LOGIN credentials. Defense in depth:
     // redact credential-looking keys if legacy rows contain unexpected data.
@@ -64,6 +131,7 @@ public sealed class CustomerOrderDetailController(ZetruvDbContext db) : Controll
 
         var order = await db.Orders.AsNoTracking()
             .Include(x => x.Items)
+            .Include(x => x.Shipment)
             .SingleOrDefaultAsync(x => x.Id == orderId && x.CustomerUserId == customerId, ct);
         if (order is null)
             return NotFound(new { message = "Order was not found." });
@@ -92,14 +160,29 @@ public sealed class CustomerOrderDetailController(ZetruvDbContext db) : Controll
                 x.Quantity,
                 x.UnitPrice,
                 x.LineTotal,
-                targets.GetValueOrDefault(x.Id)))
+                targets.GetValueOrDefault(x.Id)) { ThumbnailUrl = x.ThumbnailUrl })
             .ToList();
+
+        var attempts = await db.Set<PaymentTransaction>().AsNoTracking()
+            .Where(t => t.OrderId == order.Id && t.Type == PaymentTransactionType.Payment)
+            .OrderByDescending(t => t.CreatedAt).ThenByDescending(t => t.Id)
+            .Select(t => new PaymentSessionSnapshot(t.Status, t.ExpiresAt, t.ProcessedAt, t.CreatedAt))
+            .ToListAsync(ct);
+        var shipment = order.Shipment;
 
         return Ok(new CustomerOrderDetail(
             order.Id, order.OrderNumber, order.Status, order.PaymentStatus,
             order.Subtotal, order.DiscountAmount, order.ShippingAmount,
             order.GrandTotal, order.Currency, order.VoucherCode,
-            order.CreatedAt, order.PaidAt, order.CompletedAt, items));
+            order.CreatedAt, order.PaidAt, order.CompletedAt, items)
+        {
+            PaymentState = PaymentSessionState.Resolve(order.PaymentStatus, order.Status, attempts, DateTimeOffset.UtcNow),
+            HasFulfillmentIssue = items.Any(x => x.FulfillmentStatus == FulfillmentStatus.Failed),
+            Shipment = shipment is null ? null : new ShipmentTrackingResponse(
+                shipment.Status, shipment.Provider, shipment.ServiceCode, shipment.ServiceName,
+                shipment.TrackingNumber, shipment.EtaMinDays, shipment.EtaMaxDays,
+                shipment.ShippedAt, shipment.DeliveredAt)
+        });
     }
 
     private static IReadOnlyDictionary<string, string> SafeTargetFields(string? json)
