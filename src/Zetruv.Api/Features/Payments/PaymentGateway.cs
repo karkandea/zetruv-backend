@@ -20,7 +20,8 @@ public sealed record PaymentGatewayStatusRequest(
     string OrderNumber,
     string ProviderReference,
     decimal Amount,
-    string Currency);
+    string Currency,
+    DateTimeOffset? ExpiresAt = null);
 
 public sealed record PaymentGatewayStatusResult(
     PaymentWebhookNotification? Notification,
@@ -244,7 +245,7 @@ public sealed class PaymentGatewayResolver(
         provider is not null && ResolveByName(provider) switch
         {
             MockPaymentGateway => testing,
-            XenditPaymentGateway { IsLiveConfigured: true } xendit => xendit.IsSandbox == testing,
+            MidtransPaymentGateway { IsLiveConfigured: true } midtrans => midtrans.IsSandbox == testing,
             _ => false
         };
 

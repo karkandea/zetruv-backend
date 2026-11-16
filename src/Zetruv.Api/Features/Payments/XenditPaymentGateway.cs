@@ -28,6 +28,7 @@ public sealed class XenditPaymentGateway(
     public string Name => "xendit";
     public bool IsSandbox => string.Equals(config["Payments:Xendit:Mode"],
         "Sandbox", StringComparison.OrdinalIgnoreCase);
+    public bool MerchantAbsorbsFees => config.GetValue<bool>("Payments:Xendit:MerchantAbsorbsFees");
     private string ApiKey => config["Payments:Xendit:ApiKey"]?.Trim() ?? "";
     private string WebhookToken => config["Payments:Xendit:WebhookToken"]?.Trim() ?? "";
 

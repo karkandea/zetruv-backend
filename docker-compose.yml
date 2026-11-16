@@ -41,6 +41,14 @@ services:
       Cors__AllowedOrigins__2: ${FRONTEND_ORIGIN_LEGACY:-}
       Cors__AllowedOrigins__3: ${CMS_ORIGIN_LEGACY:-}
       Payments__Provider: ${PAYMENTS_PROVIDER:-mock}
+      Payments__Midtrans__Enabled: ${MIDTRANS_ENABLED:-false}
+      Payments__Midtrans__Mode: ${MIDTRANS_MODE:-Sandbox}
+      Payments__Midtrans__ServerKey: ${MIDTRANS_SERVER_KEY:-}
+      Payments__Midtrans__ReturnUrl: ${MIDTRANS_RETURN_URL:-}
+      Payments__Midtrans__MerchantAbsorbsFees: ${MIDTRANS_MERCHANT_ABSORBS_FEES:-false}
+      Payments__Midtrans__Channels__0: ${MIDTRANS_CHANNEL_0:-}
+      Payments__Midtrans__Channels__1: ${MIDTRANS_CHANNEL_1:-}
+      Payments__Midtrans__Channels__2: ${MIDTRANS_CHANNEL_2:-}
       Payments__Mock__WebhookSecret: ${PAYMENTS_MOCK_WEBHOOK_SECRET}
       Payments__Reconciliation__Enabled: ${PAYMENTS_RECONCILIATION_ENABLED:-true}
       Fulfillment__Digiflazz__Enabled: ${DIGIFLAZZ_ENABLED:-false}

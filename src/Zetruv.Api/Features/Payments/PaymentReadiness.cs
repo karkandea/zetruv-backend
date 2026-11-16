@@ -11,6 +11,8 @@ namespace Zetruv.Api.Features.Payments;
 public interface ILivePaymentChannelGateway
 {
     bool IsLiveConfigured { get; }
+    bool IsSandbox { get; }
+    bool MerchantAbsorbsFees { get; }
     bool SupportsChannel(string code);
 }
 
@@ -96,17 +98,15 @@ public sealed class PaymentReadinessService(
 [Route("api/v1/checkout/payment-options")]
 public sealed class CheckoutPaymentOptionsController(
     PaymentReadinessService readiness,
-    PaymentGatewayResolver gatewayResolver,
-    IConfiguration configuration) : ControllerBase
+    PaymentGatewayResolver gatewayResolver) : ControllerBase
 {
     [HttpGet]
     public async Task<IActionResult> Get(CancellationToken ct)
     {
         var current = await readiness.GetAsync(ct);
         Response.Headers.CacheControl = "no-store";
-        var gateway = gatewayResolver.Resolve() as XenditPaymentGateway;
-        var merchantAbsorbsFees = gateway is { IsLiveConfigured: true } &&
-            configuration.GetValue<bool>("Payments:Xendit:MerchantAbsorbsFees");
+        var gateway = gatewayResolver.Resolve() as ILivePaymentChannelGateway;
+        var merchantAbsorbsFees = gateway is { IsLiveConfigured: true, MerchantAbsorbsFees: true };
         return Ok(new CheckoutPaymentReadinessResponse(
             current.CanAcceptLivePayments,
             current.Status,

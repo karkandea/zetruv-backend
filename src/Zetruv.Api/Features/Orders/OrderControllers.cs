@@ -92,6 +92,14 @@ public sealed class CmsOrdersController(
             return Conflict(new { message = "Wait for the Digiflazz top-up result before cancelling this order." });
         }
 
+        if (await db.PaymentTransactions.AsNoTracking().AnyAsync(x =>
+            x.OrderId == id && x.Provider == MidtransPaymentGateway.ProviderCode &&
+            x.Type == PaymentTransactionType.Payment && x.Status == PaymentTransactionStatus.Pending,
+            cancellationToken))
+        {
+            return Conflict(new { message = "Wait for Midtrans to confirm the payment status before cancelling." });
+        }
+
         var alreadyShipped = await db.Set<Shipment>()
             .AsNoTracking()
             .AnyAsync(

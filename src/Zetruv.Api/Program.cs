@@ -343,6 +343,10 @@ builder.Services.Configure<PaymentReconciliationOptions>(
 // Real Xendit channel adapter: enabled only with provider credentials and a
 // verified environment-specific configuration. No fallback to mock payments.
 builder.Services.AddScoped<IPaymentGateway, XenditPaymentGateway>();
+builder.Services.AddHttpClient(MidtransPaymentGateway.HttpClientName, client =>
+    client.Timeout = TimeSpan.FromSeconds(10))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddScoped<IPaymentGateway, MidtransPaymentGateway>();
 builder.Services.AddScoped<PaymentGatewayResolver>();
 builder.Services.AddScoped<PaymentReadinessService>();
 builder.Services.AddScoped<PaymentWebhookEventLedger>();
