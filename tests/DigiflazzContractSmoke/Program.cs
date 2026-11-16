@@ -4,6 +4,17 @@ using System.Text.Json;
 using Microsoft.Extensions.Options;
 using Zetruv.Api.Features.Orders;
 
+if (args.Length != 0)
+{
+    if (args is not ["--sandbox"])
+    {
+        Console.Error.WriteLine("Usage: DigiflazzContractSmoke [--sandbox]");
+        return 2;
+    }
+
+    return await DigiflazzSandboxSmoke.RunAsync();
+}
+
 const string reference = "ZTR-FULFILL-CODM-SMOKE";
 const string openId = "0012345678910";
 const string sku = "codm-test-only";
@@ -54,6 +65,7 @@ foreach (var body in handler.Payloads)
 }
 
 Console.WriteLine("PASS: Digiflazz Buyer API contract (synthetic HTTP responses)");
+return 0;
 
 HttpResponseMessage Reply(string status, string rc, string replyReference = reference) =>
     new(HttpStatusCode.OK)

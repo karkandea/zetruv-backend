@@ -1,37 +1,17 @@
 # Zetruv MVP provider activation — DEV only
 
-Updated 13 October 2026. These are prerequisite checks, NOT approval to activate real transactions.
-
-## Xendit Sandbox — Product Owner checklist
-- Merchant Xendit TEST account: Payments API v3, Indonesian QRIS and GOPAY eligibility verified.
-- In trusted secrets manager ONLY: development API secret key (xnd_development_), Xendit dashboard callback token. Never chat, source control, logs, customer-facing JSON, or screenshots.
-- Operator registers one Payments API webhook URL: https://api-dev.zetruv.com/api/v1/payments/webhooks/xendit.
-- Return URL: https://dev.zetruv.com/payment. GoPay redirect must remain in the same tab to retain payment session.
-- PO confirms who pays channel fees. MerchantAbsorbsFees=true only with explicit signoff; otherwise implement a real fee quote before enabling checkout.
-- Enable only QRIS/GOPAY in Xendit AND Zetruv CMS; BCA_VA stays off until VA instructions are supported.
-- Validate callbacks, test key rotation, reconciliation alert owner, failed/expired payments, refunds and dispute SLA.
-
-Trusted operator runtime variable names (NEVER commit values):
-Payments__Provider=xendit
-Payments__Xendit__Enabled=true
-Payments__Xendit__Mode=Sandbox
-Payments__Xendit__ApiKey=(development secret in secret store)
-Payments__Xendit__WebhookToken=(callback token in secret store)
-Payments__Xendit__ReturnUrl=https://dev.zetruv.com/payment
-Payments__Xendit__Channels__0=QRIS
-Payments__Xendit__Channels__1=GOPAY
-Payments__Xendit__MerchantAbsorbsFees=true (only after fee policy approval)
-
-Acceptance checklist: payment-options returns isSandbox=true and correct fee; request real test-mode QRIS and GOPAY; verify Pending until authentic webhook/reconciliation; reject wrong callback token/amount/currency/reference; ignore replay; handle failed/expired and same-order retry; verify no duplicate provider payment when refreshing; capture desktop/mobile screenshots with token/IDs masked.
-Reference: https://developers.xendit.co/api-reference/payments-api/
-
 ## CODM Garena pilot with Digiflazz
 
-1. In DEV, set `DIGIFLAZZ_ENABLED=true`, `DIGIFLAZZ_TESTING=true`, `DIGIFLAZZ_USERNAME`, and `DIGIFLAZZ_API_KEY` with the Buyer Development key in the runtime secret store. Use mock payment for backend smoke or Xendit Sandbox for storefront testing.
+1. In DEV, set `DIGIFLAZZ_ENABLED=true`, `DIGIFLAZZ_TESTING=true`, `DIGIFLAZZ_USERNAME`, and `DIGIFLAZZ_API_KEY` with the Buyer Development key in the runtime secret store. Keep `PAYMENTS_PROVIDER=mock` and configure the existing mock webhook secret for a backend smoke test. The public storefront stays in demo checkout while gateway activation is on hold.
 2. The draft product uses slug `call-of-duty-mobile-via-id` and input `openid`. In a disposable DEV test, map a test package to Digiflazz's documented test code `xld10` and use its documented synthetic customer numbers. Those transactions verify the provider contract. Verify the real CODM Garena SKU and OpenID syntax using the selected seller before configuring a live listing.
 3. In CMS, map the game to provider `digiflazz` with nickname check off, and map the product variant to the exact Buyer SKU. Set the game, product and variant active only when their mappings and package details are ready. The OpenID check confirms format. The supplier confirms delivery.
 4. A paid order stays Processing until Digiflazz reports success or rejection. The worker polls with the original SKU, OpenID and reference, at least one minute apart. Keep the Buyer username and mode stable while outstanding orders are being reconciled. Review rejected items and expired references in the Buyer dashboard.
-5. For live CODM, use the Buyer live key, `DIGIFLAZZ_TESTING=false`, a positive `DIGIFLAZZ_MAX_PRICE` in IDR, and live Xendit. Confirm supplier authorization, active SKU, pricing and settlement terms before the first live order.
+5. For live CODM, use the Buyer live key, `DIGIFLAZZ_TESTING=false`, a positive `DIGIFLAZZ_MAX_PRICE` in IDR, and a verified live payment gateway. Confirm supplier authorization, active SKU, pricing and settlement terms before the first live order.
+
+Run the Buyer checks from the allowlisted DEV server with `DIGIFLAZZ_USERNAME` and the Development `DIGIFLAZZ_API_KEY` in the process environment:
+
+- `python3 scripts/check-digiflazz-codm.py` reads deposit and the CODM products configured for that buyer. Use the seller instructions to verify the actual OpenID format.
+- `dotnet run --project tests/DigiflazzContractSmoke -- --sandbox` sends only Digiflazz's documented prepaid fixtures with `testing=true`, then verifies the pending results with the original references. The fixtures validate the Buyer sandbox API. CODM CP delivery requires a separate check using an active CODM SKU.
 
 Docs: https://developer.digiflazz.com/api/buyer/topup/ · https://developer.digiflazz.com/api/buyer/cek-status/ · https://developer.digiflazz.com/api/buyer/test-case/
 

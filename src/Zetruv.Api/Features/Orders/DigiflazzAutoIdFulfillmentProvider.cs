@@ -36,6 +36,12 @@ public sealed class DigiflazzAutoIdFulfillmentProvider(
     // Digiflazz can create a new transaction when a reference is older than 90 days.
     public static readonly TimeSpan MaximumOrderAge = TimeSpan.FromDays(89);
 
+    private static readonly JsonSerializerOptions WireJson = new(JsonSerializerDefaults.Web)
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+    };
+
     public string Name => ProviderCode;
 
     public async Task<AutoIdFulfillmentProviderResult> FulfillAsync(
@@ -59,17 +65,17 @@ public sealed class DigiflazzAutoIdFulfillmentProvider(
         try
         {
             using var http = clients.CreateClient(HttpClientName);
-            using var response = await http.PostAsJsonAsync("v1/transaction", payload, cancellationToken);
+            using var response = await http.PostAsJsonAsync("v1/transaction", payload, WireJson, cancellationToken);
             if (!response.IsSuccessStatusCode)
                 return Unconfirmed();
 
-            var envelope = await response.Content.ReadFromJsonAsync<TopUpResponse>(cancellationToken);
+            var envelope = await response.Content.ReadFromJsonAsync<TopUpResponse>(WireJson, cancellationToken);
             var data = envelope?.Data;
-            if (data is null || data.Reference != request.IdempotencyKey ||
-                data.CustomerNumber != openId || data.Sku != request.ProviderSku)
+            if (data is null || data.RefId != request.IdempotencyKey ||
+                data.CustomerNo != openId || data.BuyerSkuCode != request.ProviderSku)
                 return Unconfirmed();
 
-            return (data.Status?.Trim().ToLowerInvariant(), data.Code) switch
+            return (data.Status?.Trim().ToLowerInvariant(), data.Rc) switch
             {
                 ("sukses", "00") => AutoIdFulfillmentProviderResult.Success(request.IdempotencyKey),
                 ("pending", _) => AutoIdFulfillmentProviderResult.Pending("Digiflazz is processing the top up."),
@@ -98,20 +104,15 @@ public sealed class DigiflazzAutoIdFulfillmentProvider(
 
     private sealed record TopUpRequest(
         string Username,
-        [property: JsonPropertyName("buyer_sku_code")] string Sku,
-        [property: JsonPropertyName("customer_no")] string CustomerNumber,
-        [property: JsonPropertyName("ref_id")] string Reference,
+        string BuyerSkuCode,
+        string CustomerNo,
+        string RefId,
         string Sign,
         bool Testing,
-        [property: JsonPropertyName("max_price"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         int? MaxPrice);
 
     private sealed record TopUpResponse(TopUpResponseData? Data);
 
     private sealed record TopUpResponseData(
-        [property: JsonPropertyName("ref_id")] string? Reference,
-        [property: JsonPropertyName("customer_no")] string? CustomerNumber,
-        [property: JsonPropertyName("buyer_sku_code")] string? Sku,
-        [property: JsonPropertyName("rc")] string? Code,
-        string? Status);
+        string? RefId, string? CustomerNo, string? BuyerSkuCode, string? Rc, string? Status);
 }
