@@ -6,7 +6,7 @@
 2. The draft product uses slug `call-of-duty-mobile-via-id` and input `openid`. In a disposable DEV test, map a test package to Digiflazz's documented test code `xld10` and use its documented synthetic customer numbers. Those transactions verify the provider contract. Verify the real CODM Garena SKU and OpenID syntax using the selected seller before configuring a live listing.
 3. In CMS, map the game to provider `digiflazz` with nickname check off, and map the product variant to the exact Buyer SKU. Set the game, product and variant active only when their mappings and package details are ready. The OpenID check confirms format. The supplier confirms delivery.
 4. A paid order stays Processing until Digiflazz reports success or rejection. The worker polls with the original SKU, OpenID and reference, at least one minute apart. Keep the Buyer username and mode stable while outstanding orders are being reconciled. Review rejected items and expired references in the Buyer dashboard.
-5. For live CODM, use the Buyer live key, `DIGIFLAZZ_TESTING=false`, a positive `DIGIFLAZZ_MAX_PRICE` in IDR, and a verified live payment gateway. Confirm supplier authorization, active SKU, pricing and settlement terms before the first live order.
+5. This pilot accepts mock payments and Digiflazz test mode only. Live CODM needs an active supplier SKU and a separate payment gateway rollout.
 
 Run the Buyer checks from the allowlisted DEV server with `DIGIFLAZZ_USERNAME` and the Development `DIGIFLAZZ_API_KEY` in the process environment:
 

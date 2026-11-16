@@ -13,7 +13,7 @@ public sealed class DigiflazzFulfillmentBackgroundService(
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var settings = options.Value;
-        if (!settings.IsReady)
+        if (!settings.IsReady || !settings.Testing)
             return;
 
         using var timer = new PeriodicTimer(TimeSpan.FromSeconds(15));
@@ -25,15 +25,15 @@ public sealed class DigiflazzFulfillmentBackgroundService(
                 var db = scope.ServiceProvider.GetRequiredService<ZetruvDbContext>();
                 var execution = scope.ServiceProvider.GetRequiredService<FulfillmentExecutionService>();
                 var paymentGateways = scope.ServiceProvider.GetRequiredService<PaymentGatewayResolver>();
-                var mock = paymentGateways.CanPayForDigiflazz("mock", settings.Testing);
-                var xendit = paymentGateways.CanPayForDigiflazz("xendit", settings.Testing);
+                if (!paymentGateways.CanPayForDigiflazz("mock", settings.Testing))
+                    return;
                 var cutoff = DateTimeOffset.UtcNow - DigiflazzAutoIdFulfillmentProvider.MinimumCheckInterval;
                 var buyerBinding = settings.BuyerBinding;
                 var items = await db.OrderItems.AsNoTracking()
                     .Where(x => x.DigiflazzSku != null && x.DigiflazzBuyerBinding == buyerBinding &&
                         x.FulfillmentStatus == FulfillmentStatus.Processing &&
                         x.Order.PaymentStatus == PaymentStatus.Paid && x.Order.Status != OrderStatus.Cancelled &&
-                        ((mock && x.Order.PaymentProvider == "mock") || (xendit && x.Order.PaymentProvider == "xendit")) &&
+                        x.Order.PaymentProvider == "mock" &&
                         (x.LastFulfillmentAttemptAt == null || x.LastFulfillmentAttemptAt <= cutoff))
                     .OrderBy(x => x.LastFulfillmentAttemptAt ?? x.Order.PaidAt ?? x.CreatedAt)
                     .Take(20)

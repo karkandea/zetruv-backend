@@ -241,12 +241,7 @@ public sealed class PaymentGatewayResolver(
     }
 
     public bool CanPayForDigiflazz(string? provider, bool testing) =>
-        provider is not null && ResolveByName(provider) switch
-        {
-            MockPaymentGateway => testing,
-            XenditPaymentGateway { IsLiveConfigured: true } xendit => xendit.IsSandbox == testing,
-            _ => false
-        };
+        testing && provider is not null && ResolveByName(provider) is MockPaymentGateway;
 
     public IPaymentGateway? ResolveByName(string provider) =>
         gateways.FirstOrDefault(x =>
