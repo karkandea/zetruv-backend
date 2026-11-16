@@ -1,12 +1,12 @@
 using System.Data;
-using System.Data.Common;
 using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Zetruv.Api.Features.Auth;
 using Zetruv.Api.Features.Catalog;
-using Zetruv.Api.Features.GameAccounts;
+using Zetruv.Api.Features.Payments;
 using Zetruv.Api.Persistence;
 
 namespace Zetruv.Api.Features.Orders;
@@ -31,8 +31,12 @@ public sealed record AutoIdFulfillmentProviderRequest(
 public sealed record AutoIdFulfillmentProviderResult(
     bool IsSuccess,
     string? ProviderReference,
-    string? Error)
+    string? Error,
+    bool IsPending = false)
 {
+    public static AutoIdFulfillmentProviderResult Pending(string message) =>
+        new(false, null, message, IsPending: true);
+
     public static AutoIdFulfillmentProviderResult Success(string providerReference) =>
         new(true, providerReference, null);
 
@@ -85,6 +89,8 @@ public sealed class FulfillmentExecutionService(
     OrderFulfillmentService fulfillmentService,
     FulfillmentActivityService activities,
     GameVoucherCodeService gameVoucherCodes,
+    IOptions<DigiflazzOptions> digiflazzOptions,
+    PaymentGatewayResolver paymentGateways,
     ILogger<FulfillmentExecutionService> logger)
 {
     public async Task ExecuteAutoItemsForOrderAsync(
@@ -97,6 +103,7 @@ public sealed class FulfillmentExecutionService(
             .Where(x =>
                 x.OrderId == orderId &&
                 x.FulfillmentMethod == FulfillmentMethod.AUTO_ID &&
+                x.DigiflazzSku == null &&
                 x.FulfillmentStatus == FulfillmentStatus.Processing)
             .OrderBy(x => x.CreatedAt)
             .Select(x => x.Id)
@@ -130,11 +137,12 @@ public sealed class FulfillmentExecutionService(
             await db.Database.OpenConnectionAsync(cancellationToken);
         }
 
-        var (key1, key2) = FulfillmentLockKeys(orderItemId);
-        await SetFulfillmentLockAsync(connection, true, key1, key2, cancellationToken);
-
+        var (key1, key2) = PaymentService.PaymentLockKeys(orderId);
+        var locked = false;
         try
         {
+            await PaymentService.SetPaymentLockAsync(connection, true, key1, key2, cancellationToken);
+            locked = true;
             return await ExecuteAutoItemLockedAsync(
                 orderId,
                 orderItemId,
@@ -145,12 +153,11 @@ public sealed class FulfillmentExecutionService(
         {
             try
             {
-                await SetFulfillmentLockAsync(
-                    connection,
-                    false,
-                    key1,
-                    key2,
-                    CancellationToken.None);
+                if (locked)
+                {
+                    await PaymentService.SetPaymentLockAsync(
+                        connection, false, key1, key2, CancellationToken.None);
+                }
             }
             finally
             {
@@ -197,6 +204,40 @@ public sealed class FulfillmentExecutionService(
             throw new InvalidOperationException("AUTO_ID fulfillment is not executable in the current state.");
         }
 
+        var now = DateTimeOffset.UtcNow;
+        var digiflazz = item.DigiflazzSku is not null;
+        var mappingResult = digiflazz
+            ? AutoIdRuntimeProviderMappingResult.Success(new(
+                DigiflazzAutoIdFulfillmentProvider.ProviderCode, item.DigiflazzSku!, false))
+            : await providerMappings.ResolveAsync(item.ProductVariantId, cancellationToken);
+        var mapping = mappingResult.Mapping;
+        var provider = mapping is null ? null : resolver.Resolve(mapping.ProviderCode);
+
+        if (digiflazz)
+        {
+            if (item.LastFulfillmentAttemptAt > now - DigiflazzAutoIdFulfillmentProvider.MinimumCheckInterval)
+                return ToResponse(order, item);
+
+            if (item.FulfillmentStatus == FulfillmentStatus.Failed)
+                throw new InvalidOperationException("Digiflazz rejected this top up. Review it before trying a replacement.");
+
+            if (order.PaidAt is null || order.PaidAt <= now - DigiflazzAutoIdFulfillmentProvider.MaximumOrderAge)
+                return await FailAttemptAsync(order, item, executionContext, item.FulfillmentAttemptCount,
+                    DigiflazzAutoIdFulfillmentProvider.ProviderCode,
+                    "The Digiflazz status check window expired. Review this order in the Digiflazz dashboard.",
+                    cancellationToken);
+
+            var settings = digiflazzOptions.Value;
+            if (!settings.IsReady || item.DigiflazzBuyerBinding != settings.BuyerBinding ||
+                !paymentGateways.CanPayForDigiflazz(order.PaymentProvider, settings.Testing))
+                throw new InvalidOperationException("The original Digiflazz Buyer account and payment mode must be available.");
+        }
+        else if (string.Equals(mapping?.ProviderCode, DigiflazzAutoIdFulfillmentProvider.ProviderCode,
+                     StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException("This order was created before Digiflazz checkout was configured.");
+        }
+
         var previousStatus = item.FulfillmentStatus;
         if (item.FulfillmentStatus == FulfillmentStatus.Failed)
         {
@@ -205,17 +246,13 @@ public sealed class FulfillmentExecutionService(
             item.FulfilledAt = null;
         }
 
-        var now = DateTimeOffset.UtcNow;
+        var reference = $"ZTR-FULFILL-{item.Id:N}";
+        if (digiflazz)
+            item.FulfillmentReference = reference;
         item.FulfillmentStartedAt ??= now;
         item.FulfillmentAttemptCount++;
         item.LastFulfillmentAttemptAt = now;
         var attemptNumber = item.FulfillmentAttemptCount;
-        var mappingResult = await providerMappings.ResolveAsync(
-            item.ProductVariantId,
-            cancellationToken);
-        var mapping = mappingResult.Mapping;
-        var provider = mapping is null ? null : resolver.Resolve(mapping.ProviderCode);
-
         activities.Create(
             item,
             FulfillmentActivityType.ProviderAttemptStarted,
@@ -295,7 +332,7 @@ public sealed class FulfillmentExecutionService(
                     item.GameAccountValidation.Provider,
                     item.GameAccountValidation.ProviderReference,
                     item.GameAccountValidation.AccountDisplayName,
-                    $"ZTR-FULFILL-{item.Id:N}",
+                    reference,
                     destinationFields),
                 cancellationToken);
         }
@@ -311,12 +348,22 @@ public sealed class FulfillmentExecutionService(
                 provider.Name,
                 item.Id);
 
-            result = AutoIdFulfillmentProviderResult.Failure(
-                "AUTO_ID fulfillment provider is temporarily unavailable.");
+            result = digiflazz
+                ? AutoIdFulfillmentProviderResult.Pending("Digiflazz has not confirmed the top up yet.")
+                : AutoIdFulfillmentProviderResult.Failure("AUTO_ID fulfillment provider is temporarily unavailable.");
         }
 
         var completedAt = DateTimeOffset.UtcNow;
-        if (result.IsSuccess && !string.IsNullOrWhiteSpace(result.ProviderReference))
+        if (result.IsPending)
+        {
+            item.FulfillmentMessage = result.Error;
+            activities.Create(
+                item, FulfillmentActivityType.ProviderAttemptPending, executionContext.Source,
+                executionContext.Actor, completedAt, FulfillmentStatus.Processing,
+                FulfillmentStatus.Processing, attemptNumber, provider.Name, item.FulfillmentReference,
+                item.FulfillmentMessage);
+        }
+        else if (result.IsSuccess && !string.IsNullOrWhiteSpace(result.ProviderReference))
         {
             item.FulfillmentStatus = FulfillmentStatus.Completed;
             item.FulfillmentReference = result.ProviderReference.Trim();
@@ -406,36 +453,6 @@ public sealed class FulfillmentExecutionService(
         {
             return null;
         }
-    }
-
-    private static (int Key1, int Key2) FulfillmentLockKeys(Guid orderItemId)
-    {
-        var bytes = orderItemId.ToByteArray();
-        return (
-            BitConverter.ToInt32(bytes, 0) ^ BitConverter.ToInt32(bytes, 8),
-            BitConverter.ToInt32(bytes, 4) ^ BitConverter.ToInt32(bytes, 12));
-    }
-
-    private static async Task SetFulfillmentLockAsync(
-        DbConnection connection,
-        bool acquire,
-        int key1,
-        int key2,
-        CancellationToken cancellationToken)
-    {
-        await using var command = connection.CreateCommand();
-        command.CommandText = acquire
-            ? "SELECT pg_advisory_lock(@key1, @key2)"
-            : "SELECT pg_advisory_unlock(@key1, @key2)";
-        var first = command.CreateParameter();
-        first.ParameterName = "key1";
-        first.Value = key1;
-        command.Parameters.Add(first);
-        var second = command.CreateParameter();
-        second.ParameterName = "key2";
-        second.Value = key2;
-        command.Parameters.Add(second);
-        await command.ExecuteScalarAsync(cancellationToken);
     }
 
     private static ExecuteAutoFulfillmentResponse ToResponse(Order order, OrderItem item) =>

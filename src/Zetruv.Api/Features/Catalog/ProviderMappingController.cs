@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Zetruv.Api.Features.Auth;
+using Zetruv.Api.Features.Orders;
 using Zetruv.Api.Persistence;
 
 namespace Zetruv.Api.Features.Catalog;
@@ -103,10 +104,9 @@ public sealed class CmsProviderMappingsController(ZetruvDbContext db) : Controll
         UpsertProviderGameMappingRequest request,
         CancellationToken cancellationToken)
     {
-        var gameExists = await db.Games
-            .AsNoTracking()
-            .AnyAsync(x => x.Id == gameId, cancellationToken);
-        if (!gameExists)
+        var gameSlug = await db.Games.AsNoTracking().Where(x => x.Id == gameId)
+            .Select(x => x.Slug).SingleOrDefaultAsync(cancellationToken);
+        if (gameSlug is null)
         {
             return NotFound();
         }
@@ -128,6 +128,12 @@ public sealed class CmsProviderMappingsController(ZetruvDbContext db) : Controll
         if (providerCode.Length == 0)
         {
             return BadRequest(new { message = "Provider code is required." });
+        }
+
+        if (providerCode == DigiflazzAutoIdFulfillmentProvider.ProviderCode &&
+            (gameSlug != DigiflazzAutoIdFulfillmentProvider.CodmGameSlug || request.NicknameCheckEnabled))
+        {
+            return BadRequest(new { message = "The Digiflazz pilot supports CODM Garena OpenID format checks only." });
         }
 
         var now = DateTimeOffset.UtcNow;

@@ -17,7 +17,8 @@ public enum FulfillmentActivityType
     VoucherCodesAssigned,
     VoucherCodeAllocationFailed,
     VoucherCodesRevealed,
-    OrderCancelled
+    OrderCancelled,
+    ProviderAttemptPending
 }
 
 public enum FulfillmentActivitySource
@@ -68,6 +69,9 @@ public sealed record FulfillmentExecutionContext(
 
     public static FulfillmentExecutionContext Payment =>
         new(FulfillmentActivitySource.Payment, FulfillmentActor.System);
+
+    public static FulfillmentExecutionContext Background =>
+        new(FulfillmentActivitySource.Background, FulfillmentActor.System);
 
     public static FulfillmentExecutionContext Admin(ClaimsPrincipal user) =>
         new(FulfillmentActivitySource.CmsAdmin, FulfillmentActor.FromClaims(user));

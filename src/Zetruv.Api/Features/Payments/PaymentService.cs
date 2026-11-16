@@ -65,6 +65,7 @@ public sealed record ReconcilePaymentResult(
 public sealed class PaymentService(
     ZetruvDbContext db,
     PaymentGatewayResolver gatewayResolver,
+    IOptions<DigiflazzOptions> digiflazzOptions,
     InventoryReservationService inventoryReservations,
     OrderFulfillmentService fulfillmentService,
     FulfillmentExecutionService executionService,
@@ -186,6 +187,16 @@ public sealed class PaymentService(
         var activePayment = pendingPayments.FirstOrDefault(x =>
             x.Status == PaymentTransactionStatus.Pending &&
             (!x.ExpiresAt.HasValue || x.ExpiresAt.Value > now));
+
+        var digiflazz = digiflazzOptions.Value;
+        var digiflazzItems = order.Items.Where(x => x.DigiflazzSku != null).ToArray();
+        if (digiflazzItems.Length > 0 &&
+            (!digiflazz.IsReady || digiflazzItems.Any(x => x.DigiflazzBuyerBinding != digiflazz.BuyerBinding) ||
+             !gatewayResolver.CanPayForDigiflazz(activePayment?.Provider ?? gatewayResolver.Resolve()?.Name,
+                 digiflazz.Testing)))
+        {
+            return InitiatePaymentResult.Failure("CODM top up is currently unavailable.", isConfigurationError: true);
+        }
 
         if (activePayment is not null)
         {
@@ -1109,7 +1120,7 @@ public sealed class PaymentService(
             order.PaymentStatus,
             isRecovery);
 
-    private static (int Key1, int Key2) PaymentLockKeys(Guid orderId)
+    internal static (int Key1, int Key2) PaymentLockKeys(Guid orderId)
     {
         var bytes = orderId.ToByteArray();
         return (
@@ -1117,7 +1128,7 @@ public sealed class PaymentService(
             BitConverter.ToInt32(bytes, 4) ^ BitConverter.ToInt32(bytes, 12));
     }
 
-    private static async Task SetPaymentLockAsync(
+    internal static async Task SetPaymentLockAsync(
         DbConnection connection,
         bool acquire,
         int key1,

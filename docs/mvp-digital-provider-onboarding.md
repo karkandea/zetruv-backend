@@ -25,13 +25,17 @@ Payments__Xendit__MerchantAbsorbsFees=true (only after fee policy approval)
 Acceptance checklist: payment-options returns isSandbox=true and correct fee; request real test-mode QRIS and GOPAY; verify Pending until authentic webhook/reconciliation; reject wrong callback token/amount/currency/reference; ignore replay; handle failed/expired and same-order retry; verify no duplicate provider payment when refreshing; capture desktop/mobile screenshots with token/IDs masked.
 Reference: https://developers.xendit.co/api-reference/payments-api/
 
-## AUTO_ID provider options — not yet authorized
-Digiflazz Buyer:
-- POST https://api.digiflazz.com/v1/transaction: username, buyer_sku_code, customer_no, stable ref_id, MD5 sign(username+apiKey+ref_id), optional testing/max_price/cb_url.
-- Status data: Sukses, Pending, Gagal. On uncertainty repeat exact same ref_id; use webhook X-Hub-Signature HMAC SHA1 over raw body when secret configured.
-- Requires buyer account/deposit, authorized SKU, UID/server syntax per game, nickname checks, customer target validation, reference consistency and provider balance reconciliation.
-Docs: https://developer.digiflazz.com/api/buyer/topup/ and https://developer.digiflazz.com/api/buyer/webhook/
+## CODM Garena pilot with Digiflazz
 
+1. In DEV, set `DIGIFLAZZ_ENABLED=true`, `DIGIFLAZZ_TESTING=true`, `DIGIFLAZZ_USERNAME`, and `DIGIFLAZZ_API_KEY` with the Buyer Development key in the runtime secret store. Use mock payment for backend smoke or Xendit Sandbox for storefront testing.
+2. The draft product uses slug `call-of-duty-mobile-via-id` and input `openid`. In a disposable DEV test, map a test package to Digiflazz's documented test code `xld10` and use its documented synthetic customer numbers. Those transactions verify the provider contract. Verify the real CODM Garena SKU and OpenID syntax using the selected seller before configuring a live listing.
+3. In CMS, map the game to provider `digiflazz` with nickname check off, and map the product variant to the exact Buyer SKU. Set the game, product and variant active only when their mappings and package details are ready. The OpenID check confirms format. The supplier confirms delivery.
+4. A paid order stays Processing until Digiflazz reports success or rejection. The worker polls with the original SKU, OpenID and reference, at least one minute apart. Keep the Buyer username and mode stable while outstanding orders are being reconciled. Review rejected items and expired references in the Buyer dashboard.
+5. For live CODM, use the Buyer live key, `DIGIFLAZZ_TESTING=false`, a positive `DIGIFLAZZ_MAX_PRICE` in IDR, and live Xendit. Confirm supplier authorization, active SKU, pricing and settlement terms before the first live order.
+
+Docs: https://developer.digiflazz.com/api/buyer/topup/ · https://developer.digiflazz.com/api/buyer/cek-status/ · https://developer.digiflazz.com/api/buyer/test-case/
+
+## Alternative provider
 Melostore H2H:
 - Base https://api.melostore.id/api/v1/h2h; server-only X-API-Key and X-Secret-Key; GET /profile and paginated /pricelists/{category_slug}.
 - POST /transaction with exact sku_code, customer_target, optional customer_target_zone and additional_data; durable buyer_trx_id; sandbox_mode=true; optional max_price cap.
