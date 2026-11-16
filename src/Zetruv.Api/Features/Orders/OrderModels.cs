@@ -97,6 +97,8 @@ public sealed class OrderItem
     public DateTimeOffset? FulfilledAt { get; set; }
     public int FulfillmentAttemptCount { get; set; }
     public DateTimeOffset? LastFulfillmentAttemptAt { get; set; }
+    public string? DigiflazzSku { get; set; }
+    public string? DigiflazzBuyerBinding { get; set; }
     public string? VariantName { get; set; }
     public string? Sku { get; set; }
     public string? ThumbnailUrl { get; set; }

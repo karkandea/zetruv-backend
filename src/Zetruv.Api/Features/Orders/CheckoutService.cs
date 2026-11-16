@@ -1,7 +1,9 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Zetruv.Api.Features.Catalog;
 using Zetruv.Api.Features.GameAccounts;
+using Zetruv.Api.Features.Payments;
 using Zetruv.Api.Features.Shipping;
 using Zetruv.Api.Persistence;
 
@@ -12,7 +14,10 @@ public sealed class CheckoutService(
     ShippingService shippingService,
     ManualLoginCredentialService manualLoginCredentials,
     ManualLoginReadinessService manualLoginReadiness,
-    DiscountVoucherService discountVouchers)
+    DiscountVoucherService discountVouchers,
+    AutoIdRuntimeProviderMappingService providerMappings,
+    IOptions<DigiflazzOptions> digiflazzOptions,
+    PaymentGatewayResolver paymentGateways)
 {
     public async Task<CreateCheckoutOrderResult> CreateOrderAsync(
         CreateCheckoutOrderRequest request,
@@ -94,6 +99,7 @@ public sealed class CheckoutService(
                 ProductIsActive = x.Product.IsActive,
                 CategoryIsActive = x.Product.Category.IsActive,
                 GameName = x.Product.Game == null ? null : x.Product.Game.Name,
+                GameSlug = x.Product.Game == null ? null : x.Product.Game.Slug,
                 GameIsActive = x.Product.Game == null || x.Product.Game.IsActive
             })
             .ToListAsync(cancellationToken);
@@ -137,6 +143,8 @@ public sealed class CheckoutService(
             .GroupBy(x => x.ProductVariantId)
             .ToDictionary(x => x.Key, x => x.Sum(i => i.Quantity));
 
+        var digiflazzSkus = new Dictionary<Guid, string>();
+        var digiflazz = digiflazzOptions.Value;
         foreach (var item in groupedItems)
         {
             var variant = variantById[item.ProductVariantId];
@@ -145,6 +153,21 @@ public sealed class CheckoutService(
             {
                 return CreateCheckoutOrderResult.Failure(
                     $"{variant.ProductName} / {variant.Name} is not available for checkout.");
+            }
+
+            if (variant.ProductFulfillmentMethod == FulfillmentMethod.AUTO_ID &&
+                variant.GameSlug == DigiflazzAutoIdFulfillmentProvider.CodmGameSlug)
+            {
+                if (item.Quantity != 1)
+                    return CreateCheckoutOrderResult.Failure("CODM supports one top-up package per checkout line.");
+
+                var mapping = (await providerMappings.ResolveAsync(variant.Id, cancellationToken)).Mapping;
+                if (!variant.ProductRequiresGameAccountValidation || !digiflazz.IsReady ||
+                    mapping?.ProviderCode != DigiflazzAutoIdFulfillmentProvider.ProviderCode ||
+                    !paymentGateways.CanPayForDigiflazz(paymentGateways.Resolve()?.Name, digiflazz.Testing))
+                    return CreateCheckoutOrderResult.Failure("CODM top up is currently unavailable.");
+
+                digiflazzSkus[variant.Id] = mapping.ProviderSku;
             }
 
             if (variant.ProductKind == ProductKind.GameAccount &&
@@ -216,6 +239,7 @@ public sealed class CheckoutService(
                 x.Id,
                 x.ProductId,
                 x.OrderItemId,
+                x.Provider,
                 x.ExpiresAt
             })
             .ToListAsync(cancellationToken);
@@ -237,6 +261,10 @@ public sealed class CheckoutService(
                 return CreateCheckoutOrderResult.Failure(
                     "Game account validation does not match the selected product.");
             }
+
+            if (digiflazzSkus.ContainsKey(variant.Id) &&
+                validation.Provider != CodmOpenIdValidator.ProviderCode)
+                return CreateCheckoutOrderResult.Failure("Please confirm the CODM OpenID again.");
 
             if (validation.OrderItemId.HasValue || validation.ExpiresAt <= now)
             {
@@ -363,6 +391,7 @@ public sealed class CheckoutService(
             eligibleByKind[variant.ProductKind] =
                 eligibleByKind.GetValueOrDefault(variant.ProductKind) + lineTotal;
 
+            digiflazzSkus.TryGetValue(variant.Id, out var digiflazzSku);
             var orderItem = new OrderItem
             {
                 ProductId = variant.ProductId,
@@ -372,6 +401,8 @@ public sealed class CheckoutService(
                 ProductKind = variant.ProductKind,
                 FulfillmentMethod = variant.ProductFulfillmentMethod,
                 FulfillmentStatus = FulfillmentStatus.Pending,
+                DigiflazzSku = digiflazzSku,
+                DigiflazzBuyerBinding = digiflazzSku is null ? null : digiflazz.BuyerBinding,
                 VariantName = variant.Name,
                 Sku = variant.Sku,
                 ThumbnailUrl = variant.ProductThumbnailUrl,

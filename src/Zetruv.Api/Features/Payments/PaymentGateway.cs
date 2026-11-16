@@ -240,6 +240,9 @@ public sealed class PaymentGatewayResolver(
             : ResolveByName(configuredProvider);
     }
 
+    public bool CanPayForDigiflazz(string? provider, bool testing) =>
+        testing && provider is not null && ResolveByName(provider) is MockPaymentGateway;
+
     public IPaymentGateway? ResolveByName(string provider) =>
         gateways.FirstOrDefault(x =>
             string.Equals(x.Name, provider.Trim(), StringComparison.OrdinalIgnoreCase));
