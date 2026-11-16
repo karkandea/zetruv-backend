@@ -65,6 +65,7 @@ public sealed record ReconcilePaymentResult(
 public sealed class PaymentService(
     ZetruvDbContext db,
     PaymentGatewayResolver gatewayResolver,
+    IOptions<DigiflazzOptions> digiflazzOptions,
     InventoryReservationService inventoryReservations,
     OrderFulfillmentService fulfillmentService,
     FulfillmentExecutionService executionService,
@@ -170,6 +171,9 @@ public sealed class PaymentService(
             .OrderByDescending(x => x.CreatedAt)
             .ToList();
 
+        if (pendingPayments.Any(x => x.Provider == MidtransPaymentGateway.ProviderCode && x.ExpiresAt <= now))
+            return InitiatePaymentResult.Failure("Midtrans is confirming the previous payment. Check its status before retrying.");
+
         var expiredPayments = pendingPayments
             .Where(x => x.ExpiresAt.HasValue && x.ExpiresAt.Value <= now)
             .ToList();
@@ -187,8 +191,23 @@ public sealed class PaymentService(
             x.Status == PaymentTransactionStatus.Pending &&
             (!x.ExpiresAt.HasValue || x.ExpiresAt.Value > now));
 
+        var digiflazz = digiflazzOptions.Value;
+        var digiflazzItems = order.Items.Where(x => x.DigiflazzSku != null).ToArray();
+        if (digiflazzItems.Length > 0 &&
+            (!digiflazz.IsReady || digiflazzItems.Any(x => x.DigiflazzBuyerBinding != digiflazz.BuyerBinding) ||
+             !gatewayResolver.CanPayForDigiflazz(activePayment?.Provider ?? gatewayResolver.Resolve()?.Name,
+                 digiflazz.Testing)))
+        {
+            return InitiatePaymentResult.Failure("CODM top up is currently unavailable.", isConfigurationError: true);
+        }
+
         if (activePayment is not null)
         {
+            if (activePayment.Provider == MidtransPaymentGateway.ProviderCode &&
+                (gatewayResolver.ResolveByName(activePayment.Provider) is not MidtransPaymentGateway { IsLiveConfigured: true } midtrans ||
+                 !midtrans.OwnsReference(activePayment.ProviderReference ?? string.Empty)))
+                return InitiatePaymentResult.Failure("The original Midtrans mode is unavailable.", isConfigurationError: true);
+
             // A different method must not silently reuse an active payment.
             // Resume the existing attempt by omitting methodCode, or wait for
             // failure/expiry before choosing a new provider channel.
@@ -723,11 +742,11 @@ public sealed class PaymentService(
             Math.Clamp(settings.InitialDelaySeconds, 5, 3600));
         var batchSize = Math.Clamp(settings.MaxBatchSize, 1, 200);
 
-        // Clean up expired attempts without querying their provider. This also
-        // repairs legacy pending rows on the first worker cycle after deploy.
+        // Midtrans requires a final provider status check before another attempt can start.
         var expiredIds = await db.PaymentTransactions.AsNoTracking()
             .Where(x => x.Type == PaymentTransactionType.Payment &&
                 x.Status == PaymentTransactionStatus.Pending &&
+                x.Provider != MidtransPaymentGateway.ProviderCode &&
                 x.ExpiresAt.HasValue && x.ExpiresAt <= now)
             .OrderBy(x => x.ExpiresAt)
             .Select(x => x.Id)
@@ -737,6 +756,7 @@ public sealed class PaymentService(
         var expiredCount = expiredIds.Count == 0 ? 0 : await db.PaymentTransactions
             .Where(x => expiredIds.Contains(x.Id) &&
                 x.Status == PaymentTransactionStatus.Pending &&
+                x.Provider != MidtransPaymentGateway.ProviderCode &&
                 x.ExpiresAt.HasValue && x.ExpiresAt <= now)
             .ExecuteUpdateAsync(setters => setters
                 .SetProperty(x => x.Status, PaymentTransactionStatus.Expired)
@@ -751,7 +771,7 @@ public sealed class PaymentService(
                 x.Type == PaymentTransactionType.Payment &&
                 x.Status == PaymentTransactionStatus.Pending &&
                 x.ProviderReference != null &&
-                (!x.ExpiresAt.HasValue || x.ExpiresAt > now) &&
+                (x.Provider == MidtransPaymentGateway.ProviderCode || !x.ExpiresAt.HasValue || x.ExpiresAt > now) &&
                 ((x.NextReconciliationAt.HasValue && x.NextReconciliationAt <= now) ||
                  (!x.NextReconciliationAt.HasValue && x.CreatedAt <= now - initialDelay)))
             .OrderBy(x => x.NextReconciliationAt ?? x.CreatedAt)
@@ -899,7 +919,8 @@ public sealed class PaymentService(
         }
 
         var now = DateTimeOffset.UtcNow;
-        if (snapshot.ExpiresAt.HasValue && snapshot.ExpiresAt.Value <= now)
+        if (snapshot.Provider != MidtransPaymentGateway.ProviderCode &&
+            snapshot.ExpiresAt.HasValue && snapshot.ExpiresAt.Value <= now)
         {
             // Manual reconcile follows the same expiry rule as the worker.
             // This attempt becomes terminal without touching order.PaymentStatus.
@@ -940,7 +961,8 @@ public sealed class PaymentService(
                     snapshot.OrderNumber,
                     snapshot.ProviderReference,
                     snapshot.Amount,
-                    snapshot.Currency),
+                    snapshot.Currency,
+                    snapshot.ExpiresAt),
                 cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -1109,7 +1131,7 @@ public sealed class PaymentService(
             order.PaymentStatus,
             isRecovery);
 
-    private static (int Key1, int Key2) PaymentLockKeys(Guid orderId)
+    internal static (int Key1, int Key2) PaymentLockKeys(Guid orderId)
     {
         var bytes = orderId.ToByteArray();
         return (
@@ -1117,7 +1139,7 @@ public sealed class PaymentService(
             BitConverter.ToInt32(bytes, 4) ^ BitConverter.ToInt32(bytes, 12));
     }
 
-    private static async Task SetPaymentLockAsync(
+    internal static async Task SetPaymentLockAsync(
         DbConnection connection,
         bool acquire,
         int key1,

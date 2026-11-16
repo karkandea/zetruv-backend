@@ -323,6 +323,16 @@ if (!builder.Environment.IsProduction())
     builder.Services.AddScoped<IAutoIdFulfillmentProvider, MockAutoIdFulfillmentProvider>();
 }
 
+builder.Services.Configure<DigiflazzOptions>(
+    builder.Configuration.GetSection(DigiflazzOptions.SectionName));
+builder.Services.AddHttpClient(DigiflazzAutoIdFulfillmentProvider.HttpClientName, client =>
+{
+    client.BaseAddress = new Uri("https://api.digiflazz.com/");
+    client.Timeout = TimeSpan.FromSeconds(10);
+}).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddScoped<IAutoIdFulfillmentProvider, DigiflazzAutoIdFulfillmentProvider>();
+builder.Services.AddHostedService<DigiflazzFulfillmentBackgroundService>();
+builder.Services.AddScoped<IGameAccountValidator, CodmOpenIdValidator>();
 builder.Services.AddScoped<GameAccountValidatorResolver>();
 builder.Services.AddScoped<GameAccountValidationService>();
 builder.Services.AddScoped<ShippingProviderResolver>();
@@ -333,6 +343,10 @@ builder.Services.Configure<PaymentReconciliationOptions>(
 // Real Xendit channel adapter: enabled only with provider credentials and a
 // verified environment-specific configuration. No fallback to mock payments.
 builder.Services.AddScoped<IPaymentGateway, XenditPaymentGateway>();
+builder.Services.AddHttpClient(MidtransPaymentGateway.HttpClientName, client =>
+    client.Timeout = TimeSpan.FromSeconds(10))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddScoped<IPaymentGateway, MidtransPaymentGateway>();
 builder.Services.AddScoped<PaymentGatewayResolver>();
 builder.Services.AddScoped<PaymentReadinessService>();
 builder.Services.AddScoped<PaymentWebhookEventLedger>();

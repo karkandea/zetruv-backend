@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Zetruv.Api.Features.Orders;
 using Zetruv.Api.Persistence;
 
 namespace Zetruv.Api.Features.Catalog;
@@ -527,14 +528,50 @@ public sealed class CatalogSeeder(
 
     public async Task SeedAsync(CancellationToken cancellationToken = default)
     {
-        if (await db.CatalogCategories.AnyAsync(cancellationToken))
+        if (!await db.CatalogCategories.AnyAsync(cancellationToken))
         {
-            return;
+            db.CatalogCategories.AddRange(Defaults);
+            await db.SaveChangesAsync(cancellationToken);
+            logger.LogInformation("Seeded default catalog categories.");
         }
 
-        db.CatalogCategories.AddRange(Defaults);
-        await db.SaveChangesAsync(cancellationToken);
-        logger.LogInformation("Seeded default catalog categories.");
+        await db.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+            INSERT INTO games ("Id", "Name", "Slug", "Publisher", "IsActive", "IsPopular", "SortOrder",
+                "CreatedAt", "UpdatedAt")
+            VALUES ({Guid.NewGuid()}, 'Call of Duty Mobile', {DigiflazzAutoIdFulfillmentProvider.CodmGameSlug},
+                'Garena', FALSE, FALSE, 21, NOW(), NOW())
+            ON CONFLICT ("Slug") DO NOTHING;
+            """,
+            cancellationToken);
+
+        // Create the Via ID listing as a draft. Package and supplier mappings come from CMS.
+        await db.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+            WITH created AS (
+                INSERT INTO products
+                    ("Id", "CategoryId", "GameId", "Name", "Slug", "ShortDescription", "Kind",
+                     "FulfillmentMethod", "RequiresGameAccountValidation", "IsActive", "IsFeatured",
+                     "SortOrder", "CreatedAt", "UpdatedAt")
+                SELECT {Guid.NewGuid()}, c."Id", g."Id", 'Call of Duty: Mobile - Garena',
+                    'call-of-duty-mobile-via-id', 'Top up COD Points with your Garena OpenID.',
+                    'TopUpGame', 'AUTO_ID', TRUE, FALSE, FALSE, 21, NOW(), NOW()
+                FROM catalog_categories c
+                JOIN games g ON g."Slug" = {DigiflazzAutoIdFulfillmentProvider.CodmGameSlug}
+                WHERE c."Key" = 'top_up_games' AND c."Kind" = 'TopUpGame'
+                ON CONFLICT ("Slug") DO NOTHING
+                RETURNING "Id"
+            )
+            INSERT INTO product_input_fields
+                ("Id", "ProductId", "Key", "Label", "Scope", "Type", "Placeholder", "HelpText",
+                 "IsRequired", "IsSensitive", "MaxLength", "SortOrder", "CreatedAt", "UpdatedAt")
+            SELECT {Guid.NewGuid()}, "Id", {DigiflazzAutoIdFulfillmentProvider.OpenIdField}, 'OpenID',
+                'AccountValidation', 'Text', 'Masukkan OpenID',
+                'Salin OpenID dari Settings → Legal and Privacy di CODM Garena.',
+                TRUE, FALSE, 64, 0, NOW(), NOW()
+            FROM created;
+            """,
+            cancellationToken);
     }
 
     private static CatalogCategory Category(

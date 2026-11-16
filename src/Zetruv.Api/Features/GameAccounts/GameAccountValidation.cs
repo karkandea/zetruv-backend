@@ -55,7 +55,8 @@ public sealed record GameAccountValidationRequest(
 
 public enum GameAccountValidationStatus
 {
-    Verified
+    Verified,
+    FormatChecked
 }
 
 public enum GameAccountValidationFailureKind
@@ -155,9 +156,9 @@ public sealed class GameAccountValidatorResolver(
     IEnumerable<IGameAccountValidator> validators,
     IConfiguration configuration)
 {
-    public IGameAccountValidator? Resolve()
+    public IGameAccountValidator? Resolve(string? providerOverride = null)
     {
-        var configuredProvider = configuration["GameAccountValidation:Provider"]?.Trim();
+        var configuredProvider = providerOverride ?? configuration["GameAccountValidation:Provider"]?.Trim();
         if (string.IsNullOrWhiteSpace(configuredProvider))
         {
             return null;
@@ -254,7 +255,8 @@ public sealed class GameAccountValidationService(
                 fieldsResult.Error);
         }
 
-        var validator = resolver.Resolve();
+        var checkCodmFormat = product.Game.Slug == DigiflazzAutoIdFulfillmentProvider.CodmGameSlug;
+        var validator = resolver.Resolve(checkCodmFormat ? CodmOpenIdValidator.ProviderCode : null);
         if (validator is null)
         {
             return GameAccountValidationResult.Failure(
@@ -295,8 +297,9 @@ public sealed class GameAccountValidationService(
         if (!providerResult.IsValid)
         {
             return GameAccountValidationResult.Failure(
-                GameAccountValidationFailureKind.AccountNotFound,
-                "Game account was not found. Check the account details and try again.");
+                checkCodmFormat ? GameAccountValidationFailureKind.InvalidRequest : GameAccountValidationFailureKind.AccountNotFound,
+                checkCodmFormat ? "Enter the OpenID from CODM Garena settings." :
+                    "Game account was not found. Check the account details and try again.");
         }
 
         var now = DateTimeOffset.UtcNow;
@@ -328,7 +331,7 @@ public sealed class GameAccountValidationService(
 
         return GameAccountValidationResult.Success(
             new GameAccountValidationResponse(
-                GameAccountValidationStatus.Verified,
+                checkCodmFormat ? GameAccountValidationStatus.FormatChecked : GameAccountValidationStatus.Verified,
                 validation.Id,
                 validation.ProductId,
                 validation.Provider,

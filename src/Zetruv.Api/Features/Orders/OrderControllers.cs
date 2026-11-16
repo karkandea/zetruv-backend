@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Zetruv.Api.Features.Auth;
+using Zetruv.Api.Features.Payments;
 using Zetruv.Api.Features.Shipping;
 using Zetruv.Api.Persistence;
 
@@ -50,6 +51,11 @@ public sealed class CmsOrdersController(
         UpdateOrderStatusRequest request,
         CancellationToken cancellationToken)
     {
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        var (key1, key2) = PaymentService.PaymentLockKeys(id);
+        await db.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT pg_advisory_xact_lock({key1}, {key2})", cancellationToken);
+
         var order = await db.Orders
             .Include(x => x.Items)
                 .ThenInclude(x => x.ManualLoginCredential)
@@ -80,6 +86,20 @@ public sealed class CmsOrdersController(
             });
         }
 
+        if (order.Items.Any(x => x.DigiflazzSku != null &&
+            x.FulfillmentStatus == FulfillmentStatus.Processing && x.LastFulfillmentAttemptAt != null))
+        {
+            return Conflict(new { message = "Wait for the Digiflazz top-up result before cancelling this order." });
+        }
+
+        if (await db.PaymentTransactions.AsNoTracking().AnyAsync(x =>
+            x.OrderId == id && x.Provider == MidtransPaymentGateway.ProviderCode &&
+            x.Type == PaymentTransactionType.Payment && x.Status == PaymentTransactionStatus.Pending,
+            cancellationToken))
+        {
+            return Conflict(new { message = "Wait for Midtrans to confirm the payment status before cancelling." });
+        }
+
         var alreadyShipped = await db.Set<Shipment>()
             .AsNoTracking()
             .AnyAsync(
@@ -101,6 +121,7 @@ public sealed class CmsOrdersController(
             DateTimeOffset.UtcNow,
             FulfillmentExecutionContext.Admin(User));
         await db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
 
         await inventoryReservations.ReleaseAsync(id, cancellationToken);
         await shipmentFulfillment.CancelUnshippedAsync(id, cancellationToken);

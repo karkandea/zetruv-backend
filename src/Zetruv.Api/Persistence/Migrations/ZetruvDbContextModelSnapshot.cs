@@ -1525,6 +1525,14 @@ namespace Zetruv.Api.Persistence.Migrations
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("DigiflazzBuyerBinding")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("DigiflazzSku")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
                     b.Property<DateTimeOffset?>("FulfilledAt")
                         .HasColumnType("timestamp with time zone");
 

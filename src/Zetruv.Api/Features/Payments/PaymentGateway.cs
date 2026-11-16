@@ -20,7 +20,8 @@ public sealed record PaymentGatewayStatusRequest(
     string OrderNumber,
     string ProviderReference,
     decimal Amount,
-    string Currency);
+    string Currency,
+    DateTimeOffset? ExpiresAt = null);
 
 public sealed record PaymentGatewayStatusResult(
     PaymentWebhookNotification? Notification,
@@ -239,6 +240,14 @@ public sealed class PaymentGatewayResolver(
             ? null
             : ResolveByName(configuredProvider);
     }
+
+    public bool CanPayForDigiflazz(string? provider, bool testing) =>
+        provider is not null && ResolveByName(provider) switch
+        {
+            MockPaymentGateway => testing,
+            MidtransPaymentGateway { IsLiveConfigured: true } midtrans => midtrans.IsSandbox == testing,
+            _ => false
+        };
 
     public IPaymentGateway? ResolveByName(string provider) =>
         gateways.FirstOrDefault(x =>

@@ -72,10 +72,13 @@ public sealed class CustomerPaymentStatusController(
         var credentialsUsable = order.Items.All(x =>
             x.FulfillmentMethod != FulfillmentMethod.MANUAL_LOGIN ||
             ManualLoginCredentialService.IsUsable(x.ManualLoginCredential, now));
+        var awaitingMidtransConfirmation = transactions.Any(x =>
+            x.Provider == MidtransPaymentGateway.ProviderCode && x.Status == PaymentTransactionStatus.Pending);
         var canRetry =
             order.Status != OrderStatus.Cancelled &&
             (order.PaymentStatus is PaymentStatus.Pending or PaymentStatus.Failed) &&
             active is null &&
+            !awaitingMidtransConfirmation &&
             credentialsUsable;
 
         return Ok(new CustomerPaymentStatusResponse(
