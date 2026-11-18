@@ -40,6 +40,7 @@ public sealed class CmsOrdersController(
         Guid id,
         CancellationToken cancellationToken)
     {
+        Response.Headers.CacheControl = "private, no-store";
         var order = await orderService.GetAdminOrderAsync(id, cancellationToken);
         return order is null ? NotFound() : Ok(order);
     }

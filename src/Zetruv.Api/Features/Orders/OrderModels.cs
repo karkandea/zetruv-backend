@@ -92,6 +92,7 @@ public sealed class OrderItem
     public FulfillmentMethod FulfillmentMethod { get; set; } = FulfillmentMethod.MANUAL;
     public FulfillmentStatus FulfillmentStatus { get; set; } = FulfillmentStatus.Pending;
     public string? FulfillmentReference { get; set; }
+    public string? EncryptedGameItemDelivery { get; set; }
     public string? FulfillmentMessage { get; set; }
     public DateTimeOffset? FulfillmentStartedAt { get; set; }
     public DateTimeOffset? FulfilledAt { get; set; }
@@ -191,6 +192,7 @@ public sealed record OrderItemResponse(
 {
     // Only included in the CMS authenticated order detail, never guest tracking.
     public OrderAccountTargetResponse? AccountTarget { get; init; }
+    public IReadOnlyList<GameItemDeliveryField>? GameItemDelivery { get; init; }
 }
 
 public sealed record OrderAccountTargetResponse(

@@ -52,6 +52,7 @@ public sealed record CustomerOrderDetail(
     public string PaymentState { get; init; } = string.Empty;
     public bool HasFulfillmentIssue { get; init; }
     public ShipmentTrackingResponse? Shipment { get; init; }
+    public string? GameItemSupportPhone { get; init; }
 }
 
 public enum CustomerOrderGroup { Active, History }
@@ -190,6 +191,8 @@ public sealed class CustomerOrderDetailController(ZetruvDbContext db) : Controll
         {
             PaymentState = PaymentSessionState.Resolve(order.PaymentStatus, order.Status, attempts, DateTimeOffset.UtcNow),
             HasFulfillmentIssue = items.Any(x => x.FulfillmentStatus == FulfillmentStatus.Failed),
+            GameItemSupportPhone = order.PaymentStatus == PaymentStatus.Paid && items.Any(x => x.Kind == ProductKind.GameItem)
+                ? await GameItemDelivery.GetSupportPhoneAsync(db, ct) : null,
             Shipment = shipment is null ? null : new ShipmentTrackingResponse(
                 shipment.Status, shipment.Provider, shipment.ServiceCode, shipment.ServiceName,
                 shipment.TrackingNumber, shipment.EtaMinDays, shipment.EtaMaxDays,

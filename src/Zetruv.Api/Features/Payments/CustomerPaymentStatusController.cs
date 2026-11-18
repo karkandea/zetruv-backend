@@ -23,7 +23,10 @@ public sealed record CustomerPaymentStatusResponse(
     string? QrString,
     DateTimeOffset? ExpiresAt,
     DateTimeOffset? PaidAt,
-    DateTimeOffset CheckedAt);
+    DateTimeOffset CheckedAt)
+{
+    public string? GameItemSupportPhone { get; init; }
+}
 
 [ApiController]
 [Route("api/v1/checkout/orders/{orderId:guid}/payment")]
@@ -91,6 +94,10 @@ public sealed class CustomerPaymentStatusController(
             active?.QrString,
             active?.ExpiresAt ?? latest?.ExpiresAt,
             order.PaidAt,
-            now));
+            now)
+        {
+            GameItemSupportPhone = state == "Paid" && order.Items.Any(x => x.ProductKind == ProductKind.GameItem)
+                ? await GameItemDelivery.GetSupportPhoneAsync(db, ct) : null
+        });
     }
 }

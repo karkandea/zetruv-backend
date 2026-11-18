@@ -20,6 +20,7 @@ scripts=(
   smoke-auto-id-fulfillment.sh
   smoke-manual-login-credentials.sh
   smoke-game-voucher-inventory.sh
+  smoke-game-item-delivery.sh
   smoke-payment-inventory-hardening.sh
   smoke-shipping.sh
   smoke-shipment-fulfillment.sh

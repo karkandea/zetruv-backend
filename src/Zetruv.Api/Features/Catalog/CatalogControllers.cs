@@ -554,7 +554,7 @@ public sealed class CmsCatalogController(ZetruvDbContext db) : ControllerBase
             return NotFound();
         }
 
-        var validation = ProductInputFieldRules.ValidateDefinition(product.FulfillmentMethod, request);
+        var validation = ProductInputFieldRules.ValidateDefinition(product.Kind, product.FulfillmentMethod, request);
         if (validation is not null)
         {
             return BadRequest(new { message = validation });
@@ -600,7 +600,7 @@ public sealed class CmsCatalogController(ZetruvDbContext db) : ControllerBase
             return NotFound();
         }
 
-        var validation = ProductInputFieldRules.ValidateDefinition(product.FulfillmentMethod, request);
+        var validation = ProductInputFieldRules.ValidateDefinition(product.Kind, product.FulfillmentMethod, request);
         if (validation is not null)
         {
             return BadRequest(new { message = validation });
@@ -710,8 +710,8 @@ public sealed class CmsCatalogController(ZetruvDbContext db) : ControllerBase
             });
         }
 
-        if (request.Kind == ProductKind.GameAccount && !request.GameId.HasValue)
-            return BadRequest(new { message = "Game account listings require a game selection." });
+        if ((request.Kind is ProductKind.GameAccount or ProductKind.GameItem) && !request.GameId.HasValue)
+            return BadRequest(new { message = "Please select a game for the listing." });
 
         if (request.Kind == ProductKind.GameAccount && currentProductId.HasValue &&
             await db.Products.AnyAsync(x => x.Id == currentProductId.Value &&

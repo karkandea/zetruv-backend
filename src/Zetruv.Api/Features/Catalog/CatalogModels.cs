@@ -9,7 +9,8 @@ public enum ProductKind
     GameVoucher,
     Joki,
     Merchandise,
-    GameAccount
+    GameAccount,
+    GameItem
 }
 
 public enum FulfillmentMethod
