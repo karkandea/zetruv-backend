@@ -75,7 +75,7 @@ assert len(home['serviceCategories']) > 1, 'Migration must preserve the other ca
 
 settings = request('/cms/site/settings', headers=admin)
 support = '+6281234567811'
-request('/cms/site/settings', 'PUT', {**settings, 'gameItemSupportPhone': support}, admin, 204)
+request('/cms/site/settings', 'PUT', {**settings, 'brandDescription': 'QA storefront', 'gameItemSupportPhone': support}, admin, 204)
 assert 'gameItemSupportPhone' not in request('/site/footer')
 game = request('/cms/catalog/games', 'POST', {
     'name': 'QA Game', 'slug': 'qa-game-items', 'isActive': True, 'sortOrder': 99
