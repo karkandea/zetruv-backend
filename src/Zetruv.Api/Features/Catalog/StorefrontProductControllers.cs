@@ -1,7 +1,9 @@
+using System.ComponentModel.DataAnnotations;
 using System.IdentityModel.Tokens.Jwt;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using Zetruv.Api.Features.Auth;
 using Zetruv.Api.Features.Orders;
 using Zetruv.Api.Persistence;
@@ -91,10 +93,45 @@ public sealed class CmsGameAccountDetailsController(ZetruvDbContext db) : Contro
     {
         var review = await db.ProductReviews.FindAsync([id], ct);
         if (review is null) return NotFound();
+        if (review.IsApproved == request.IsApproved && review.ReviewedAt.HasValue)
+            return NoContent();
         review.IsApproved = request.IsApproved;
         review.ReviewedAt = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(ct);
         return NoContent();
+    }
+
+    [HttpGet("reviews/moderation")]
+    public async Task<IActionResult> ReviewQueue(
+        [FromQuery] ProductReviewStatus? status,
+        [FromQuery, Range(0, int.MaxValue)] int offset = 0,
+        [FromQuery, Range(1, 50)] int limit = 20,
+        CancellationToken ct = default)
+    {
+        Response.Headers.CacheControl = "private, no-store";
+        var reviews = db.ProductReviews.AsNoTracking();
+        reviews = status switch
+        {
+            ProductReviewStatus.Pending => reviews.Where(x => !x.IsApproved && x.ReviewedAt == null),
+            ProductReviewStatus.Published => reviews.Where(x => x.IsApproved),
+            ProductReviewStatus.Hidden => reviews.Where(x => !x.IsApproved && x.ReviewedAt != null),
+            _ => reviews
+        };
+
+        var rows = await (from review in reviews
+            join product in db.Products on review.ProductId equals product.Id
+            join item in db.OrderItems on review.OrderItemId equals item.Id
+            orderby review.CreatedAt descending, review.Id descending
+            select new
+            {
+                review.Id, review.Rating, review.Comment, review.CreatedAt, review.ReviewedAt,
+                ProductName = product.Name,
+                item.Order.OrderNumber,
+                Status = review.IsApproved ? ProductReviewStatus.Published :
+                    review.ReviewedAt == null ? ProductReviewStatus.Pending : ProductReviewStatus.Hidden
+            }).Skip(offset).Take(limit + 1).ToListAsync(ct);
+
+        return Ok(new { items = rows.Take(limit), hasMore = rows.Count > limit });
     }
 }
 
@@ -109,7 +146,8 @@ public sealed class CustomerReviewsController(ZetruvDbContext db) : ControllerBa
     public async Task<IActionResult> Create(
         CreateProductReviewRequest request, CancellationToken ct)
     {
-        var customerId = Guid.Parse(User.FindFirst(JwtRegisteredClaimNames.Sub)!.Value);
+        if (!Guid.TryParse(User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value, out var customerId))
+            return Unauthorized();
         var item = await db.OrderItems.AsNoTracking()
             .Where(x => x.Id == request.OrderItemId &&
                 x.Order.CustomerUserId == customerId &&
@@ -122,16 +160,28 @@ public sealed class CustomerReviewsController(ZetruvDbContext db) : ControllerBa
             return BadRequest(new { message = "A completed paid purchase is required before reviewing." });
         if (await db.ProductReviews.AnyAsync(x => x.OrderItemId == request.OrderItemId, ct))
             return Conflict(new { message = "This order item already has a review." });
+        var comment = request.Comment?.Trim();
         db.ProductReviews.Add(new ProductReview
         {
             OrderItemId = request.OrderItemId,
             ProductId = item.ProductId,
             CustomerUserId = customerId,
             Rating = request.Rating,
-            Comment = request.Comment?.Trim(),
+            Comment = string.IsNullOrEmpty(comment) ? null : comment,
             IsApproved = false
         });
-        await db.SaveChangesAsync(ct);
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException error) when (error.InnerException is PostgresException
+        {
+            SqlState: PostgresErrorCodes.UniqueViolation,
+            ConstraintName: "IX_product_reviews_OrderItemId"
+        })
+        {
+            return Conflict(new { message = "This order item already has a review." });
+        }
         return Accepted(new { message = "Review received and pending moderation." });
     }
 }

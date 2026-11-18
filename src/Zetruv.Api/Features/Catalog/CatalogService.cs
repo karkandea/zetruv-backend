@@ -274,6 +274,31 @@ public sealed class CatalogService(ZetruvDbContext db)
             items);
     }
 
+    public async Task<PublicProductReviewPage?> GetProductReviewsAsync(
+        string slug, int offset, int limit, CancellationToken ct)
+    {
+        var normalized = CatalogText.NormalizeSlug(slug);
+        var productId = await PublicProductsQuery().Where(x => x.Slug == normalized)
+            .Select(x => (Guid?)x.Id).SingleOrDefaultAsync(ct);
+        if (productId is null) return null;
+
+        var reviews = ApprovedReviews().Where(x => x.ProductId == productId.Value);
+        var distribution = await reviews.GroupBy(x => x.Rating).OrderByDescending(x => x.Key)
+            .Select(x => new ProductReviewRatingCount(x.Key, x.Count())).ToListAsync(ct);
+        var count = distribution.Sum(x => x.Count);
+        if (count == 0) return new PublicProductReviewPage(null, 0, [], [], false);
+
+        var items = await reviews.OrderByDescending(x => x.CreatedAt).ThenByDescending(x => x.Id)
+            .Skip(offset).Take(limit + 1)
+            .Select(x => new PublicProductReview(x.Id, x.Rating, x.Comment, x.CreatedAt))
+            .ToListAsync(ct);
+        var average = Math.Round(distribution.Sum(x => (decimal)x.Rating * x.Count) / count, 1);
+        return new PublicProductReviewPage(average, count, distribution, items.Take(limit).ToList(), items.Count > limit);
+    }
+
+    private IQueryable<ProductReview> ApprovedReviews() =>
+        db.ProductReviews.AsNoTracking().Where(x => x.IsApproved && x.Rating >= 1 && x.Rating <= 5);
+
     private IQueryable<Product> PublicProductsQuery() =>
         db.Products
             .AsNoTracking()
@@ -360,9 +385,8 @@ public sealed class CatalogService(ZetruvDbContext db)
             .GroupBy(x => x.ProductId!.Value)
             .Select(x => new { Id = x.Key, Quantity = x.Sum(i => i.Quantity) })
             .ToDictionaryAsync(x => x.Id, x => x.Quantity, ct);
-        var reviews = await db.ProductReviews.AsNoTracking()
-            .Where(x => ids.Contains(x.ProductId) && x.IsApproved &&
-                x.Rating >= 1 && x.Rating <= 5)
+        var reviews = await ApprovedReviews()
+            .Where(x => ids.Contains(x.ProductId))
             .GroupBy(x => x.ProductId)
             .Select(x => new { Id = x.Key, Count = x.Count(), Average = x.Average(y => y.Rating) })
             .ToDictionaryAsync(x => x.Id, ct);

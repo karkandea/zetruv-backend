@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -57,6 +58,17 @@ public sealed class CatalogController(CatalogService catalogService) : Controlle
     {
         var flashSale = await catalogService.GetActiveFlashSaleAsync(limit, cancellationToken);
         return flashSale is null ? NoContent() : Ok(flashSale);
+    }
+
+    [HttpGet("products/{slug}/reviews")]
+    public async Task<ActionResult<PublicProductReviewPage>> GetProductReviews(
+        string slug,
+        [FromQuery, Range(0, int.MaxValue)] int offset = 0,
+        [FromQuery, Range(1, 30)] int limit = 6,
+        CancellationToken ct = default)
+    {
+        var reviews = await catalogService.GetProductReviewsAsync(slug, offset, limit, ct);
+        return reviews is null ? NotFound() : Ok(reviews);
     }
 }
 

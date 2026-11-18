@@ -32,3 +32,11 @@ public sealed class ProductReview
 public sealed record CreateProductReviewRequest(
     Guid OrderItemId, [Range(1, 5)] int Rating,
     [MaxLength(1000)] string? Comment);
+
+public enum ProductReviewStatus { Pending, Published, Hidden }
+
+public sealed record PublicProductReview(Guid Id, int Rating, string? Comment, DateTimeOffset CreatedAt);
+public sealed record ProductReviewRatingCount(int Rating, int Count);
+public sealed record PublicProductReviewPage(
+    decimal? Rating, int ReviewCount, IReadOnlyList<ProductReviewRatingCount> Distribution,
+    IReadOnlyList<PublicProductReview> Items, bool HasMore);
