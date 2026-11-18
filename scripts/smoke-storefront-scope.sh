@@ -44,6 +44,7 @@ done
 if [[ "$ready" != true ]]; then tail -65 "$TMP/api.log" >&2; exit 1; fi
 python3 - <<'PY'
 import glob, html, json, os, re, subprocess, urllib.error, urllib.parse, urllib.request, uuid
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 BASE=os.environ['TEST_API']
 MAIL=Path(os.environ['TEST_MAIL'])
@@ -277,6 +278,7 @@ expired=check(api('GET',orders_endpoint,token=first),200)['items'][0]
 assert expired['id']==oid and expired['paymentState']=='Expired' and expired['status']=='Pending',expired
 pending_detail=check(api('GET',f'{orders_endpoint}/{oid}',token=first),200)
 assert pending_detail['paymentStatus']=='Pending' and pending_detail['paymentState']=='Expired',pending_detail
+assert all(not item['canReview'] for item in pending_detail['items'])
 # Isolated DB fixture simulates payment+fulfillment completion to exercise aggregated read models.
 sql('UPDATE orders SET "PaymentStatus"=\'Paid\', "Status"=\'Completed\', "PaidAt"=now(), "CompletedAt"=now() WHERE "Id" IN (\''+oid+'\',\''+oid2+'\',\''+guest['id']+'\');')
 history=check(api('GET',orders_endpoint+'?group=history',token=first),200)
@@ -297,16 +299,50 @@ assert all('@' not in entry['displayName'] for entry in board['weekly'])
 assert len(board['monthly'])==2 and board['podium']==board['weekly'][:3]
 assert check(api('GET','/api/v1/catalog/products/storefront-joki'),200)['soldQuantity']==3
 assert check(api('GET','/api/v1/catalog/products/storefront-joki'),200)['rating'] is None
+public_reviews='/api/v1/catalog/products/storefront-joki/reviews'
+review_queue='/api/v1/cms/catalog/reviews/moderation'
+check(api('GET',review_queue),401)
+check(api('GET',review_queue,token=first),401)
+check(api('GET',public_reviews+'?limit=31'),400)
+assert check(api('GET',public_reviews),200)['items']==[]
 check(api('POST','/api/v1/me/reviews',{'orderItemId':str('00000000-0000-0000-0000-000000000000'),'rating':5},first),400)
 sql('UPDATE order_items SET "ProductId"=\''+pid+'\' WHERE "OrderId"=\''+oid+'\';')
-# Query the actual paid order item id from the customer-visible list (public order tracking omits IDs).
-raw=subprocess.check_output(['docker','exec',C,'psql','-At','-U','zetruv','-d','zetruv_storefront_test','-c','SELECT "Id" FROM order_items WHERE "OrderId"=\''+oid+'\' LIMIT 1;']).decode().strip()
-check(api('POST','/api/v1/me/reviews',{'orderItemId':raw,'rating':5,'comment':'Great'},first),202)
+def reviewer_item():
+    return check(api('GET',f'{orders_endpoint}/{oid}',token=first),200)['items'][0]
+eligible=reviewer_item()
+assert eligible['canReview'] and eligible['reviewStatus'] is None
+raw=eligible['id']
+review_payload={'orderItemId':raw,'rating':5,'comment':' Great '}
+check(api('POST','/api/v1/me/reviews',{**review_payload,'rating':6},first),400)
+with ThreadPoolExecutor(max_workers=2) as workers:
+    responses=list(workers.map(lambda _: api('POST','/api/v1/me/reviews',review_payload,first),range(2)))
+assert sorted(x[0] for x in responses)==[202,409],responses
+pending_review=reviewer_item()
+assert not pending_review['canReview'] and pending_review['reviewStatus']=='Pending'
 assert check(api('GET','/api/v1/catalog/products/storefront-joki'),200)['rating'] is None
+public=check(api('GET',public_reviews),200)
+assert public['items']==[] and public['reviewCount']==0 and public['rating'] is None
 review=check(api('GET','/api/v1/cms/catalog/reviews',token=admin),200)[0]
-check(api('PUT',f"/api/v1/cms/catalog/reviews/{review['id']}/approval",{'isApproved':True},admin),204)
+pending=check(api('GET',review_queue+'?status=Pending',token=admin),200)['items']
+assert len(pending)==1 and pending[0]['id']==review['id'] and pending[0]['status']=='Pending'
+assert pending[0]['orderNumber']==order['orderNumber'] and pending[0]['productName']
+moderation=f"/api/v1/cms/catalog/reviews/{review['id']}/approval"
+check(api('PUT',moderation,{'isApproved':True},admin),204)
 detail=check(api('GET','/api/v1/catalog/products/storefront-joki'),200)
 assert detail['rating']==5 and detail['reviewCount']==1 and detail['soldQuantity']==3
+public=check(api('GET',public_reviews),200)
+assert public['reviewCount']==1 and public['rating']==5 and public['distribution']==[{'rating':5,'count':1}]
+assert len(public['items'])==1 and public['items'][0]['comment']=='Great'
+assert set(public['items'][0])=={'id','rating','comment','createdAt'}
+assert reviewer_item()['reviewStatus']=='Published'
+check(api('PUT',moderation,{'isApproved':False},admin),204)
+assert check(api('GET',public_reviews),200)['reviewCount']==0
+assert check(api('GET','/api/v1/catalog/products/storefront-joki'),200)['rating'] is None
+hidden=check(api('GET',review_queue+'?status=Hidden',token=admin),200)['items']
+assert len(hidden)==1 and hidden[0]['id']==review['id'] and reviewer_item()['reviewStatus']=='Hidden'
+check(api('PUT',moderation,{'isApproved':True},admin),204)
+assert check(api('GET',public_reviews),200)['reviewCount']==1
+print('PASS: one review per completed item, private pending queue, public approval, hide and restore')
 check(api('DELETE',f'/api/v1/me/cart/items/{vid}',token=first),204)
 assert check(api('GET','/api/v1/me/cart',token=first),200)['items']==[]
 search=check(api('GET','/api/v1/search/suggestions?q=storefront'),200)

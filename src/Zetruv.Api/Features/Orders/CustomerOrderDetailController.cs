@@ -29,6 +29,8 @@ public sealed record CustomerOrderDetailItem(
     CustomerOrderTarget? Target)
 {
     public string? ThumbnailUrl { get; init; }
+    public bool CanReview { get; init; }
+    public ProductReviewStatus? ReviewStatus { get; init; }
 }
 
 public sealed record CustomerOrderDetail(
@@ -137,6 +139,11 @@ public sealed class CustomerOrderDetailController(ZetruvDbContext db) : Controll
             return NotFound(new { message = "Order was not found." });
 
         var itemIds = order.Items.Select(x => x.Id).ToArray();
+        var reviewStatuses = await db.ProductReviews.AsNoTracking()
+            .Where(x => x.CustomerUserId == customerId && itemIds.Contains(x.OrderItemId))
+            .ToDictionaryAsync(x => x.OrderItemId, x => x.IsApproved ? ProductReviewStatus.Published :
+                x.ReviewedAt == null ? ProductReviewStatus.Pending : ProductReviewStatus.Hidden, ct);
+        var reviewEligible = order.Status == OrderStatus.Completed && order.PaymentStatus == PaymentStatus.Paid;
         var validations = await db.Set<GameAccountValidation>().AsNoTracking()
             .Where(x => x.OrderItemId.HasValue && itemIds.Contains(x.OrderItemId.Value))
             .Select(x => new { ItemId = x.OrderItemId!.Value, x.AccountDisplayName, x.InputJson })
@@ -160,7 +167,12 @@ public sealed class CustomerOrderDetailController(ZetruvDbContext db) : Controll
                 x.Quantity,
                 x.UnitPrice,
                 x.LineTotal,
-                targets.GetValueOrDefault(x.Id)) { ThumbnailUrl = x.ThumbnailUrl })
+                targets.GetValueOrDefault(x.Id))
+            {
+                ThumbnailUrl = x.ThumbnailUrl,
+                CanReview = reviewEligible && x.ProductId.HasValue && !reviewStatuses.ContainsKey(x.Id),
+                ReviewStatus = reviewStatuses.TryGetValue(x.Id, out var status) ? status : null
+            })
             .ToList();
 
         var attempts = await db.Set<PaymentTransaction>().AsNoTracking()
