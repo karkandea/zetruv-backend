@@ -1,12 +1,13 @@
 using Microsoft.EntityFrameworkCore;
 using System.Text.Json;
 using Zetruv.Api.Features.GameAccounts;
+using Zetruv.Api.Features.Catalog;
 using Zetruv.Api.Features.Shipping;
 using Zetruv.Api.Persistence;
 
 namespace Zetruv.Api.Features.Orders;
 
-public sealed class OrderService(ZetruvDbContext db)
+public sealed class OrderService(ZetruvDbContext db, ManualLoginCredentialProtector deliveryProtector)
 {
     public async Task<IReadOnlyList<RecentPurchaseResponse>> GetRecentPurchasesAsync(
         Guid customerUserId,
@@ -246,6 +247,15 @@ public sealed class OrderService(ZetruvDbContext db)
                 DeserializeTargetFields(x.InputJson),
                 x.ValidatedAt));
 
+        var deliveryByItem = new Dictionary<Guid, string>();
+        if (detail.PaymentStatus == PaymentStatus.Paid && detail.Items.Any(i => i.ProductKind == ProductKind.GameItem))
+        {
+            deliveryByItem = await db.OrderItems.AsNoTracking()
+                .Where(i => i.OrderId == id && i.ProductKind == ProductKind.GameItem &&
+                    i.EncryptedGameItemDelivery != null && i.Order.PaymentStatus == PaymentStatus.Paid)
+                .ToDictionaryAsync(i => i.Id, i => i.EncryptedGameItemDelivery!, cancellationToken);
+        }
+
         return detail with
         {
             PaymentState = PaymentSessionState.Resolve(
@@ -254,10 +264,12 @@ public sealed class OrderService(ZetruvDbContext db)
                     .Select(tx => new PaymentSessionSnapshot(
                         tx.Status, tx.ExpiresAt, tx.ProcessedAt, tx.CreatedAt)),
                 DateTimeOffset.UtcNow),
-            Items = detail.Items.Select(item =>
-                targets.TryGetValue(item.Id, out var target)
-                    ? item with { AccountTarget = target }
-                    : item).ToList()
+            Items = detail.Items.Select(item => item with
+            {
+                AccountTarget = targets.GetValueOrDefault(item.Id),
+                GameItemDelivery = deliveryByItem.TryGetValue(item.Id, out var delivery)
+                    ? GameItemDelivery.Read(deliveryProtector, item.Id, delivery) : null
+            }).ToList()
         };
     }
 

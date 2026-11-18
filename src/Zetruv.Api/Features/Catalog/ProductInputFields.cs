@@ -2,13 +2,15 @@ using System.ComponentModel.DataAnnotations;
 using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Microsoft.AspNetCore.WebUtilities;
 
 namespace Zetruv.Api.Features.Catalog;
 
 public enum ProductInputFieldScope
 {
     AccountValidation,
-    LoginCredential
+    LoginCredential,
+    OrderDelivery
 }
 
 public enum ProductInputFieldType
@@ -17,7 +19,8 @@ public enum ProductInputFieldType
     Password,
     Email,
     Number,
-    Select
+    Select,
+    SteamTradeUrl
 }
 
 public sealed class ProductInputField
@@ -84,9 +87,16 @@ public static partial class ProductInputFieldRules
     [GeneratedRegex("^[A-Za-z0-9_.-]{1,60}$")]
     private static partial Regex KeyRegex();
 
+    [GeneratedRegex(@"(?:password|passwd|passphrase|kata[ _-]*sandi|sandi|otp|2fa|mfa|(?:recovery|backup|verification|security|kode[ _-]*verifikasi)[ _-]*(?:code)?|credential|cookie|session|token|secret)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex SecretFieldRegex();
+
+    [GeneratedRegex("^[A-Za-z0-9_-]{1,64}$")]
+    private static partial Regex TradeTokenRegex();
+
     public static string NormalizeKey(string value) => value.Trim().ToLowerInvariant();
 
     public static string? ValidateDefinition(
+        ProductKind kind,
         FulfillmentMethod fulfillmentMethod,
         UpsertProductInputFieldRequest request)
     {
@@ -110,6 +120,7 @@ public static partial class ProductInputFieldRules
         {
             FulfillmentMethod.AUTO_ID => ProductInputFieldScope.AccountValidation,
             FulfillmentMethod.MANUAL_LOGIN => ProductInputFieldScope.LoginCredential,
+            FulfillmentMethod.MANUAL when kind == ProductKind.GameItem => ProductInputFieldScope.OrderDelivery,
             _ => (ProductInputFieldScope?)null
         };
 
@@ -127,6 +138,18 @@ public static partial class ProductInputFieldRules
             (request.IsSensitive || request.Type == ProductInputFieldType.Password))
         {
             return "Account validation fields cannot be sensitive or password fields.";
+        }
+
+        if (request.Scope == ProductInputFieldScope.OrderDelivery &&
+            (request.IsSensitive || request.Type == ProductInputFieldType.Password ||
+             SecretFieldRegex().IsMatch(key) || SecretFieldRegex().IsMatch(request.Label)))
+        {
+            return "Delivery fields cannot request passwords, verification codes or other credentials.";
+        }
+
+        if (request.Type == ProductInputFieldType.SteamTradeUrl && request.Scope != ProductInputFieldScope.OrderDelivery)
+        {
+            return "Steam Trade URLs are supported only for item delivery.";
         }
 
         if (request.Type == ProductInputFieldType.Password && !request.IsSensitive)
@@ -224,6 +247,11 @@ public static partial class ProductInputFieldRules
                 return ProductInputPayloadResult.Failure($"Field '{definition.Label}' must be numeric.");
             }
 
+            if (definition.Type == ProductInputFieldType.SteamTradeUrl && !IsSteamTradeUrl(normalizedValue))
+            {
+                return $"Field '{definition.Label}' must be a valid Steam Trade Offer URL.";
+            }
+
             if (definition.Type == ProductInputFieldType.Select)
             {
                 var options = ParseOptions(definition.OptionsJson);
@@ -237,6 +265,22 @@ public static partial class ProductInputFieldRules
         }
 
         return ProductInputPayloadResult.Success(normalized);
+    }
+
+    private static bool IsSteamTradeUrl(string value)
+    {
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var url) ||
+            url.Scheme != Uri.UriSchemeHttps || !url.IsDefaultPort ||
+            !string.Equals(url.Host, "steamcommunity.com", StringComparison.OrdinalIgnoreCase) ||
+            url.UserInfo.Length != 0 || url.Fragment.Length != 0 ||
+            !string.Equals(url.AbsolutePath.TrimEnd('/'), "/tradeoffer/new", StringComparison.Ordinal))
+            return false;
+
+        var query = QueryHelpers.ParseQuery(url.Query);
+        return query.TryGetValue("partner", out var partner) && partner.Count == 1 &&
+            uint.TryParse(partner[0], NumberStyles.None, CultureInfo.InvariantCulture, out var id) && id > 0 &&
+            query.TryGetValue("token", out var token) && token.Count == 1 &&
+            TradeTokenRegex().IsMatch(token[0] ?? "");
     }
 
     public static ProductInputFieldResponse ToResponse(ProductInputField field) =>

@@ -551,7 +551,7 @@ public sealed class CatalogSeeder(
 
     public async Task SeedAsync(CancellationToken cancellationToken = default)
     {
-        if (await db.CatalogCategories.AnyAsync(cancellationToken))
+        if (await db.CatalogCategories.AnyAsync(x => x.Kind != ProductKind.GameItem, cancellationToken))
         {
             return;
         }

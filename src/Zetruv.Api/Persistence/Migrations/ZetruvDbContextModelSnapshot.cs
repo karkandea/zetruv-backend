@@ -1525,6 +1525,9 @@ namespace Zetruv.Api.Persistence.Migrations
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("EncryptedGameItemDelivery")
+                        .HasColumnType("text");
+
                     b.Property<DateTimeOffset?>("FulfilledAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -2112,6 +2115,10 @@ namespace Zetruv.Api.Persistence.Migrations
 
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("GameItemSupportPhone")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
 
                     b.Property<string>("LogoUrl")
                         .HasMaxLength(1000)

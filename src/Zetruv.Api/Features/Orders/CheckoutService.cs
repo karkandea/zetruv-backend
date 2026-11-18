@@ -11,6 +11,7 @@ public sealed class CheckoutService(
     ZetruvDbContext db,
     ShippingService shippingService,
     ManualLoginCredentialService manualLoginCredentials,
+    ManualLoginCredentialProtector deliveryProtector,
     ManualLoginReadinessService manualLoginReadiness,
     DiscountVoucherService discountVouchers)
 {
@@ -39,7 +40,8 @@ public sealed class CheckoutService(
             {
                 x.ProductVariantId,
                 x.GameAccountValidationId,
-                LoginCredentialsJson = CanonicalizeCredentials(x.LoginCredentials)
+                LoginCredentialsJson = CanonicalizeCredentials(x.LoginCredentials),
+                DeliveryDetailsJson = CanonicalizeCredentials(x.DeliveryDetails)
             })
             .Select(x => new
             {
@@ -47,6 +49,8 @@ public sealed class CheckoutService(
                 x.Key.GameAccountValidationId,
                 x.Key.LoginCredentialsJson,
                 LoginCredentials = x.First().LoginCredentials,
+                x.Key.DeliveryDetailsJson,
+                DeliveryDetails = x.First().DeliveryDetails,
                 Quantity = x.Sum(i => i.Quantity)
             })
             .ToList();
@@ -121,6 +125,15 @@ public sealed class CheckoutService(
                 "WhatsApp phone is required for digital checkout.");
         }
 
+        if (variants.Any(x => x.ProductKind == ProductKind.GameItem))
+        {
+            var phone = request.CustomerPhone?.Trim() ?? "";
+            if (!GameItemDelivery.IsWhatsAppNumber(phone))
+                return CreateCheckoutOrderResult.Failure("Use a valid WhatsApp number in international format for game items.");
+            if (await GameItemDelivery.GetSupportPhoneAsync(db, cancellationToken) is null)
+                return CreateCheckoutOrderResult.Failure("Game item support is not configured yet.");
+        }
+
         var variantById = variants.ToDictionary(x => x.Id);
         var productIds = variants.Select(x => x.ProductId).Distinct().ToArray();
         var inputFields = await db.ProductInputFields
@@ -137,6 +150,7 @@ public sealed class CheckoutService(
             .GroupBy(x => x.ProductVariantId)
             .ToDictionary(x => x.Key, x => x.Sum(i => i.Quantity));
 
+        var deliveryByLine = new Dictionary<(Guid VariantId, string? DeliveryDetails), IReadOnlyDictionary<string, string>>();
         foreach (var item in groupedItems)
         {
             var variant = variantById[item.ProductVariantId];
@@ -171,6 +185,30 @@ public sealed class CheckoutService(
             {
                 return CreateCheckoutOrderResult.Failure(
                     $"{variant.ProductName} does not accept a game account validation.");
+            }
+
+            if (variant.ProductKind == ProductKind.GameItem)
+            {
+                inputFieldsByProduct.TryGetValue(variant.ProductId, out var schema);
+                var deliveryFields = (schema ?? []).Where(x => x.Scope == ProductInputFieldScope.OrderDelivery).ToArray();
+                if (deliveryFields.Length > 0 || item.DeliveryDetails?.Count > 0)
+                {
+                    var result = ProductInputFieldRules.NormalizePayload(deliveryFields, ProductInputFieldScope.OrderDelivery, item.DeliveryDetails);
+                    if (result.Fields is null)
+                        return CreateCheckoutOrderResult.Failure(result.Error ?? "Invalid item delivery details.");
+                    if (result.Fields.Count > 0 && !deliveryProtector.IsConfigured)
+                        return CreateCheckoutOrderResult.Failure("Game item delivery is temporarily unavailable.");
+
+                    var snapshot = deliveryFields
+                        .Where(field => result.Fields.ContainsKey(field.Key))
+                        .ToDictionary(field => field.Key, field => JsonSerializer.Serialize(new GameItemDeliveryField(field.Label, result.Fields[field.Key])));
+                    if (snapshot.Count > 0)
+                        deliveryByLine[(variant.Id, item.DeliveryDetailsJson)] = snapshot;
+                }
+            }
+            else if (item.DeliveryDetails is not null)
+            {
+                return CreateCheckoutOrderResult.Failure($"{variant.ProductName} does not accept game item delivery details.");
             }
 
             if (variant.ProductFulfillmentMethod == FulfillmentMethod.MANUAL_LOGIN)
@@ -407,6 +445,9 @@ public sealed class CheckoutService(
                     normalized.Fields,
                     now);
             }
+
+            if (deliveryByLine.TryGetValue((variant.Id, item.DeliveryDetailsJson), out var deliveryDetails))
+                orderItem.EncryptedGameItemDelivery = deliveryProtector.Protect(orderItem.Id, deliveryDetails);
 
             orderItems.Add(orderItem);
 

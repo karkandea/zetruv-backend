@@ -46,7 +46,10 @@ public sealed record TrackOrderResponse(
     DateTimeOffset? PaidAt,
     DateTimeOffset? CompletedAt,
     ShipmentTrackingResponse? Shipment,
-    IReadOnlyList<TrackOrderItemResponse> Items);
+    IReadOnlyList<TrackOrderItemResponse> Items)
+{
+    public string? GameItemSupportPhone { get; init; }
+}
 
 public sealed class OrderTrackingService(
     ZetruvDbContext db,
@@ -140,10 +143,12 @@ public sealed class OrderTrackingService(
                     .ToList()))
             .SingleOrDefaultAsync(cancellationToken);
 
-        if (order is null || !order.CanInitiatePayment)
-        {
-            return order;
-        }
+        if (order is null) return null;
+
+        if (order.PaymentStatus == PaymentStatus.Paid && order.Items.Any(x => x.ProductKind == ProductKind.GameItem))
+            order = order with { GameItemSupportPhone = await GameItemDelivery.GetSupportPhoneAsync(db, cancellationToken) };
+
+        if (!order.CanInitiatePayment) return order;
 
         var grant = orderAccessTokens.Issue(order.OrderId);
         return order with

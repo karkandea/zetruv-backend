@@ -563,6 +563,7 @@ public sealed class ZetruvDbContext(
             entity.Property(x => x.CopyrightText).HasMaxLength(250).IsRequired();
             entity.Property(x => x.ContactTeamLabel).HasMaxLength(80).IsRequired();
             entity.Property(x => x.ContactTeamUrl).HasMaxLength(500);
+            entity.Property(x => x.GameItemSupportPhone).HasMaxLength(16);
         });
 
         modelBuilder.Entity<SiteFooterLink>(entity =>

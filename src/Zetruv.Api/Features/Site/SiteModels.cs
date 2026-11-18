@@ -17,6 +17,7 @@ public sealed class SiteSetting
     public string CopyrightText { get; set; } = string.Empty;
     public string ContactTeamLabel { get; set; } = "Contact our team";
     public string? ContactTeamUrl { get; set; }
+    public string? GameItemSupportPhone { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 }
@@ -90,7 +91,8 @@ public sealed record UpdateSiteSettingsRequest(
     [Required, MaxLength(1000)] string BrandDescription,
     [Required, MaxLength(250)] string CopyrightText,
     [Required, MaxLength(80)] string ContactTeamLabel,
-    [MaxLength(500)] string? ContactTeamUrl);
+    [MaxLength(500)] string? ContactTeamUrl,
+    [MaxLength(16)] string? GameItemSupportPhone = null);
 
 public sealed record UpsertFooterLinkRequest(
     FooterLinkGroup Group,

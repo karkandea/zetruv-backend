@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 using Zetruv.Api.Features.Catalog;
 
 namespace Zetruv.Api.Features.Orders;
@@ -9,7 +10,9 @@ public sealed record CheckoutItemRequest(
     Guid? GameAccountValidationId = null,
     IReadOnlyDictionary<string, string>? LoginCredentials = null,
     [Range(typeof(decimal), "0", "999999999999")] decimal? ExpectedUnitPrice = null,
-    bool AcknowledgePriceChange = false);
+    bool AcknowledgePriceChange = false,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    IReadOnlyDictionary<string, string>? DeliveryDetails = null);
 
 public sealed record CreateCheckoutOrderRequest(
     [MaxLength(120)] string? CustomerName,

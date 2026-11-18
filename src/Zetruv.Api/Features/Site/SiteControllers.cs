@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Zetruv.Api.Features.Auth;
+using Zetruv.Api.Features.Orders;
 using Zetruv.Api.Persistence;
 
 namespace Zetruv.Api.Features.Site;
@@ -34,7 +35,12 @@ public sealed class CmsSiteController(ZetruvDbContext db) : ControllerBase
         UpdateSiteSettingsRequest request,
         CancellationToken cancellationToken)
     {
+        var phone = request.GameItemSupportPhone?.Trim();
+        if (!string.IsNullOrEmpty(phone) && !GameItemDelivery.IsWhatsAppNumber(phone))
+            return BadRequest(new { message = "Enter a WhatsApp number in international format (e.g. +6281234567890)." });
+
         var settings = await GetOrCreateSettingsAsync(cancellationToken);
+        if (phone is not null) settings.GameItemSupportPhone = phone.Length == 0 ? null : phone;
         settings.LogoUrl = request.LogoUrl?.Trim();
         settings.BrandDescription = request.BrandDescription.Trim();
         settings.CopyrightText = request.CopyrightText.Trim();
