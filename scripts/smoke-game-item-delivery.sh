@@ -13,7 +13,8 @@ cleanup() {
 trap cleanup EXIT
 
 dotnet build src/Zetruv.Api/Zetruv.Api.csproj --configuration Release --nologo
-docker run -d --name "$container" -e POSTGRES_USER=zetruv -e POSTGRES_PASSWORD=smoke-db   -e POSTGRES_DB=zetruv_game_item_test -p 127.0.0.1::5432 postgres:17-alpine >/dev/null
+docker run -d --name "$container" -e POSTGRES_USER=zetruv -e POSTGRES_PASSWORD=smoke-db \
+  -e POSTGRES_DB=zetruv_game_item_test -p 127.0.0.1::5432 postgres:17-alpine >/dev/null
 port=$(docker port "$container" 5432/tcp | sed 's/.*://')
 for _ in $(seq 1 30); do
   docker exec "$container" pg_isready -U zetruv -d zetruv_game_item_test >/dev/null 2>&1 && break
@@ -81,11 +82,11 @@ game = request('/cms/catalog/games', 'POST', {
 }, admin, 201)
 
 product = request('/cms/catalog/products', 'POST', {
-    'categoryId': category['id'], 'gameId': game['id'], 'name': 'QA Digital Item',
+    'categoryId': category['id'], 'gameId': game, 'name': 'QA Digital Item',
     'slug': 'qa-digital-item', 'kind': 'GameItem', 'fulfillmentMethod': 'MANUAL',
     'requiresGameAccountValidation': False, 'isActive': True, 'isFeatured': False, 'sortOrder': 0,
 }, admin, 201)
-product_path = f'/cms/catalog/products/{product["id"]}'
+product_path = f'/cms/catalog/products/{product}'
 schema = {'key': 'steam-url', 'label': 'Steam Trade Offer URL', 'scope': 'OrderDelivery',
           'type': 'SteamTradeUrl', 'isRequired': True, 'isSensitive': False, 'maxLength': 200, 'sortOrder': 0}
 request(product_path + '/input-fields', 'POST', {**schema, 'key': 'game_password', 'label': 'Password'}, admin, 400)
@@ -101,7 +102,7 @@ assert pdp['inputFields'][0]['type'] == 'SteamTradeUrl'
 
 trade_url = 'https://steamcommunity.com/tradeoffer/new/?partner=12345&token=qa-test'
 phone = '+6281234567800'
-line = {'productVariantId': variant['id'], 'quantity': 1}
+line = {'productVariantId': variant, 'quantity': 1}
 def checkout(item, status=201):
     return request('/checkout/orders', 'POST', {'customerPhone': phone, 'items': [item]}, status=status)
 

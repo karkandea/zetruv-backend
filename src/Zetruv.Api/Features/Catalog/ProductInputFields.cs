@@ -249,7 +249,8 @@ public static partial class ProductInputFieldRules
 
             if (definition.Type == ProductInputFieldType.SteamTradeUrl && !IsSteamTradeUrl(normalizedValue))
             {
-                return $"Field '{definition.Label}' must be a valid Steam Trade Offer URL.";
+                return ProductInputPayloadResult.Failure(
+                    $"Field '{definition.Label}' must be a valid Steam Trade Offer URL.");
             }
 
             if (definition.Type == ProductInputFieldType.Select)
