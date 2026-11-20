@@ -61,6 +61,50 @@ UNAUTH=$(curl -sS -o /dev/null -w '%{http_code}' "$BASE/api/v1/cms/catalog/produ
 [[ "$UNAUTH" == 401 ]]
 echo 'PASS: CMS endpoints reject unauthenticated access'
 
+echo '=== STOREFRONT SUPPORT REPORTS IN CMS ==='
+BASE="$BASE" CTOK="$CTOK" python3 - <<'PY'
+import json
+import os
+import uuid
+from urllib.error import HTTPError
+from urllib.request import Request, urlopen
+
+base = os.environ["BASE"] + "/api/v1"
+admin = {"Authorization": "Bearer " + os.environ["CTOK"]}
+public_path = "/support/reports"
+cms_path = "/cms/support/reports"
+
+def request(path, status, payload=None, headers=None):
+    data = None if payload is None else json.dumps(payload).encode()
+    req = Request(base + path, data=data, headers={"Content-Type": "application/json", **(headers or {})})
+    try:
+        response = urlopen(req, timeout=10)
+    except HTTPError as error:
+        response = error
+    with response:
+        assert response.status == status, (path, response.status, status)
+        body = response.read()
+        return json.loads(body) if body else None
+
+report_id = str(uuid.uuid4())
+report = {"requestId": report_id, "name": "QA Support", "phone": "+12025550100",
+          "description": "Dummy support issue from the storefront."}
+request(cms_path, 401)
+request(public_path, 405)
+request(public_path, 400, {})
+request(public_path, 400, {**report, "phone": "not a number"})
+assert request(public_path, 201, report) == {"id": report_id}
+assert request(public_path, 200, report) == {"id": report_id}
+request(public_path, 409, {**report, "description": "Different report"})
+request(public_path, 429, report)
+page = request(cms_path, 200, headers=admin)
+assert len(page["items"]) == 1 and not page["hasMore"]
+saved = page["items"][0]
+assert saved["id"] == report_id and saved["createdAt"]
+assert all(saved[field] == report[field] for field in ("name", "phone", "description"))
+print("PASS: storefront report persists once, is visible to CMS admins, and protects public access.")
+PY
+
 echo '=== CATALOG CRUD ==='
 CAT=$(curl -fsS -X POST "$BASE/api/v1/cms/catalog/categories" "${AUTH[@]}"   -d '{"key":"cms-crud-games","name":"CMS CRUD Games","slug":"cms-crud-games","description":"Initial","iconUrl":null,"kind":"TopUpLogin","isActive":true,"sortOrder":91}')
 CAT_ID=$(extract_id <<<"$CAT")

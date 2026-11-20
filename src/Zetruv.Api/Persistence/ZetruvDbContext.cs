@@ -7,6 +7,7 @@ using Zetruv.Api.Features.Media;
 using Zetruv.Api.Features.Orders;
 using Zetruv.Api.Features.Payments;
 using Zetruv.Api.Features.Site;
+using Zetruv.Api.Features.Support;
 
 namespace Zetruv.Api.Persistence;
 
@@ -49,6 +50,7 @@ public sealed class ZetruvDbContext(
     public DbSet<SiteFooterLink> SiteFooterLinks => Set<SiteFooterLink>();
     public DbSet<SiteSocialLink> SiteSocialLinks => Set<SiteSocialLink>();
     public DbSet<SitePaymentMethod> SitePaymentMethods => Set<SitePaymentMethod>();
+    public DbSet<SupportReport> SupportReports => Set<SupportReport>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -595,6 +597,16 @@ public sealed class ZetruvDbContext(
             entity.Property(x => x.IconUrl).HasMaxLength(1000);
             entity.HasIndex(x => x.Code).IsUnique();
             entity.HasIndex(x => new { x.IsActive, x.SortOrder });
+        });
+
+        modelBuilder.Entity<SupportReport>(entity =>
+        {
+            entity.ToTable("support_reports");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Name).HasMaxLength(SupportReport.NameLimit).IsRequired();
+            entity.Property(x => x.Phone).HasMaxLength(SupportReport.PhoneLimit).IsRequired();
+            entity.Property(x => x.Description).HasMaxLength(SupportReport.DescriptionLimit).IsRequired();
+            entity.HasIndex(x => new { x.CreatedAt, x.Id });
         });
     }
 }
