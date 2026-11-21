@@ -46,6 +46,11 @@ public partial class SeedSafeVoucherCatalog : Migration
             ORDER BY c."IsActive" DESC, c."SortOrder" LIMIT 1
             ON CONFLICT ("Slug") DO NOTHING;
 
+            INSERT INTO products
+                ("Id", "CategoryId", "GameId", "Name", "Slug", "ShortDescription",
+                 "Description", "ThumbnailUrl", "Kind", "FulfillmentMethod",
+                 "RequiresGameAccountValidation", "IsActive", "IsFeatured",
+                 "SortOrder", "CreatedAt", "UpdatedAt")
             SELECT 'd4000000-0000-4000-8000-000000000002'::uuid, c."Id", NULL::uuid, 'Steam Wallet Code (ID)', 'steam-wallet-idr',
                    'Isi saldo Steam Wallet dengan kode regional Indonesia.', 'Kode Steam Wallet IDR untuk akun dan mata uang yang kompatibel. Nilai nominal awal harus ditinjau kembali oleh admin sebelum stok voucher asli diimpor. Tidak ada kode contoh atau stok fiktif. Referensi: https://www.unipin.com/id/game/steam-wallet-code-id dan https://help.steampowered.com/id/faqs/view/78E3-7431-1E88-AD59',
                    '/assets/home/category-voucher.png', 'GameVoucher', 'MANUAL', FALSE,
@@ -54,6 +59,11 @@ public partial class SeedSafeVoucherCatalog : Migration
             ORDER BY c."IsActive" DESC, c."SortOrder" LIMIT 1
             ON CONFLICT ("Slug") DO NOTHING;
 
+            INSERT INTO products
+                ("Id", "CategoryId", "GameId", "Name", "Slug", "ShortDescription",
+                 "Description", "ThumbnailUrl", "Kind", "FulfillmentMethod",
+                 "RequiresGameAccountValidation", "IsActive", "IsFeatured",
+                 "SortOrder", "CreatedAt", "UpdatedAt")
             SELECT 'd4000000-0000-4000-8000-000000000003'::uuid, c."Id", NULL::uuid, 'UniPin Voucher (ID)', 'unipin-voucher-id',
                    'Voucher UniPin untuk menukar saldo atau layanan game yang didukung.', 'Voucher UniPin regional Indonesia. Ketersediaan dan game yang dapat digunakan mengikuti ketentuan UniPin. Harga nominal awal perlu diverifikasi di CMS; hanya impor kode asli yang boleh menaikkan stok. Referensi: https://www.unipin.com/id/game/unipin-voucher-id',
                    '/assets/home/category-voucher.png', 'GameVoucher', 'MANUAL', FALSE,
