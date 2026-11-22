@@ -37,6 +37,6 @@ public sealed class CustomerJwtTokenService(
             new JwtSecurityTokenHandler().WriteToken(token),
             expiry,
             new CustomerIdentity(customer.Id, customer.Name, customer.Email,
-                customer.EmailVerifiedAt is not null));
+                customer.EmailVerifiedAt is not null, customer.Phone));
     }
 }

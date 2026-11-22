@@ -257,7 +257,7 @@ public sealed class CustomerAuthController(
         var id = Guid.Parse(User.FindFirstValue(JwtRegisteredClaimNames.Sub)!);
         var customer = await db.CustomerUsers.AsNoTracking().SingleAsync(x => x.Id == id, ct);
         return Ok(new CustomerLoginResponse(accessToken, SessionExpiry(),
-            new CustomerIdentity(customer.Id, customer.Name, customer.Email, true)));
+            new CustomerIdentity(customer.Id, customer.Name, customer.Email, true, customer.Phone)));
     }
 
     [Authorize(AuthenticationSchemes = CustomerAuthConstants.Scheme)]
@@ -385,7 +385,29 @@ public sealed class CustomerAuthController(
     {
         var id = Guid.Parse(User.FindFirstValue(JwtRegisteredClaimNames.Sub)!);
         var user = await db.CustomerUsers.AsNoTracking().SingleAsync(x => x.Id == id, ct);
-        return Ok(new CustomerIdentity(user.Id, user.Name, user.Email, user.EmailVerifiedAt is not null));
+        return Ok(new CustomerIdentity(user.Id, user.Name, user.Email, user.EmailVerifiedAt is not null, user.Phone));
+    }
+
+    [Authorize(AuthenticationSchemes = CustomerAuthConstants.Scheme)]
+    [HttpPut("me")]
+    public async Task<IActionResult> UpdateMe([FromBody] UpdateCustomerProfileRequest request, CancellationToken ct)
+    {
+        var name = request.Name?.Trim() ?? "";
+        var phone = string.IsNullOrWhiteSpace(request.Phone) ? null : request.Phone.Trim();
+        if (name.Length is < 2 or > 120)
+            return BadRequest(new { code = "INVALID_NAME", message = "Name must be between 2 and 120 characters." });
+        if (phone is not null && !System.Text.RegularExpressions.Regex.IsMatch(phone, @"^(?:0|62)[0-9]{8,13}$"))
+            return BadRequest(new { code = "INVALID_PHONE", message = "Phone must start with 0 or 62 and contain 9-15 digits." });
+
+        var id = Guid.Parse(User.FindFirstValue(JwtRegisteredClaimNames.Sub)!);
+        var user = await db.CustomerUsers.SingleAsync(x => x.Id == id, ct);
+        user.Name = name;
+        user.Phone = phone;
+        user.UpdatedAt = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync(ct);
+        // Email editing requires separate verification; do not allow unverified changes here.
+        return Ok(new CustomerIdentity(user.Id, user.Name, user.Email,
+            user.EmailVerifiedAt is not null, user.Phone));
     }
 
     private bool WithinCooldown(DateTimeOffset? sentAt) =>

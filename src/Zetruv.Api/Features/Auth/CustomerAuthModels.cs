@@ -14,6 +14,7 @@ public sealed class CustomerUser
     public Guid Id { get; set; } = Guid.NewGuid();
     public string Name { get; set; } = "";
     public string Email { get; set; } = "";
+    public string? Phone { get; set; }
     public string NormalizedEmail { get; set; } = "";
     public string PasswordHash { get; set; } = "";
     public bool IsActive { get; set; } = true;
@@ -86,6 +87,7 @@ public sealed record CustomerVerifyRequest([Required] string Token);
 public sealed record CustomerResetRequest(
     [Required] string Token, [Required] string NewPassword,
     [Required] string ConfirmPassword);
-public sealed record CustomerIdentity(Guid Id, string Name, string Email, bool EmailVerified);
+public sealed record CustomerIdentity(Guid Id, string Name, string Email, bool EmailVerified, string? Phone = null);
+public sealed record UpdateCustomerProfileRequest([Required, StringLength(120, MinimumLength = 2)] string Name, [StringLength(24)] string? Phone);
 public sealed record CustomerLoginResponse(
     string AccessToken, DateTimeOffset ExpiresAt, CustomerIdentity Customer);

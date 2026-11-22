@@ -8,6 +8,7 @@ using Zetruv.Api.Features.Orders;
 using Zetruv.Api.Features.Payments;
 using Zetruv.Api.Features.Site;
 using Zetruv.Api.Features.Support;
+using Zetruv.Api.Features.Shipping;
 
 namespace Zetruv.Api.Persistence;
 
@@ -16,6 +17,7 @@ public sealed class ZetruvDbContext(
 {
     public DbSet<AdminUser> AdminUsers => Set<AdminUser>();
     public DbSet<CustomerUser> CustomerUsers => Set<CustomerUser>();
+    public DbSet<CustomerAddress> CustomerAddresses => Set<CustomerAddress>();
     public DbSet<CustomerAuthToken> CustomerAuthTokens => Set<CustomerAuthToken>();
     public DbSet<CustomerPasswordHistory> CustomerPasswordHistories => Set<CustomerPasswordHistory>();
     public DbSet<HomeHero> HomeHeroes => Set<HomeHero>();
@@ -70,10 +72,35 @@ public sealed class ZetruvDbContext(
             entity.ToTable("customer_users");
             entity.HasKey(x => x.Id);
             entity.Property(x => x.Name).HasMaxLength(120).IsRequired();
+            entity.Property(x => x.Phone).HasMaxLength(24);
             entity.Property(x => x.Email).HasMaxLength(320).IsRequired();
             entity.Property(x => x.NormalizedEmail).HasMaxLength(320).IsRequired();
             entity.Property(x => x.PasswordHash).HasMaxLength(1000).IsRequired();
             entity.HasIndex(x => x.NormalizedEmail).IsUnique();
+        });
+
+        modelBuilder.Entity<CustomerAddress>(entity =>
+        {
+            entity.ToTable("customer_addresses");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Label).HasMaxLength(40).IsRequired();
+            entity.Property(x => x.RecipientName).HasMaxLength(120).IsRequired();
+            entity.Property(x => x.RecipientPhone).HasMaxLength(24).IsRequired();
+            entity.Property(x => x.Email).HasMaxLength(320);
+            entity.Property(x => x.Province).HasMaxLength(120).IsRequired();
+            entity.Property(x => x.City).HasMaxLength(120).IsRequired();
+            entity.Property(x => x.District).HasMaxLength(120).IsRequired();
+            entity.Property(x => x.Subdistrict).HasMaxLength(120).IsRequired();
+            entity.Property(x => x.PostalCode).HasMaxLength(5).IsRequired();
+            entity.Property(x => x.FullAddress).HasMaxLength(500).IsRequired();
+            entity.Property(x => x.Note).HasMaxLength(250);
+            entity.Property(x => x.Latitude).HasPrecision(10, 7);
+            entity.Property(x => x.Longitude).HasPrecision(10, 7);
+            entity.HasOne<CustomerUser>().WithMany()
+                .HasForeignKey(x => x.CustomerUserId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(x => new { x.CustomerUserId, x.UpdatedAt });
+            entity.HasIndex(x => new { x.CustomerUserId, x.IsDefault })
+                .IsUnique().HasFilter("\"IsDefault\" = TRUE");
         });
 
         modelBuilder.Entity<CustomerAuthToken>(entity =>
