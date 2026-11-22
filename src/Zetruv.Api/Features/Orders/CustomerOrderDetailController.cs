@@ -55,7 +55,7 @@ public sealed record CustomerOrderDetail(
     public string? GameItemSupportPhone { get; init; }
 }
 
-public enum CustomerOrderGroup { Active, History }
+public enum CustomerOrderGroup { Active, History, Completed }
 
 public sealed record CustomerOrderPreview(string ProductName, string? VariantName, string? ThumbnailUrl);
 
@@ -83,11 +83,16 @@ public sealed class CustomerOrderDetailController(ZetruvDbContext db) : Controll
             return Unauthorized();
 
         var owned = db.Orders.AsNoTracking().Where(x => x.CustomerUserId == customerId);
-        var orders = group == CustomerOrderGroup.Active
-            ? owned.Where(x => x.Status != OrderStatus.Completed && x.Status != OrderStatus.Cancelled &&
-                x.PaymentStatus != PaymentStatus.Refunded)
-            : owned.Where(x => x.Status == OrderStatus.Completed || x.Status == OrderStatus.Cancelled ||
-                x.PaymentStatus == PaymentStatus.Refunded);
+        var orders = group switch
+        {
+            CustomerOrderGroup.Active => owned.Where(x =>
+                x.Status != OrderStatus.Completed && x.Status != OrderStatus.Cancelled &&
+                x.PaymentStatus != PaymentStatus.Refunded),
+            CustomerOrderGroup.Completed => owned.Where(x =>
+                x.Status == OrderStatus.Completed && x.PaymentStatus != PaymentStatus.Refunded),
+            _ => owned.Where(x => x.Status == OrderStatus.Cancelled ||
+                x.PaymentStatus == PaymentStatus.Refunded)
+        };
         var now = DateTimeOffset.UtcNow;
         var page = await orders
             .OrderByDescending(x => x.CreatedAt).ThenByDescending(x => x.Id)
