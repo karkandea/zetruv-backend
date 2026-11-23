@@ -20,7 +20,9 @@ cleanup() {
 trap cleanup EXIT
 
 echo "=== RECORD VALIDATION METADATA CHECK ==="
-if git grep -nF '[property:' -- src/Zetruv.Api; then
+# Only validation attributes are forbidden on positional record properties.
+# Serialization-specific annotations such as [property: JsonIgnore] are valid.
+if git grep -nE '\[property:[[:space:]]*(Required|Range|StringLength|MaxLength|MinLength|EmailAddress|RegularExpression|Compare|Phone|Url|CreditCard|DataType|EnumDataType|CustomValidation)' -- src/Zetruv.Api; then
   echo "ERROR: positional request records still contain property-targeted validation metadata."
   exit 1
 fi

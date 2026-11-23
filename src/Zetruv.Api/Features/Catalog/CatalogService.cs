@@ -551,14 +551,18 @@ public sealed class CatalogSeeder(
 
     public async Task SeedAsync(CancellationToken cancellationToken = default)
     {
-        if (await db.CatalogCategories.AnyAsync(x => x.Kind != ProductKind.GameItem, cancellationToken))
-        {
-            return;
-        }
+        // A fresh database can already contain one seeded category from a
+        // migration. Never skip the remaining categories just because ANY
+        // non-GameItem category exists; checkout fixtures look them up by Key.
+        var existing = await db.CatalogCategories.AsNoTracking()
+            .Select(x => x.Key).ToListAsync(cancellationToken);
+        var existingKeys = new HashSet<string>(existing, StringComparer.OrdinalIgnoreCase);
+        var missing = Defaults.Where(x => !existingKeys.Contains(x.Key)).ToArray();
+        if (missing.Length == 0) return;
 
-        db.CatalogCategories.AddRange(Defaults);
+        db.CatalogCategories.AddRange(missing);
         await db.SaveChangesAsync(cancellationToken);
-        logger.LogInformation("Seeded default catalog categories.");
+        logger.LogInformation("Seeded {Count} missing catalog categories.", missing.Length);
     }
 
     private static CatalogCategory Category(
