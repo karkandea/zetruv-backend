@@ -42,6 +42,11 @@ services:
       Cors__AllowedOrigins__3: ${CMS_ORIGIN_LEGACY:-}
       Payments__Provider: ${PAYMENTS_PROVIDER:-mock}
       Payments__Mock__WebhookSecret: ${PAYMENTS_MOCK_WEBHOOK_SECRET}
+      Payments__Midtrans__Enabled: ${PAYMENTS_MIDTRANS_ENABLED:-false}
+      Payments__Midtrans__Mode: ${PAYMENTS_MIDTRANS_MODE:-Sandbox}
+      Payments__Midtrans__ServerKey: ${PAYMENTS_MIDTRANS_SERVER_KEY:-}
+      Payments__Midtrans__SignatureSecretKey: ${PAYMENTS_MIDTRANS_SIGNATURE_SECRET_KEY:-}
+      Payments__Midtrans__FinishUrl: ${PAYMENTS_MIDTRANS_FINISH_URL:-}
       Payments__Reconciliation__Enabled: ${PAYMENTS_RECONCILIATION_ENABLED:-true}
       GameAccountValidation__Provider: ${GAME_ACCOUNT_VALIDATION_PROVIDER:-mock}
       ManualLogin__EncryptionKey: ${MANUAL_LOGIN_ENCRYPTION_KEY}

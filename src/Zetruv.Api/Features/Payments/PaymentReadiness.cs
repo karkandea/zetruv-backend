@@ -104,9 +104,13 @@ public sealed class CheckoutPaymentOptionsController(
     {
         var current = await readiness.GetAsync(ct);
         Response.Headers.CacheControl = "no-store";
-        var gateway = gatewayResolver.Resolve() as XenditPaymentGateway;
-        var merchantAbsorbsFees = gateway is { IsLiveConfigured: true } &&
-            configuration.GetValue<bool>("Payments:Xendit:MerchantAbsorbsFees");
+        var gateway = gatewayResolver.Resolve();
+        // Snap redirects to Midtrans and the merchant absorbs gateway fees.
+        // Zetruv never adds an unknown surcharge to the customer's total.
+        var merchantAbsorbsFees =
+            gateway is MidtransSnapGateway { IsLiveConfigured: true } ||
+            (gateway is XenditPaymentGateway { IsLiveConfigured: true } &&
+             configuration.GetValue<bool>("Payments:Xendit:MerchantAbsorbsFees"));
         return Ok(new CheckoutPaymentReadinessResponse(
             current.CanAcceptLivePayments,
             current.Status,
@@ -119,7 +123,9 @@ public sealed class CheckoutPaymentOptionsController(
                 })
                 .ToList())
         {
-            IsSandbox = gateway?.IsSandbox == true
+            IsSandbox =
+                gateway is MidtransSnapGateway { IsLiveConfigured: true } ||
+                gateway is XenditPaymentGateway { IsSandbox: true, IsLiveConfigured: true }
         });
     }
 }

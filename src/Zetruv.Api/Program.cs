@@ -25,6 +25,13 @@ using Zetruv.Api.OpenApi;
 
 var builder = WebApplication.CreateBuilder(args);
 
+if (builder.Environment.IsProduction() &&
+    string.Equals(builder.Configuration["Payments:Provider"], "midtrans", StringComparison.OrdinalIgnoreCase) &&
+    string.Equals(builder.Configuration["Payments:Midtrans:Mode"], "Sandbox", StringComparison.OrdinalIgnoreCase))
+{
+    throw new InvalidOperationException("Midtrans Sandbox cannot run in Production.");
+}
+
 if (builder.Environment.IsProduction())
 {
     var mockProviderSettings = new[]
@@ -344,6 +351,7 @@ builder.Services.Configure<PaymentReconciliationOptions>(
 // Real Xendit channel adapter: enabled only with provider credentials and a
 // verified environment-specific configuration. No fallback to mock payments.
 builder.Services.AddScoped<IPaymentGateway, XenditPaymentGateway>();
+builder.Services.AddScoped<IPaymentGateway, MidtransSnapGateway>();
 builder.Services.AddScoped<PaymentGatewayResolver>();
 builder.Services.AddScoped<PaymentReadinessService>();
 builder.Services.AddScoped<PaymentWebhookEventLedger>();
