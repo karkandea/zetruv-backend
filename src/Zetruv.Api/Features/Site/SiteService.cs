@@ -52,23 +52,48 @@ public sealed class SiteService(ZetruvDbContext db)
 
 public sealed class SiteSeeder(
     ZetruvDbContext db,
-    ILogger<SiteSeeder> logger)
+    ILogger<SiteSeeder> logger,
+    IConfiguration configuration,
+    IWebHostEnvironment environment)
 {
     public async Task SeedAsync(CancellationToken cancellationToken = default)
     {
-        if (await db.SiteSettings.AnyAsync(cancellationToken))
+        if (!await db.SiteSettings.AnyAsync(cancellationToken))
         {
-            return;
+            db.SiteSettings.Add(new SiteSetting
+            {
+                BrandDescription = string.Empty,
+                CopyrightText = "© CV Zetruv. All rights reserved.",
+                ContactTeamLabel = "Contact our team"
+            });
+            logger.LogInformation("Seeded base site settings.");
         }
 
-        db.SiteSettings.Add(new SiteSetting
+        // Snap represents one hosted payment choice, not individual bank channels.
+        // Only the explicitly enabled sandbox on a non-production server may
+        // create this CMS method. Existing admin opt-out is never overridden.
+        var midtransSandbox =
+            !environment.IsProduction() &&
+            configuration.GetValue<bool>("Payments:Midtrans:Enabled") &&
+            string.Equals(configuration["Payments:Provider"], "midtrans",
+                StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(configuration["Payments:Midtrans:Mode"], "Sandbox",
+                StringComparison.OrdinalIgnoreCase) &&
+            (configuration["Payments:Midtrans:ServerKey"] ?? "")
+                .StartsWith("SB-Mid-server-", StringComparison.Ordinal);
+        if (midtransSandbox &&
+            !await db.SitePaymentMethods.AnyAsync(x => x.Code == "MIDTRANS_SNAP", cancellationToken))
         {
-            BrandDescription = string.Empty,
-            CopyrightText = "© CV Zetruv. All rights reserved.",
-            ContactTeamLabel = "Contact our team"
-        });
+            db.SitePaymentMethods.Add(new SitePaymentMethod
+            {
+                Code = "MIDTRANS_SNAP",
+                Name = "Midtrans (Sandbox)",
+                IsActive = true,
+                SortOrder = 0
+            });
+            logger.LogInformation("Seeded explicitly configured Midtrans Sandbox payment method.");
+        }
 
         await db.SaveChangesAsync(cancellationToken);
-        logger.LogInformation("Seeded base site settings.");
     }
 }
