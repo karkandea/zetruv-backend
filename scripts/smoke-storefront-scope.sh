@@ -281,11 +281,12 @@ assert pending_detail['paymentStatus']=='Pending' and pending_detail['paymentSta
 assert all(not item['canReview'] for item in pending_detail['items'])
 # Isolated DB fixture simulates payment+fulfillment completion to exercise aggregated read models.
 sql('UPDATE orders SET "PaymentStatus"=\'Paid\', "Status"=\'Completed\', "PaidAt"=now(), "CompletedAt"=now() WHERE "Id" IN (\''+oid+'\',\''+oid2+'\',\''+guest['id']+'\');')
-history=check(api('GET',orders_endpoint+'?group=history',token=first),200)
-assert [x['id'] for x in history['items']]==[oid] and history['items'][0]['paymentState']=='Paid',history
+completed=check(api('GET',orders_endpoint+'?group=completed',token=first),200)
+assert [x['id'] for x in completed['items']]==[oid] and completed['items'][0]['paymentState']=='Paid',completed
+assert check(api('GET',orders_endpoint+'?group=history',token=first),200)['items']==[]
 assert [x['id'] for x in check(api('GET',orders_endpoint,token=first),200)['items']]==[target_order['id']]
 assert check(api('GET',f'{orders_endpoint}/{oid}',token=first),200)['status']=='Completed'
-print('PASS: account checkout to active/history, expired attempt, pagination, guest fallback and account isolation')
+print('PASS: account checkout to active/completed, expired attempt, pagination, guest fallback and account isolation')
 first_history=check(api('GET','/api/v1/me/recent-purchases',token=first),200)
 second_history=check(api('GET','/api/v1/me/recent-purchases',token=second),200)
 assert len(first_history)==1 and len(second_history)==1
