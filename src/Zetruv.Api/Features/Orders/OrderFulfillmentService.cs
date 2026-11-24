@@ -148,6 +148,26 @@ public sealed class OrderFulfillmentService(ZetruvDbContext db, FulfillmentActiv
         }
 
         var now = DateTimeOffset.UtcNow;
+        if (item.FulfillmentMethod == FulfillmentMethod.MANUAL_LOGIN)
+        {
+            // Completion is an operator attestation, not proof inferred from Paid.
+            // Require an official transaction/receipt reference (never account secrets).
+            if (request.Status == FulfillmentStatus.Completed &&
+                item.FulfillmentStatus != FulfillmentStatus.Completed &&
+                string.IsNullOrWhiteSpace(request.Reference))
+            {
+                return OrderItemFulfillmentResult.Failure(
+                    "A provider transaction or receipt reference is required for login top-up completion.",
+                    conflict: true);
+            }
+            if (request.Status == FulfillmentStatus.Processing &&
+                !ManualLoginCredentialService.IsUsable(item.ManualLoginCredential, now))
+            {
+                return OrderItemFulfillmentResult.Failure(
+                    "Login top-up access has expired or been cleared. Resolve through approved support before retrying.",
+                    conflict: true);
+            }
+        }
         var previousStatus = item.FulfillmentStatus;
         item.FulfillmentStatus = request.Status;
         item.FulfillmentReference = Clean(request.Reference) ?? item.FulfillmentReference;
