@@ -107,6 +107,9 @@ Q=$(curl -fsS "http://127.0.0.1:$API/api/v1/cms/fulfillment/queue?method=MANUAL_
 [[ "$Q" != *'P@ssword-demo-123'* ]]
 python3 -c 'import json,sys; d=json.loads(sys.argv[1]); iid=sys.argv[2]; x=next(i for i in d["items"] if str(i["orderItemId"])==iid); assert x["hasManualLoginCredentials"] is True; assert set(x["manualLoginCredentialFields"])=={"email","password","server"}' "$Q" "$ITEM"
 
+echo '=== COMPLETION REQUIRES OPERATOR EVIDENCE ==='
+CODE=$(curl -sS -o /tmp/manual-login-completion-error.json -w '%{http_code}' -X PUT "http://127.0.0.1:$API/api/v1/cms/orders/$OID/items/$ITEM/fulfillment" -H "Authorization: Bearer $CTOK" -H 'Content-Type: application/json' -d '{"status":"Completed"}')
+[[ "$CODE" == 409 ]]
 echo '=== COMPLETION CLEARS CREDENTIALS ==='
 F=$(curl -fsS -X PUT "http://127.0.0.1:$API/api/v1/cms/orders/$OID/items/$ITEM/fulfillment"   -H "Authorization: Bearer $CTOK" -H 'Content-Type: application/json'   -d '{"status":"Completed","reference":"MANUAL-SMOKE-OK"}')
 python3 -c 'import json,sys; x=json.loads(sys.argv[1]); assert x["status"]=="Completed" and x["orderStatus"]=="Completed"' "$F"
@@ -124,6 +127,11 @@ docker exec "$C" psql -U zetruv -d "$DB" -c "UPDATE manual_login_credentials SET
 CODE=$(curl -sS -o /tmp/manual-login-reveal.json -w '%{http_code}' "http://127.0.0.1:$API/api/v1/cms/fulfillment/orders/$OID2/items/$ITEM2/manual-login-credentials" -H "Authorization: Bearer $CTOK")
 [[ "$CODE" == 410 ]]
 [[ "$(docker exec "$C" psql -At -U zetruv -d "$DB" -c "SELECT (\"EncryptedPayload\" IS NULL) FROM manual_login_credentials WHERE \"OrderItemId\"='$ITEM2';")" == 't' ]]
+
+EXPIRED_STATE=$(docker exec "$C" psql -At -F '|' -U zetruv -d "$DB" -c "SELECT o.\"PaymentStatus\",o.\"Status\",oi.\"FulfillmentStatus\" FROM orders o JOIN order_items oi ON oi.\"OrderId\"=o.\"Id\" WHERE o.\"Id\"='$OID2';")
+[[ "$EXPIRED_STATE" == 'Paid|Processing|Failed' ]]
+CODE=$(curl -sS -o /tmp/manual-login-retry-error.json -w '%{http_code}' -X PUT "http://127.0.0.1:$API/api/v1/cms/orders/$OID2/items/$ITEM2/fulfillment" -H "Authorization: Bearer $CTOK" -H 'Content-Type: application/json' -d '{"status":"Processing"}')
+[[ "$CODE" == 409 ]]
 
 echo '=== CANCELLATION CLEARS CREDENTIALS ==='
 CO3=$(checkout '{"email":"cancel@example.com","password":"cancel-demo-pass"}' cancel@zetruv.local)

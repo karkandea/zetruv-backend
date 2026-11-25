@@ -249,7 +249,9 @@ public sealed class ManualLoginCredentialService(
         var now = DateTimeOffset.UtcNow;
         if (credential.ExpiresAt <= now)
         {
+            var previousStatus = credential.OrderItem.FulfillmentStatus;
             Clear(credential, now);
+            MarkExpiredPaidItem(credential.OrderItem, now);
             var context = executionContext ?? FulfillmentExecutionContext.System;
             activities.Create(
                 credential.OrderItem,
@@ -257,7 +259,7 @@ public sealed class ManualLoginCredentialService(
                 context.Source,
                 context.Actor,
                 now,
-                credential.OrderItem.FulfillmentStatus,
+                previousStatus,
                 credential.OrderItem.FulfillmentStatus,
                 message: "Login credentials expired and were cleared during reveal.");
             await db.SaveChangesAsync(cancellationToken);
@@ -314,27 +316,10 @@ public sealed class ManualLoginCredentialService(
         foreach (var credential in credentials)
         {
             var item = credential.OrderItem;
-            var order = item.Order;
             var previousStatus = item.FulfillmentStatus;
             Clear(credential, now);
 
-            if (item.FulfillmentMethod == FulfillmentMethod.MANUAL_LOGIN &&
-                order.PaymentStatus == PaymentStatus.Paid &&
-                item.FulfillmentStatus is not FulfillmentStatus.Completed and
-                not FulfillmentStatus.Cancelled)
-            {
-                item.FulfillmentStatus = FulfillmentStatus.Failed;
-                item.FulfillmentStartedAt ??= order.PaidAt ?? now;
-                item.FulfilledAt = null;
-                item.FulfillmentMessage = "Login credentials expired before fulfillment could be completed.";
-
-                if (order.Status != OrderStatus.Cancelled)
-                {
-                    order.Status = OrderStatus.Processing;
-                    order.CompletedAt = null;
-                    order.UpdatedAt = now;
-                }
-            }
+            MarkExpiredPaidItem(item, now);
 
             activities.Create(
                 item,
@@ -353,6 +338,26 @@ public sealed class ManualLoginCredentialService(
         }
 
         return credentials.Count;
+    }
+
+    private static void MarkExpiredPaidItem(OrderItem item, DateTimeOffset now)
+    {
+        var order = item.Order;
+        if (item.FulfillmentMethod != FulfillmentMethod.MANUAL_LOGIN ||
+            order.PaymentStatus != PaymentStatus.Paid ||
+            item.FulfillmentStatus is FulfillmentStatus.Completed or FulfillmentStatus.Cancelled)
+            return;
+
+        item.FulfillmentStatus = FulfillmentStatus.Failed;
+        item.FulfillmentStartedAt ??= order.PaidAt ?? now;
+        item.FulfilledAt = null;
+        item.FulfillmentMessage = "Login credentials expired before fulfillment could be completed.";
+        if (order.Status != OrderStatus.Cancelled)
+        {
+            order.Status = OrderStatus.Processing;
+            order.CompletedAt = null;
+            order.UpdatedAt = now;
+        }
     }
 
     public static void Clear(ManualLoginCredential? credential, DateTimeOffset now)
