@@ -70,7 +70,9 @@ public sealed class PaymentService(
     FulfillmentExecutionService executionService,
     PaymentWebhookEventLedger webhookEventLedger,
     IOptions<PaymentReconciliationOptions> reconciliationOptions,
-    ILogger<PaymentService> logger)
+    ILogger<PaymentService> logger,
+    AutoIdRuntimeProviderMappingService providerMappings,
+    AutoIdFulfillmentProviderResolver fulfillmentProviders)
 {
     public async Task<InitiatePaymentResult> InitiateAsync(
         Guid orderId,
@@ -245,6 +247,20 @@ public sealed class PaymentService(
             // The mock provider remains usable only by the legacy test flow
             // without selected methods; never advertise QRIS/VA/GoPay mock.
             return InitiatePaymentResult.Failure("Selected payment methods require a live gateway.");
+        }
+
+        // Recheck before reserving inventory or contacting the payment gateway.
+        // Existing active payment sessions remain recoverable; this guards new attempts.
+        if (gateway is not MockPaymentGateway)
+        {
+            foreach (var item in order.Items.Where(x => x.FulfillmentMethod == FulfillmentMethod.AUTO_ID))
+            {
+                var mapping = (await providerMappings.ResolveAsync(
+                    item.ProductVariantId, cancellationToken)).Mapping;
+                if (mapping is null || fulfillmentProviders.Resolve(mapping.ProviderCode) is null)
+                    return InitiatePaymentResult.Failure(
+                        $"{item.ProductName} is temporarily unavailable for top up.");
+            }
         }
 
         var reservation = await inventoryReservations.ReserveAsync(order, cancellationToken);
