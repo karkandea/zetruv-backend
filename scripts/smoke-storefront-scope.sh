@@ -552,4 +552,63 @@ assert same_results[0][1]['id']==same_results[1][1]['id']
 print('PASS: customer idempotency replay, conflict, auth gate, concurrent same-key order + coupon claim once')
 print('PASS: voucher CMS, quote, persisted discount, per-customer usage, unpaid cancellation, concurrent cap, disable')
 print('PASS: 50 total heroes, CTA safety, personal purchase isolation, customer cart, checkout owner, spend leaderboard, paid sales, verified moderated rating, search, dynamic per-game/per-listing account attributes, refunds, hero scheduling')
+
+# Real API lifecycle for Joki MANUAL; separate stock fixture, no DB state shortcuts.
+# The suite already runs against a disposable loopback database and mock payment provider.
+import hashlib, hmac
+joki_cat=next(x for x in cats if x['kind']=='Joki')
+joki_product=check(api('POST','/api/v1/cms/catalog/products',{
+    'categoryId':joki_cat['id'],'gameId':None,'name':'Joki Lifecycle QA',
+    'slug':'joki-lifecycle-qa','kind':'Joki','fulfillmentMethod':'MANUAL',
+    'requiresGameAccountValidation':False,'isActive':True,'isFeatured':False,'sortOrder':90},admin),201)
+joki_pid=joki_product if isinstance(joki_product,str) else joki_product['id']
+joki_variant=check(api('POST',f'/api/v1/cms/catalog/products/{joki_pid}/variants',{
+    'name':'Rank Package QA','sku':'JOKI-LIFECYCLE-QA','price':89000,
+    'stockQuantity':1,'isActive':True,'sortOrder':0},admin),201)
+joki_vid=joki_variant if isinstance(joki_variant,str) else joki_variant['id']
+joki_pdp=check(api('GET','/api/v1/catalog/products/joki-lifecycle-qa'),200)
+assert joki_pdp['isAvailable'] and joki_pdp['fulfillmentMethod']=='MANUAL'
+assert any(v['id']==joki_vid and v['price']==89000 for v in joki_pdp['variants'])
+joki_line={'productVariantId':joki_vid,'quantity':1,'expectedUnitPrice':89000}
+joki_checkout={'customerPhone':'+6281234567890','items':[joki_line]}
+joki_order=check(api('POST','/api/v1/checkout/orders',joki_checkout,first),201)
+assert joki_order['grandTotal']==89000 and joki_order['paymentStatus']=='Pending'
+joki_id=joki_order['id']
+joki_admin_path=f'/api/v1/cms/orders/{joki_id}'
+joki_owner_path=f'/api/v1/me/orders/{joki_id}'
+joki_payment_path=f'/api/v1/checkout/orders/{joki_id}/payment'
+joki_headers={'X-Order-Access-Token':joki_order['orderAccessToken']}
+joki_item=check(api('GET',joki_admin_path,token=admin),200)['items'][0]
+assert joki_item['fulfillmentStatus']=='Pending'
+joki_fulfillment_path=f"{joki_admin_path}/items/{joki_item['id']}/fulfillment"
+check(api('GET',joki_owner_path,token=second),404)
+check(api('PUT',joki_fulfillment_path,{'status':'Completed','reference':'QA-EARLY'},admin),409)
+print('PASS: Joki pending checkout, owner isolation and unpaid completion guard')
+joki_attempt=check(api('POST',joki_payment_path,extra_headers=joki_headers),200)
+joki_event={'providerReference':joki_attempt['providerReference'],'status':'Paid','amount':89000,'currency':'IDR'}
+joki_signature=hmac.new(os.environ['Payments__Mock__WebhookSecret'].encode(),
+    json.dumps(joki_event).encode(),hashlib.sha256).hexdigest()
+check(api('POST','/api/v1/payments/webhooks/mock',joki_event,
+    extra_headers={'X-Mock-Signature':joki_signature}),200)
+joki_paid=check(api('GET',joki_owner_path,token=first),200)
+assert joki_paid['paymentStatus']=='Paid' and joki_paid['status']=='Processing'
+assert joki_paid['items'][0]['fulfillmentStatus']=='Processing'
+assert check(api('GET',joki_admin_path,token=admin),200)['items'][0]['fulfillmentStatus']=='Processing'
+print('PASS: Joki mock payment callback starts fulfillment in CMS and customer order')
+joki_failed=check(api('PUT',joki_fulfillment_path,{
+    'status':'Failed','message':'QA operator retry required'},admin),200)
+assert joki_failed['hasFulfillmentIssue']
+assert check(api('GET',joki_owner_path,token=first),200)['items'][0]['fulfillmentStatus']=='Failed'
+check(api('PUT',joki_fulfillment_path,{'status':'Completed','reference':'QA-SKIP'},admin),409)
+check(api('PUT',joki_fulfillment_path,{'status':'Processing'},admin),200)
+assert check(api('GET',joki_owner_path,token=first),200)['items'][0]['fulfillmentStatus']=='Processing'
+joki_completed=check(api('PUT',joki_fulfillment_path,{
+    'status':'Completed','reference':'QA-JOKI-COMPLETE'},admin),200)
+assert joki_completed['orderStatus']=='Completed' and not joki_completed['hasFulfillmentIssue']
+joki_final=check(api('GET',joki_owner_path,token=first),200)
+assert joki_final['status']=='Completed' and joki_final['items'][0]['fulfillmentStatus']=='Completed'
+check(api('PUT',joki_fulfillment_path,{'status':'Failed','message':'QA late failure'},admin),409)
+assert not check(api('GET','/api/v1/catalog/products/joki-lifecycle-qa'),200)['isAvailable']
+assert api('POST','/api/v1/checkout/orders',joki_checkout,first)[0] in (400,409)
+print('PASS: Joki Failed -> Processing -> Completed, terminal guard and depleted stock')
 PY
