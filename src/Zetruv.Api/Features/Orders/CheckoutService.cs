@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Zetruv.Api.Features.Catalog;
 using Zetruv.Api.Features.GameAccounts;
+using Zetruv.Api.Features.Payments;
 using Zetruv.Api.Features.Shipping;
 using Zetruv.Api.Persistence;
 
@@ -13,7 +14,10 @@ public sealed class CheckoutService(
     ManualLoginCredentialService manualLoginCredentials,
     ManualLoginCredentialProtector deliveryProtector,
     ManualLoginReadinessService manualLoginReadiness,
-    DiscountVoucherService discountVouchers)
+    DiscountVoucherService discountVouchers,
+    PaymentGatewayResolver paymentGateways,
+    AutoIdRuntimeProviderMappingService providerMappings,
+    AutoIdFulfillmentProviderResolver fulfillmentProviders)
 {
     public async Task<CreateCheckoutOrderResult> CreateOrderAsync(
         CreateCheckoutOrderRequest request,
@@ -159,6 +163,20 @@ public sealed class CheckoutService(
             {
                 return CreateCheckoutOrderResult.Failure(
                     $"{variant.ProductName} / {variant.Name} is not available for checkout.");
+            }
+
+            // Real payment sessions (including Sandbox) must not be offered for
+            // AUTO_ID SKUs without an active mapping and registered adapter.
+            // The explicitly configured mock payment gateway retains isolated
+            // synthetic failure/retry tests; it cannot collect customer funds.
+            if (variant.ProductFulfillmentMethod == FulfillmentMethod.AUTO_ID &&
+                paymentGateways.Resolve() is not MockPaymentGateway)
+            {
+                var mapping = (await providerMappings.ResolveAsync(
+                    variant.Id, cancellationToken)).Mapping;
+                if (mapping is null || fulfillmentProviders.Resolve(mapping.ProviderCode) is null)
+                    return CreateCheckoutOrderResult.Failure(
+                        $"{variant.ProductName} / {variant.Name} is temporarily unavailable for top up.");
             }
 
             if (variant.ProductKind == ProductKind.GameAccount &&
