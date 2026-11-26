@@ -7,7 +7,8 @@ DB=zetruv_provider_mapping_runtime_test
 PORT=57442
 API=18192
 PID=""
-cleanup(){ [[ -n "$PID" ]] && kill "$PID" >/dev/null 2>&1 || true; docker rm -fv "$C" >/dev/null 2>&1 || true; rm -f /tmp/zetruv-pmr-*; }
+PID2=""
+cleanup(){ [[ -n "$PID2" ]] && kill "$PID2" >/dev/null 2>&1 || true; [[ -n "$PID" ]] && kill "$PID" >/dev/null 2>&1 || true; docker rm -fv "$C" >/dev/null 2>&1 || true; rm -f /tmp/zetruv-pmr-*; }
 trap cleanup EXIT
 
 dotnet build src/Zetruv.Api/Zetruv.Api.csproj --configuration Release --nologo
@@ -92,5 +93,28 @@ GAME_OFF=$(curl -sS -o /dev/null -w '%{http_code}' -X PUT "http://127.0.0.1:$API
 MAPS_OFF=$(curl -fsS "http://127.0.0.1:$API/api/v1/cms/provider-mappings" -H "Authorization: Bearer $CTOK")
 python3 -c 'import json,sys; x=json.loads(sys.argv[1]); g=next(v for v in x if v["gameId"]=="a1000000-0000-0000-0000-000000000001"); s=next(v for v in g["skus"] if v["variantId"]=="a3000000-0000-0000-0000-000000000001"); assert g["mappingActive"] is False and s["isOperational"] is False' "$MAPS_OFF"
 echo 'PASS: disabling game mapping makes variants non-operational'
+
+
+# Preserve the isolated mock regression above, but prove a non-mock payment
+# selection cannot create an order/session for an unavailable supplier.
+# Midtrans is deliberately disabled: neither request may reach any external API.
+V2=$(validate); VID2=$(json '["validationId"]' <<<"$V2")
+OLD=$(checkout "$VID2" pending-before-provider-change@zetruv.local)
+OLD_ID=$(json '["id"]' <<<"$OLD"); OLD_TOKEN=$(json '["orderAccessToken"]' <<<"$OLD")
+V3=$(validate); VID3=$(json '["validationId"]' <<<"$V3")
+API2=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')
+Payments__Provider=midtrans Payments__Midtrans__Enabled=false Payments__Midtrans__Mode=Sandbox \
+  dotnet src/Zetruv.Api/bin/Release/net10.0/Zetruv.Api.dll --urls="http://127.0.0.1:$API2" >/tmp/zetruv-pmr-guard.log 2>&1 & PID2=$!
+for _ in $(seq 1 40); do curl -fsS "http://127.0.0.1:$API2/health" >/dev/null 2>&1 && break; sleep 1; done
+curl -fsS "http://127.0.0.1:$API2/health" >/dev/null
+BLOCKED=$(curl -sS -o /tmp/zetruv-pmr-guard-checkout.json -w '%{http_code}' -X POST "http://127.0.0.1:$API2/api/v1/checkout/orders" -H 'Content-Type: application/json' -d "{\"customerEmail\":\"blocked@zetruv.local\",\"customerPhone\":\"+6281234567890\",\"items\":[{\"productVariantId\":\"a3000000-0000-0000-0000-000000000001\",\"quantity\":1,\"gameAccountValidationId\":\"$VID3\"}]}")
+[[ "$BLOCKED" == 400 ]]
+grep -Fq 'temporarily unavailable for top up' /tmp/zetruv-pmr-guard-checkout.json
+BLOCKED_PAYMENT=$(curl -sS -o /tmp/zetruv-pmr-guard-payment.json -w '%{http_code}' -X POST "http://127.0.0.1:$API2/api/v1/checkout/orders/$OLD_ID/payment?methodCode=MIDTRANS_SNAP" -H "X-Order-Access-Token: $OLD_TOKEN")
+[[ "$BLOCKED_PAYMENT" == 400 ]]
+grep -Fq 'temporarily unavailable for top up' /tmp/zetruv-pmr-guard-payment.json
+COUNT=$(docker exec "$C" psql -At -U zetruv -d "$DB" -c "SELECT count(*) FROM payment_transactions WHERE \"OrderId\"='$OLD_ID';")
+[[ "$COUNT" == 0 ]]
+echo 'PASS: missing supplier blocks non-mock checkout and new payment attempt before external calls'
 
 echo 'PASS: provider mapping runtime + CMS + fail-closed + activity history'
