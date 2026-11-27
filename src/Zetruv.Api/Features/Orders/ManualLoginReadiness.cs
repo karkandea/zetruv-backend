@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Zetruv.Api.Features.Catalog;
+using Zetruv.Api.Features.Payments;
 using Zetruv.Api.Persistence;
 
 namespace Zetruv.Api.Features.Orders;
@@ -14,10 +15,27 @@ public sealed record ManualLoginReadinessResponse(
 
 public sealed class ManualLoginReadinessService(
     IConfiguration configuration,
-    ManualLoginCredentialProtector protector)
+    ManualLoginCredentialProtector protector,
+    IHostEnvironment environment,
+    PaymentGatewayResolver gateways)
 {
+    public bool IsSandboxTest(Guid productId) =>
+        environment.IsDevelopment() &&
+        configuration.GetValue<bool>("ManualLogin:SandboxTestEnabled") &&
+        protector.IsConfigured &&
+        gateways.Resolve() is MidtransSnapGateway { IsLiveConfigured: true } &&
+        configuration.GetSection("ManualLogin:SandboxTestProductIds")
+            .GetChildren().Any(x => Guid.TryParse(x.Value, out var id) && id == productId);
+
+    public static bool IsSyntheticInput(IReadOnlyDictionary<string, string>? fields) =>
+        fields is { Count: 3 } &&
+        fields.TryGetValue("email", out var email) && email == "qa-player@example.test" &&
+        fields.TryGetValue("password", out var password) && password == "Zetruv-QA-Only-2026!" &&
+        fields.TryGetValue("nickname", out var nickname) && nickname == "Zetruv QA";
+
     public bool IsReady(Guid productId)
     {
+        if (IsSandboxTest(productId)) return true;
         // Real authorization must be recorded by operations after confirming the
         // game's terms and the exact supported fulfillment process. NEVER
         // enable globally based only on product.IsActive or encryption readiness.
@@ -58,7 +76,7 @@ public sealed class ManualLoginReadinessController(
             product.HasActiveVariant && product.HasInputSchema && readiness.IsReady(product.Id);
         return Ok(new ManualLoginReadinessResponse(
             product.Id, eligible,
-            eligible ? "Ready" : "NotReady",
+            eligible ? (readiness.IsSandboxTest(product.Id) ? "SandboxTest" : "Ready") : "NotReady",
             eligible ? "CmsManualAfterPaid" : "None"));
     }
 }
