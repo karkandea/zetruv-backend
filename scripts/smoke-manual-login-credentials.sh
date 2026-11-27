@@ -71,7 +71,19 @@ echo '=== CLIENT GAME READINESS: ACTIVE CATALOG IS NOT AUTHORIZATION ==='
 docker exec -i "$C" psql -v ON_ERROR_STOP=1 -U zetruv -d "$DB" <<'SQL'
 UPDATE games SET "IsActive"=TRUE WHERE "Slug" IN ('efootball-mobile','call-of-duty-mobile');
 UPDATE catalog_categories SET "IsActive"=TRUE WHERE "Kind"='TopUpLogin';
+-- Fresh migrations may run before top_up_login is bootstrapped. Populate
+-- these test-only fixtures explicitly so absence cannot make the gate pass.
+INSERT INTO products ("Id","CategoryId","GameId","Name","Slug","Kind","FulfillmentMethod","RequiresGameAccountValidation","IsActive","IsFeatured","SortOrder","CreatedAt","UpdatedAt")
+SELECT s.id::uuid,(SELECT "Id" FROM catalog_categories WHERE "Key"='top_up_login'),g."Id",s.name,s.slug,'TopUpLogin','MANUAL_LOGIN',FALSE,TRUE,FALSE,0,NOW(),NOW()
+FROM (VALUES ('c2000000-0000-0000-0000-000000000001','efootball-mobile','eFootball QA'),('c2000000-0000-0000-0000-000000000002','call-of-duty-mobile','CODM QA')) s(id,slug,name)
+JOIN games g ON g."Slug"=s.slug ON CONFLICT ("Slug") DO NOTHING;
 UPDATE products SET "IsActive"=TRUE WHERE "Id" IN ('c2000000-0000-0000-0000-000000000001','c2000000-0000-0000-0000-000000000002');
+INSERT INTO product_variants ("Id","ProductId","Name","Sku","Price","StockQuantity","IsActive","SortOrder","CreatedAt","UpdatedAt")
+VALUES ('d4000000-0000-0000-0000-000000000001','c2000000-0000-0000-0000-000000000001','QA package','DUMMY-EFOOTBALL-S',10000,10,TRUE,0,NOW(),NOW()),
+('d4000000-0000-0000-0000-000000000004','c2000000-0000-0000-0000-000000000002','QA package','DUMMY-CODM-S',10000,10,TRUE,0,NOW(),NOW()) ON CONFLICT ("Sku") DO NOTHING;
+INSERT INTO product_input_fields ("Id","ProductId","Key","Label","Scope","Type","IsRequired","IsSensitive","MaxLength","SortOrder","CreatedAt","UpdatedAt")
+VALUES ('c3000000-0000-0000-0000-000000000003','c2000000-0000-0000-0000-000000000001','nickname','QA nickname','LoginCredential','Text',TRUE,FALSE,120,0,NOW(),NOW()),
+('c3000000-0000-0000-0000-000000000006','c2000000-0000-0000-0000-000000000002','nickname','QA nickname','LoginCredential','Text',TRUE,FALSE,120,0,NOW(),NOW()) ON CONFLICT ("ProductId","Key") DO NOTHING;
 SQL
 for product in c2000000-0000-0000-0000-000000000001 c2000000-0000-0000-0000-000000000002; do
   R=$(curl -fsS "http://127.0.0.1:$API/api/v1/checkout/manual-login/readiness/$product")
