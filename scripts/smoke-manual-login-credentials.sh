@@ -65,6 +65,25 @@ webhook(){
   curl -fsS -X POST "http://127.0.0.1:$API/api/v1/payments/webhooks/mock" -H 'Content-Type: application/json' -H "X-Mock-Signature: $sig" -d "$body"
 }
 
+echo '=== CLIENT GAME READINESS: ACTIVE CATALOG IS NOT AUTHORIZATION ==='
+# Only mutate the isolated smoke database. The global flags are true, but the
+# allowlist contains exclusively the synthetic smoke product.
+docker exec -i "$C" psql -v ON_ERROR_STOP=1 -U zetruv -d "$DB" <<'SQL'
+UPDATE games SET "IsActive"=TRUE WHERE "Slug" IN ('efootball-mobile','call-of-duty-mobile');
+UPDATE catalog_categories SET "IsActive"=TRUE WHERE "Kind"='TopUpLogin';
+UPDATE products SET "IsActive"=TRUE WHERE "Id" IN ('c2000000-0000-0000-0000-000000000001','c2000000-0000-0000-0000-000000000002');
+SQL
+for product in c2000000-0000-0000-0000-000000000001 c2000000-0000-0000-0000-000000000002; do
+  R=$(curl -fsS "http://127.0.0.1:$API/api/v1/checkout/manual-login/readiness/$product")
+  python3 -c 'import json,sys; d=json.loads(sys.argv[1]); assert d["available"] is False and d["status"]=="NotReady" and d["fulfillmentMode"]=="None", d' "$R"
+done
+for variant in d4000000-0000-0000-0000-000000000001 d4000000-0000-0000-0000-000000000004; do
+  CODE=$(curl -sS -o /tmp/manual-login-error.json -w '%{http_code}' -X POST "http://127.0.0.1:$API/api/v1/checkout/orders" -H 'Content-Type: application/json' -d "{\"customerEmail\":\"blocked@zetruv.local\",\"customerPhone\":\"+6281234567890\",\"items\":[{\"productVariantId\":\"$variant\",\"quantity\":1}]}")
+  [[ "$CODE" == 400 ]]
+  grep -Fq 'This login-based service is not approved or ready for processing.' /tmp/manual-login-error.json
+done
+echo 'PASS: eFootball and CODM cannot create orders without individual authorization'
+
 echo '=== REQUIRED CREDENTIALS ==='
 CODE=$(curl -sS -o /tmp/manual-login-error.json -w '%{http_code}' -X POST "http://127.0.0.1:$API/api/v1/checkout/orders"   -H 'Content-Type: application/json'   -d '{"customerEmail":"missing@zetruv.local","customerPhone":"+6281234567890","items":[{"productVariantId":"93000000-0000-0000-0000-000000000001","quantity":1}]}')
 [[ "$CODE" == 400 ]]
