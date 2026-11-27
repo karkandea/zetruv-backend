@@ -17,5 +17,11 @@ steps:
       - dotnet run --project tests/XenditContractSmoke/XenditContractSmoke.csproj --configuration Release
       - dotnet run --project tests/MidtransContractSmoke/MidtransContractSmoke.csproj --configuration Release
       - dotnet ef migrations has-pending-model-changes --project src/Zetruv.Api/Zetruv.Api.csproj --startup-project src/Zetruv.Api/Zetruv.Api.csproj --configuration Release --no-build
-      - bash scripts/smoke-runtime-config.sh
       - bash scripts/smoke-production-provider-guard.sh
+
+  - name: runtime-config-smoke
+    image: docker:29-cli
+    commands:
+      - apk add --no-cache bash openssl
+      - docker compose version
+      - bash scripts/smoke-runtime-config.sh
