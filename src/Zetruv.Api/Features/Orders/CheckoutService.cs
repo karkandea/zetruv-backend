@@ -227,6 +227,11 @@ public sealed class CheckoutService(
                         schemaResult.Error ?? "Login credentials do not match the product schema.");
                 }
 
+                if (manualLoginReadiness.IsSandboxTest(variant.ProductId) &&
+                    !ManualLoginReadinessService.IsSyntheticInput(schemaResult.Fields))
+                    return CreateCheckoutOrderResult.Failure(
+                        "Sandbox manual-login accepts only the supplied synthetic QA account. Never enter real game credentials.");
+
                 var normalized = manualLoginCredentials.Normalize(schemaResult.Fields);
                 if (normalized.Error is not null)
                 {
