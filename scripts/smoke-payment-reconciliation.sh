@@ -79,6 +79,7 @@ create_payment(){
   txid=$(docker exec "$C" psql -At -U zetruv -d "$DB" -c "SELECT \"Id\" FROM payment_transactions WHERE \"OrderId\"='$oid' ORDER BY \"CreatedAt\" DESC LIMIT 1;")
   printf -v "${out}_OID" '%s' "$oid"
   printf -v "${out}_TX" '%s' "$txid"
+  printf -v "${out}_TOKEN" '%s' "$token"
 }
 
 set_ref(){
@@ -134,6 +135,26 @@ RACE_WEBHOOK_CODE=$(cat /tmp/zetruv-payment-reconciliation-webhook.code)
 RACE_DB=$(docker exec "$C" psql -At -F '|' -U zetruv -d "$DB" -c "SELECT o.\"PaymentStatus\",pt.\"Status\",ir.\"Status\",pt.\"ReconciliationAttemptCount\" FROM orders o JOIN payment_transactions pt ON pt.\"OrderId\"=o.\"Id\" JOIN inventory_reservations ir ON ir.\"OrderId\"=o.\"Id\" WHERE o.\"Id\"='$RACE_OID';")
 python3 -c 'import sys; p,t,r,a=sys.argv[1].split("|"); assert (p,t,r)==("Paid","Succeeded","Consumed"); assert int(a) in (0,1)' "$RACE_DB"
 echo 'PASS: webhook and provider reconciliation serialize on the same order lock'
+
+echo '=== CUSTOMER STATUS REFRESH ==='
+create_payment 'refresh@zetruv.local' REFRESH
+set_ref "$REFRESH_OID" "$REFRESH_TX" 'MOCK-RECON-PAID-CUSTOMER' "NOW()+INTERVAL '1 day'"
+URL="$BASE/api/v1/checkout/orders/$REFRESH_OID/payment"
+BAD=$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$URL/refresh" -H 'X-Order-Access-Token: invalid')
+[[ "$BAD" == 404 ]]
+BEFORE=$(curl -fsS "$URL" -H "X-Order-Access-Token: $REFRESH_TOKEN")
+[[ $(json '["state"]' <<<"$BEFORE") == Pending ]]
+AFTER=$(curl -fsS -X POST "$URL/refresh" -H "X-Order-Access-Token: $REFRESH_TOKEN")
+[[ $(json '["state"]' <<<"$AFTER") == Paid ]]
+AGAIN=$(curl -fsS -X POST "$URL/refresh" -H "X-Order-Access-Token: $REFRESH_TOKEN")
+[[ $(json '["state"]' <<<"$AGAIN") == Paid ]]
+echo 'PASS: authorized customer refresh recovers missed webhook; repeated refresh stays Paid'
+create_payment 'cooldown@zetruv.local' COOL
+set_ref "$COOL_OID" "$COOL_TX" 'MOCK-RECON-PENDING-CUSTOMER' "NOW()+INTERVAL '1 day'"
+for _ in 1 2; do curl -fsS -X POST "$BASE/api/v1/checkout/orders/$COOL_OID/payment/refresh" -H "X-Order-Access-Token: $COOL_TOKEN" >/dev/null; done
+COUNT=$(docker exec "$C" psql -At -U zetruv -d "$DB" -c "SELECT \"ReconciliationAttemptCount\" FROM payment_transactions WHERE \"Id\"='$COOL_TX';")
+[[ "$COUNT" == 1 ]]
+echo 'PASS: customer refresh cooldown enforced inside order lock'
 
 echo '=== BACKGROUND RECONCILIATION ==='
 create_payment 'background@zetruv.local' BG
