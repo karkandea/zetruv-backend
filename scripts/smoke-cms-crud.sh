@@ -121,7 +121,7 @@ GAME_ID=$(extract_id <<<"$GAME")
 GAME_UP=$(curl -sS -o /dev/null -w '%{http_code}'   -X PUT "$BASE/api/v1/cms/catalog/games/$GAME_ID" "${AUTH[@]}"   -d '{"name":"CMS CRUD Game Updated","slug":"cms-crud-game","publisher":"Zetruv Test Updated","imageUrl":"https://example.test/game2.png","isActive":true,"isPopular":false,"sortOrder":90}')
 [[ "$GAME_UP" == 204 ]]
 
-PRODUCT=$(curl -fsS -X POST "$BASE/api/v1/cms/catalog/products" "${AUTH[@]}"   -d "{\"categoryId\":\"$CAT_ID\",\"gameId\":\"$GAME_ID\",\"name\":\"CMS CRUD Product\",\"slug\":\"cms-crud-product\",\"shortDescription\":\"Initial\",\"description\":\"Initial description\",\"thumbnailUrl\":\"https://example.test/product.png\",\"kind\":\"TopUpLogin\",\"fulfillmentMethod\":\"MANUAL_LOGIN\",\"requiresGameAccountValidation\":false,\"isActive\":true,\"isFeatured\":true,\"sortOrder\":91}")
+PRODUCT=$(curl -fsS -X POST "$BASE/api/v1/cms/catalog/products" "${AUTH[@]}"   -d "{\"categoryId\":\"$CAT_ID\",\"gameId\":\"$GAME_ID\",\"name\":\"CMS CRUD Product\",\"slug\":\"cms-crud-product\",\"shortDescription\":\"Initial top up description\",\"description\":\"Initial description\",\"thumbnailUrl\":\"https://example.test/product.png\",\"kind\":\"TopUpLogin\",\"fulfillmentMethod\":\"MANUAL_LOGIN\",\"requiresGameAccountValidation\":false,\"isActive\":true,\"isFeatured\":true,\"sortOrder\":91}")
 PRODUCT_ID=$(extract_id <<<"$PRODUCT")
 
 VARIANT=$(curl -fsS -X POST "$BASE/api/v1/cms/catalog/products/$PRODUCT_ID/variants" "${AUTH[@]}"   -d '{"name":"Package A","sku":"CMS-CRUD-A","price":100000,"compareAtPrice":120000,"stockQuantity":5,"weightGrams":null,"isActive":true,"sortOrder":1}')
@@ -148,7 +148,7 @@ OTP_CODE=$(curl -sS -o /tmp/zetruv-cms-crud-otp.json -w '%{http_code}'   -X POST
 PASS_FIELD_UP=$(curl -sS -o /dev/null -w '%{http_code}'   -X PUT "$BASE/api/v1/cms/catalog/products/$PRODUCT_ID/input-fields/$PASS_FIELD_ID" "${AUTH[@]}"   -d '{"key":"password","label":"Konami Password","scope":"LoginCredential","type":"Password","placeholder":null,"helpText":"Updated help","isRequired":true,"isSensitive":true,"maxLength":250,"options":null,"sortOrder":2}')
 [[ "$PASS_FIELD_UP" == 204 ]]
 
-PRODUCT_UP=$(curl -sS -o /dev/null -w '%{http_code}'   -X PUT "$BASE/api/v1/cms/catalog/products/$PRODUCT_ID" "${AUTH[@]}"   -d "{\"categoryId\":\"$CAT_ID\",\"gameId\":\"$GAME_ID\",\"name\":\"CMS CRUD Product Updated\",\"slug\":\"cms-crud-product\",\"shortDescription\":\"Updated\",\"description\":\"Updated description\",\"thumbnailUrl\":\"https://example.test/product2.png\",\"kind\":\"TopUpLogin\",\"fulfillmentMethod\":\"MANUAL_LOGIN\",\"requiresGameAccountValidation\":false,\"isActive\":true,\"isFeatured\":false,\"sortOrder\":90}")
+PRODUCT_UP=$(curl -sS -o /dev/null -w '%{http_code}'   -X PUT "$BASE/api/v1/cms/catalog/products/$PRODUCT_ID" "${AUTH[@]}"   -d "{\"categoryId\":\"$CAT_ID\",\"gameId\":\"$GAME_ID\",\"name\":\"CMS CRUD Product Updated\",\"slug\":\"cms-crud-product\",\"shortDescription\":\"Updated top up description\",\"description\":\"Updated description\",\"thumbnailUrl\":\"https://example.test/product2.png\",\"kind\":\"TopUpLogin\",\"fulfillmentMethod\":\"MANUAL_LOGIN\",\"requiresGameAccountValidation\":false,\"isActive\":true,\"isFeatured\":false,\"sortOrder\":90}")
 [[ "$PRODUCT_UP" == 204 ]]
 
 CMS_PRODUCT=$(curl -fsS "$BASE/api/v1/cms/catalog/products/$PRODUCT_ID" "${AUTH[@]}")
@@ -157,6 +157,27 @@ python3 -c 'import json,sys; x=json.loads(sys.argv[1]); assert x["name"]=="CMS C
 PUBLIC_PRODUCT=$(curl -fsS "$BASE/api/v1/catalog/products/cms-crud-product")
 python3 -c 'import json,sys; x=json.loads(sys.argv[1]); assert x["name"]=="CMS CRUD Product Updated"; assert x["fulfillmentMethod"]=="MANUAL_LOGIN"; assert x["isAvailable"] is True; assert [f["key"] for f in x["inputFields"]]==["email","password"]' "$PUBLIC_PRODUCT"
 echo 'PASS: catalog category/game/product/variant/image/input-field create-update-read + public projection'
+python3 - "$BASE" "$CTOK" "$CAT_ID" "$GAME_ID" "$PRODUCT_ID" <<'PY'
+import json, sys, urllib.request, urllib.error
+base, token, cat, game, pid = sys.argv[1:]
+def reject(path, payload, expected=400):
+    req = urllib.request.Request(base + '/api/v1/cms/catalog/' + path, data=json.dumps(payload).encode(), headers={'Content-Type':'application/json','Authorization':'Bearer '+token}, method='POST')
+    try:
+        urllib.request.urlopen(req)
+    except urllib.error.HTTPError as exc:
+        assert exc.code == expected, (exc.code, exc.read())
+    else:
+        raise AssertionError('Accepted invalid request: ' + str(payload))
+product = dict(categoryId=cat, gameId=game, name='Validation smoke product', slug='validation-smoke-product', shortDescription='Valid description', kind='TopUpLogin', fulfillmentMethod='MANUAL_LOGIN', requiresGameAccountValidation=False, isActive=True, isFeatured=False, sortOrder=0)
+for change in [dict(gameId=None), dict(name='x'), dict(name='x'*81), dict(shortDescription=''), dict(shortDescription='x'*161), dict(description='x'*2001)]:
+    reject('products', {**product, **change})
+variant = dict(name='Valid package', sku='VALIDATION-SMOKE', price=10000, compareAtPrice=None, stockQuantity=None, isActive=True, sortOrder=0)
+for change in [dict(name='x'), dict(sku='bad sku'), dict(price=0), dict(price=1.5), dict(compareAtPrice=10000), dict(stockQuantity=-1)]:
+    reject('products/'+pid+'/variants', {**variant, **change})
+reject('products/'+pid+'/variants', {**variant, 'sku':'cms-crud-a'}, 409)
+print('PASS: TopUpLogin API rejects invalid product and variant fields and duplicate SKU')
+PY
+
 
 echo '=== PROMOTION CRUD ==='
 START=$(python3 -c 'import datetime; print((datetime.datetime.now(datetime.timezone.utc)-datetime.timedelta(minutes=5)).isoformat())')
