@@ -494,6 +494,15 @@ namespace Zetruv.Api.Persistence.Migrations
 
             modelBuilder.Entity("Zetruv.Api.Features.Catalog.Product", b =>
                 {
+
+                    b.Property<string>("HeroDesktopUrl")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<string>("HeroMobileUrl")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
@@ -922,6 +931,11 @@ namespace Zetruv.Api.Persistence.Migrations
 
             modelBuilder.Entity("Zetruv.Api.Features.Home.HomeHero", b =>
                 {
+
+                    b.Property<string>("MobileImageUrl")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");

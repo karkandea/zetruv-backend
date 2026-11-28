@@ -159,13 +159,13 @@ public sealed class MediaService(
 
         // An uploaded banner may be shared by several heroes. Never remove a live image.
         if (asset.StorageKey.StartsWith("banners/", StringComparison.Ordinal) &&
-            await db.HomeHeroes.AnyAsync(x => x.ImageUrl.EndsWith("/" + asset.StorageKey), cancellationToken))
+            await db.HomeHeroes.AnyAsync(x => x.ImageUrl.EndsWith("/" + asset.StorageKey) || (x.MobileImageUrl != null && x.MobileImageUrl.EndsWith("/" + asset.StorageKey)), cancellationToken))
             throw new InvalidOperationException("Gambar masih digunakan oleh banner. Ganti atau hapus banner terlebih dahulu.");
 
         if (asset.StorageKey.StartsWith("catalog/", StringComparison.Ordinal))
         {
             var reference = "/" + asset.StorageKey;
-            if (await db.Products.AnyAsync(x => x.ThumbnailUrl != null && x.ThumbnailUrl.EndsWith(reference), cancellationToken) ||
+            if (await db.Products.AnyAsync(x => (x.ThumbnailUrl != null && x.ThumbnailUrl.EndsWith(reference)) || (x.HeroDesktopUrl != null && x.HeroDesktopUrl.EndsWith(reference)) || (x.HeroMobileUrl != null && x.HeroMobileUrl.EndsWith(reference)), cancellationToken) ||
                 await db.ProductImages.AnyAsync(x => x.Url.EndsWith(reference), cancellationToken) ||
                 await db.ProductVariants.AnyAsync(x => (x.IconUrl != null && x.IconUrl.EndsWith(reference)) ||
                     (x.RankFromIconUrl != null && x.RankFromIconUrl.EndsWith(reference)) ||

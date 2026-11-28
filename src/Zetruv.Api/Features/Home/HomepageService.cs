@@ -34,7 +34,7 @@ public sealed class HomepageService(
                 x.PrimaryCtaLabel,
                 x.PrimaryCtaUrl,
                 x.SecondaryCtaLabel,
-                x.SecondaryCtaUrl))
+                x.SecondaryCtaUrl, x.MobileImageUrl))
             .ToListAsync(cancellationToken);
 
         var sections = await db.HomeSections

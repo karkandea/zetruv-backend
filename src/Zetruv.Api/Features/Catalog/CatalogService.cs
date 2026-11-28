@@ -248,7 +248,7 @@ public sealed class CatalogService(ZetruvDbContext db)
                 .OrderBy(x => x.SortOrder)
                 .ThenBy(x => x.Label)
                 .Select(ProductInputFieldRules.ToResponse)
-                .ToList())
+                .ToList(), product.HeroDesktopUrl, product.HeroMobileUrl)
         {
             SoldQuantity = metric?.SoldQuantity ?? 0,
             Rating = metric?.Rating,
