@@ -35,6 +35,11 @@ public sealed class CheckoutService(
                 "Customer email or phone is required.");
         }
 
+        if (request.CartRevision is not null && (!customerUserId.HasValue || idempotencyKeyHash is null))
+            return CreateCheckoutOrderResult.Failure("Verified idempotent checkout is required for cart purchases.");
+        if (request.CartRevision is null && items.Any(x => x.CartLineId.HasValue))
+            return CreateCheckoutOrderResult.Failure("Cart revision is required for cart lines.");
+
         var groupedItems = items
             .GroupBy(x => new
             {
@@ -526,6 +531,51 @@ public sealed class CheckoutService(
         };
 
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+
+        // Cart checkout transfers the verified cart into the durable order.
+        // This is atomic with the order and inventory reservation; direct purchases
+        // omit CartRevision and must never modify the customer's cart.
+        if (request.CartRevision is not null)
+        {
+            var owner = customerUserId!.Value;
+            await db.Database.ExecuteSqlInterpolatedAsync(
+                $"SELECT pg_advisory_xact_lock(hashtext({owner.ToString()}))", cancellationToken);
+            // Row locks also serialize legacy DELETE endpoints that do not take the cart lock.
+            var cart = await db.CustomerCartItems.FromSqlInterpolated(
+                $"SELECT * FROM customer_cart_items WHERE \"CustomerUserId\" = {owner} FOR UPDATE")
+                .ToListAsync(cancellationToken);
+            var revision = CustomerStorefrontController.ComputeCartRevision(cart.Select(x => (
+                x.Id, x.ProductVariantId, x.GameAccountValidationId, x.Quantity, x.UpdatedAt)));
+            if (!string.Equals(request.CartRevision, revision, StringComparison.Ordinal) ||
+                items.Count != cart.Count || items.Any(x => !x.CartLineId.HasValue) ||
+                items.Select(x => x.CartLineId).Distinct().Count() != items.Count)
+                return CreateCheckoutOrderResult.CartConflict();
+            var byId = cart.ToDictionary(x => x.Id);
+            foreach (var line in items)
+            {
+                if (!byId.TryGetValue(line.CartLineId!.Value, out var stored) ||
+                    stored.ProductVariantId != line.ProductVariantId || stored.Quantity != line.Quantity)
+                    return CreateCheckoutOrderResult.CartConflict();
+                if (stored.GameAccountValidationId != line.GameAccountValidationId)
+                {
+                    // Reissued validation for the same account is permitted; never
+                    // remove a line for a different destination.
+                    var prior = stored.GameAccountValidationId;
+                    var next = line.GameAccountValidationId;
+                    if (!prior.HasValue || !next.HasValue)
+                        return CreateCheckoutOrderResult.CartConflict();
+                    var targets = await db.Set<GameAccountValidation>().AsNoTracking()
+                        .Where(x => x.Id == prior.Value || x.Id == next.Value)
+                        .Select(x => new { x.Id, x.ProductId, x.InputFingerprint })
+                        .ToListAsync(cancellationToken);
+                    if (targets.Count != 2 || targets[0].ProductId != targets[1].ProductId ||
+                        string.IsNullOrWhiteSpace(targets[0].InputFingerprint) ||
+                        targets[0].InputFingerprint != targets[1].InputFingerprint)
+                        return CreateCheckoutOrderResult.CartConflict();
+                }
+            }
+            db.CustomerCartItems.RemoveRange(cart);
+        }
 
         db.Orders.Add(order);
 

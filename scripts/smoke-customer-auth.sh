@@ -6,6 +6,7 @@ TMP=$(mktemp -d)
 C="zetruv-pg-customer-auth-$$"
 PID=""
 cleanup() {
+  rc=$?; if [[ $rc != 0 && -f "$TMP/api.log" ]]; then tail -80 "$TMP/api.log" >&2; fi
   [[ -n "$PID" ]] && kill "$PID" >/dev/null 2>&1 || true
   docker rm -fv "$C" >/dev/null 2>&1 || true
   rm -rf "$TMP"
@@ -316,6 +317,63 @@ assert all('loginCredentials' not in x for x in detail['items'])
 expect(*api('GET','/api/v1/me/orders/e8000000-0000-0000-0000-000000000099',
     token=updated['accessToken']),404)
 print('PASS: owner-only order detail, duplicate SKU destination snapshots, no leaked credentials')
+
+# Cart/order boundary: exact server revision, owner-scoped line IDs, durable
+# order creation, replay safety and direct purchase isolation.
+import uuid
+cart_token=updated['accessToken']
+cart_path='/api/v1/me/cart'
+checkout_path='/api/v1/checkout/orders'
+joki_product='e8100000-0000-4000-8000-000000000001'
+joki_variant='e8100000-0000-4000-8000-000000000002'
+fixture2="""
+INSERT INTO products ("Id","CategoryId","Name","Slug","Kind","FulfillmentMethod",
+ "RequiresGameAccountValidation","IsActive","IsFeatured","SortOrder","CreatedAt","UpdatedAt")
+VALUES ('e8100000-0000-4000-8000-000000000001',
+ (SELECT "Id" FROM catalog_categories WHERE "Key"='top_up_games'),
+ 'Cart Checkout Fixture','cart-checkout-fixture','Joki','MANUAL',FALSE,TRUE,FALSE,1,NOW(),NOW());
+INSERT INTO product_variants ("Id","ProductId","Name","Sku","Price","IsActive","SortOrder","CreatedAt","UpdatedAt")
+VALUES ('e8100000-0000-4000-8000-000000000002','e8100000-0000-4000-8000-000000000001',
+ 'Package','CART-CHECKOUT-ONLY',12000,TRUE,0,NOW(),NOW());
+"""
+subprocess.run(['docker','exec','-i',CONTAINER,'psql','-v','ON_ERROR_STOP=1','-U','zetruv','-d','zetruv_auth_smoke'],
+ input=fixture2.encode(),check=True,stdout=subprocess.DEVNULL)
+def cart(): 
+    status,result=api('GET',cart_path,token=cart_token)
+    expect(status,result,200)
+    return result
+def put_cart(quantity):
+    snapshot=cart()
+    expect(*api('PUT',cart_path,{'revision':snapshot['revision'],'items':[{'productVariantId':joki_variant,'quantity':quantity}]},cart_token),200)
+    return cart()
+def payload(snapshot):
+    return {'customerPhone':'+6281234567890','cartRevision':snapshot['revision'],
+      'items':[{'productVariantId':line['productVariantId'],'quantity':line['quantity'],'cartLineId':line['id'],'expectedUnitPrice':12000} for line in snapshot['items']]}
+def place(body,key=None):
+    return api('POST',checkout_path,body,cart_token,{'Idempotency-Key':key or str(uuid.uuid4())})
+first=put_cart(1)
+fresh=put_cart(2)
+expect(*place(payload(first)),409,'CART_CHANGED')
+assert cart()['revision']==fresh['revision']
+forged=payload(fresh)
+forged['items'][0]['cartLineId']=str(uuid.uuid4())
+expect(*place(forged),409,'CART_CHANGED')
+assert cart()['revision']==fresh['revision']
+direct={'customerPhone':'+6281234567890','items':[{'productVariantId':joki_variant,'quantity':1}]}
+expect(*place(direct),201)
+assert cart()['revision']==fresh['revision'], 'Buy Now must not consume cart'
+key=str(uuid.uuid4())
+body=payload(fresh)
+status,placed=place(body,key)
+expect(status,placed,201)
+assert not cart()['items'], 'Durable checkout must consume purchased cart'
+new=put_cart(1)
+status,replayed=place(body,key)
+expect(status,replayed,200)
+assert replayed['id']==placed['id'] and cart()['revision']==new['revision'], 'Replay must not delete newly added item'
+expect(*place(body),409,'CART_CHANGED')
+assert cart()['revision']==new['revision']
+print('PASS: atomic cart consumption, stale/forged revision rejection, direct purchase isolation, idempotent replay preserves new cart')
 
 print('PASS: customer register, verify, edit email, resend, cooldown, expiry, auto-login, JWT isolation,')
 print('PASS: forgot generic response, reset, password history, replay guard, old session revocation')

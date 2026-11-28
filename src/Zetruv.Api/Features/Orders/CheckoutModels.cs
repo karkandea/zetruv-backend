@@ -12,7 +12,8 @@ public sealed record CheckoutItemRequest(
     [Range(typeof(decimal), "0", "999999999999")] decimal? ExpectedUnitPrice = null,
     bool AcknowledgePriceChange = false,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    IReadOnlyDictionary<string, string>? DeliveryDetails = null);
+    IReadOnlyDictionary<string, string>? DeliveryDetails = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] Guid? CartLineId = null);
 
 public sealed record CreateCheckoutOrderRequest(
     [MaxLength(120)] string? CustomerName,
@@ -20,7 +21,8 @@ public sealed record CreateCheckoutOrderRequest(
     [MaxLength(50)] string? CustomerPhone,
     [Required, MinLength(1)] IReadOnlyList<CheckoutItemRequest> Items,
     Guid? ShippingQuoteId = null,
-    [MaxLength(32)] string? VoucherCode = null);
+    [MaxLength(32)] string? VoucherCode = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] [MaxLength(64)] string? CartRevision = null);
 
 public sealed record CheckoutOrderItemResponse(
     Guid ProductVariantId,
@@ -68,6 +70,8 @@ public sealed record CreateCheckoutOrderResult(
         new(order, null);
 
     public IReadOnlyList<CheckoutPriceChangeResponse>? PriceChanges { get; init; }
+    public bool CartChanged { get; init; }
+    public static CreateCheckoutOrderResult CartConflict() => new(null, "Cart changed. Reload and review before checkout.") { CartChanged = true };
 
     public static CreateCheckoutOrderResult Failure(string error) =>
         new(null, error);
