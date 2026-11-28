@@ -81,11 +81,12 @@ game = request('/cms/catalog/games', 'POST', {
     'name': 'QA Game', 'slug': 'qa-game-items', 'isActive': True, 'sortOrder': 99
 }, admin, 201)
 
-product = request('/cms/catalog/products', 'POST', {
+product_payload = {
     'categoryId': category['id'], 'gameId': game, 'name': 'QA Digital Item',
     'slug': 'qa-digital-item', 'kind': 'GameItem', 'fulfillmentMethod': 'MANUAL',
-    'requiresGameAccountValidation': False, 'isActive': True, 'isFeatured': False, 'sortOrder': 0,
-}, admin, 201)
+    'requiresGameAccountValidation': False, 'isActive': False, 'isFeatured': False, 'sortOrder': 0,
+}
+product = request('/cms/catalog/products', 'POST', product_payload, admin, 201)
 product_path = f'/cms/catalog/products/{product}'
 schema = {'key': 'steam-url', 'label': 'Steam Trade Offer URL', 'scope': 'OrderDelivery',
           'type': 'SteamTradeUrl', 'isRequired': True, 'isSensitive': False, 'maxLength': 200, 'sortOrder': 0}
@@ -94,6 +95,7 @@ request(product_path + '/input-fields', 'POST', schema, admin, 201)
 variant = request(product_path + '/variants', 'POST', {
     'name': 'QA Variant', 'sku': 'QA-ITEM-01', 'price': 25000, 'stockQuantity': 1, 'isActive': True, 'sortOrder': 0
 }, admin, 201)
+request(product_path, 'PUT', {**product_payload,'isActive':True}, admin, 204)
 listing = request('/catalog/products?kind=GameItem')
 assert any(x['slug'] == 'qa-digital-item' for x in listing['items'])
 pdp = request('/catalog/products/qa-digital-item')

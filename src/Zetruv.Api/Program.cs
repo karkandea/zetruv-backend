@@ -316,6 +316,7 @@ builder.Services.AddScoped<CustomerJwtTokenService>();
 builder.Services.AddScoped<CustomerEmailSender>();
 builder.Services.AddScoped<AdminSeeder>();
 builder.Services.AddScoped<CatalogService>();
+builder.Services.AddScoped<ProductReadinessService>();
 builder.Services.AddScoped<CatalogSeeder>();
 builder.Services.AddScoped<ArticleService>();
 builder.Services.AddScoped<OrderService>();

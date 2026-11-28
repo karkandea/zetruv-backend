@@ -75,7 +75,7 @@ public sealed class CatalogController(CatalogService catalogService) : Controlle
 [ApiController]
 [Authorize(Policy = AuthPolicies.CmsAdmin)]
 [Route("api/v1/cms/catalog")]
-public sealed class CmsCatalogController(ZetruvDbContext db, CatalogService catalogService) : ControllerBase
+public sealed class CmsCatalogController(ZetruvDbContext db, CatalogService catalogService, ProductReadinessService readiness) : ControllerBase
 {
     [HttpGet("categories")]
     public async Task<IActionResult> GetCategories(CancellationToken cancellationToken) =>
@@ -323,6 +323,13 @@ public sealed class CmsCatalogController(ZetruvDbContext db, CatalogService cata
                 .ToList(), product.HeroDesktopUrl, product.HeroMobileUrl));
     }
 
+    [HttpGet("products/{id:guid}/readiness")]
+    public async Task<IActionResult> GetReadiness(Guid id, CancellationToken ct)
+    {
+        var product = await readiness.LoadAsync(id, ct);
+        return product is null ? NotFound() : Ok(await readiness.EvaluateAsync(product, ct));
+    }
+
     [HttpPost("products")]
     public async Task<IActionResult> CreateProduct(
         UpsertProductRequest request,
@@ -333,6 +340,9 @@ public sealed class CmsCatalogController(ZetruvDbContext db, CatalogService cata
         {
             return validation;
         }
+
+        if (request.IsActive)
+            return Conflict(new { message = "Buat produk sebagai draft nonaktif terlebih dahulu, lalu lengkapi checklist penayangan.", code = "PRODUCT_DRAFT_REQUIRED" });
 
         var product = new Product();
         ApplyProduct(product, request, CatalogText.NormalizeSlug(request.Slug));
@@ -357,6 +367,22 @@ public sealed class CmsCatalogController(ZetruvDbContext db, CatalogService cata
         if (validation is not null)
         {
             return validation;
+        }
+
+        if (!product.IsActive && request.IsActive)
+        {
+            var candidate = await readiness.LoadAsync(id, cancellationToken);
+            if (candidate is null) return NotFound();
+            // Publication uses saved configuration; do not combine catalog edits with activation.
+            if (candidate.CategoryId != request.CategoryId || candidate.GameId != request.GameId ||
+                candidate.Kind != request.Kind || candidate.FulfillmentMethod != request.FulfillmentMethod ||
+                candidate.Name != request.Name.Trim() ||
+                (candidate.ShortDescription ?? "").Trim() != (request.ShortDescription ?? "").Trim() ||
+                (candidate.Description ?? "").Trim() != (request.Description ?? "").Trim())
+                return Conflict(new { message = "Simpan perubahan informasi produk sebelum mengaktifkan penayangan.", code = "PRODUCT_SAVE_FIRST" });
+            var result = await readiness.EvaluateAsync(candidate, cancellationToken);
+            if (!result.CanPublish)
+                return Conflict(new { message = "Produk belum siap ditayangkan. Lengkapi checklist penayangan.", code = "PRODUCT_NOT_READY", checks = result.Checks });
         }
 
         ApplyProduct(product, request, CatalogText.NormalizeSlug(request.Slug));

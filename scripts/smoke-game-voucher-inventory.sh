@@ -120,7 +120,7 @@ product_payload={
     'slug':'steam-wallet-codes','shortDescription':'Encrypted redeem codes',
     'description':'Smoke Game Voucher','thumbnailUrl':'https://example.test/voucher.png',
     'kind':'GameVoucher','fulfillmentMethod':'MANUAL',
-    'requiresGameAccountValidation':False,'isActive':True,'isFeatured':False,'sortOrder':0}
+    'requiresGameAccountValidation':False,'isActive':False,'isFeatured':False,'sortOrder':0}
 product=check(api('POST','/api/v1/cms/catalog/products',product_payload,admin),201)
 pid=product if isinstance(product,str) else product['id']
 
@@ -131,17 +131,15 @@ check(api('POST',f'/api/v1/cms/catalog/products/{pid}/variants',bad_variant,admi
 variant_payload={**bad_variant,'stockQuantity':0}
 variant=check(api('POST',f'/api/v1/cms/catalog/products/{pid}/variants',variant_payload,admin),201)
 vid=variant if isinstance(variant,str) else variant['id']
-pdp=check(api('GET','/api/v1/catalog/products/steam-wallet-codes'),200)
-assert pdp['isAvailable'] is False
-assert next(x for x in pdp['variants'] if x['id']==vid)['stockQuantity']==0
-assert next(x for x in pdp['variants'] if x['id']==vid)['isAvailable'] is False
-
+check(api('GET','/api/v1/catalog/products/steam-wallet-codes'),404)
+assert check(api('PUT',f'/api/v1/cms/catalog/products/{pid}',{**product_payload,'isActive':True},admin),409)['code']=='PRODUCT_NOT_READY'
 inventory_path=f'/api/v1/cms/catalog/products/{pid}/variants/{vid}/voucher-codes'
 imported=check(api('POST',inventory_path,
     {'codes':['STEAM-AAA-001','STEAM-BBB-002','STEAM-CCC-003','STEAM-BBB-002']},admin),200)
 assert imported=={'imported':3,'skippedDuplicates':1,'sellableStock':3},imported
 inventory=check(api('GET',inventory_path,token=admin),200)
 assert inventory['sellableStock']==3 and inventory['availableCodeCount']==3
+check(api('PUT',f'/api/v1/cms/catalog/products/{pid}',{**product_payload,'isActive':True},admin),204)
 pdp=check(api('GET','/api/v1/catalog/products/steam-wallet-codes'),200)
 public_variant=next(x for x in pdp['variants'] if x['id']==vid)
 assert pdp['isAvailable'] is True and public_variant['isAvailable'] is True

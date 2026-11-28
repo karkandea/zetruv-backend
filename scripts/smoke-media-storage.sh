@@ -198,10 +198,11 @@ for p in [icon]:req('/cms/media/'+p['id'],'DELETE',expected=204)
 d=upload('catalog','desktop',1920,480,201);m=upload('catalog','mobile',1080,600,201)
 cat=req('/cms/catalog/categories','POST',dict(key='responsive-media-qa',name='Responsive media QA',slug='responsive-media-qa',kind='Merchandise',isActive=True,sortOrder=0),201)
 cid=cat['id'] if isinstance(cat,dict) else cat
-draft=dict(categoryId=cid,name='Responsive QA',slug='responsive-media-qa',kind='Merchandise',fulfillmentMethod='MANUAL',requiresGameAccountValidation=False,isActive=True,isFeatured=False,sortOrder=0,heroDesktopUrl=d['url'],heroMobileUrl=m['url'])
+draft=dict(categoryId=cid,name='Responsive QA',slug='responsive-media-qa',kind='Merchandise',fulfillmentMethod='MANUAL',requiresGameAccountValidation=False,isActive=False,isFeatured=False,sortOrder=0,heroDesktopUrl=d['url'],heroMobileUrl=m['url'])
 product=req('/cms/catalog/products','POST',draft,201);pid=product['id'] if isinstance(product,dict) else product
 detail=req('/cms/catalog/products/'+pid);assert detail['heroDesktopUrl']==d['url'] and detail['heroMobileUrl']==m['url']
 req('/cms/catalog/products/'+pid+'/variants','POST',dict(name='QA package',sku='RESPONSIVE-QA',price=10000,weightGrams=10,stockQuantity=2,isActive=True,sortOrder=0),201)
+draft['isActive']=True;req('/cms/catalog/products/'+pid,'PUT',draft,204)
 public=req('/catalog/products/responsive-media-qa');assert public['heroDesktopUrl']==d['url'] and public['heroMobileUrl']==m['url']
 req('/cms/media/'+m['id'],'DELETE',expected=409)
 draft.pop('heroDesktopUrl');draft.pop('heroMobileUrl');req('/cms/catalog/products/'+pid,'PUT',draft,204)
