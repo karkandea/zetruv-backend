@@ -30,6 +30,7 @@ Check(gateway.IsSandbox && gateway.IsLiveConfigured, "sandbox-only configuration
 Check(gateway.SupportsChannel("MIDTRANS_SNAP") && !gateway.SupportsChannel("QRIS"),
     "only redirect method is advertised");
 
+Check(gateway.SupportsChannel("MIDTRANS_OTHER_QRIS") && !gateway.SupportsChannel("MIDTRANS_UNKNOWN"), "strict channel allowlist");
 var request = new PaymentGatewayCreateRequest(
     Guid.NewGuid(), "ZTR-SYNTHETIC", 25000m, "IDR", "Test", "sandbox@example.test",
     "081234567890", MidtransSnapGateway.SnapMethod, 2);
@@ -61,6 +62,25 @@ handler.Reply = req => Task.FromResult(Json(201, new {
     token="synthetic",redirect_url="https://evil.example/redirect" }));
 var badRedirect = await gateway.CreatePaymentAsync(request);
 Check(!badRedirect.IsSuccess, "untrusted redirect rejected");
+
+var calls = 0;
+handler.Reply = async req => {
+    calls++;
+    if (req.Method == HttpMethod.Get) return Json(200, new { payment_channels = new[] {
+        new { name="other_qris", enabled=true }, new { name="bca_va", enabled=false },
+        new { name="unknown", enabled=true } } });
+    using var json = JsonDocument.Parse(await req.Content!.ReadAsStringAsync());
+    var chosen = json.RootElement.GetProperty("enabled_payments");
+    Check(chosen.GetArrayLength() == 1 && chosen[0].GetString() == "other_qris", "exactly one selected Snap channel");
+    return Json(201, new { token="synthetic", redirect_url="https://app.sandbox.midtrans.com/snap/v3/redirection/TEST" });
+};
+var enabled = await gateway.GetEnabledChannelsAsync(default);
+Check(enabled.Count == 1 && enabled[0].Code == "MIDTRANS_OTHER_QRIS", "only allowlisted enabled preference channels");
+Check((await gateway.CreatePaymentAsync(request with { MethodCode = "MIDTRANS_OTHER_QRIS" })).IsSuccess, "selected QRIS session created");
+var beforeDisabled = calls;
+Check(!(await gateway.CreatePaymentAsync(request with { MethodCode = "MIDTRANS_BCA_VA" })).IsSuccess && calls == beforeDisabled+1, "disabled channel never creates session");
+handler.Reply = _ => Task.FromResult(Json(503, new { }));
+Check((await gateway.GetEnabledChannelsAsync(default)).Count == 0, "preference outage fails closed");
 
 var reference = "ZTR-SYNTHETIC-A2";
 var statusRequest = new PaymentGatewayStatusRequest(

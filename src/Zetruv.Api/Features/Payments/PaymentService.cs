@@ -234,9 +234,11 @@ public sealed class PaymentService(
             if (!liveGateway.SupportsChannel(selectedMethod))
                 return InitiatePaymentResult.Failure("Payment method is not supported by the active gateway.");
 
+            var cmsCode = gateway is MidtransSnapGateway && MidtransSnapGateway.FindChannel(selectedMethod) is not null
+                ? MidtransSnapGateway.SnapMethod : selectedMethod;
             var enabledInCms = await db.SitePaymentMethods
                 .AsNoTracking()
-                .AnyAsync(x => x.IsActive && x.Code.ToUpper() == selectedMethod, cancellationToken);
+                .AnyAsync(x => x.IsActive && x.Code.ToUpper() == cmsCode, cancellationToken);
             if (!enabledInCms)
                 return InitiatePaymentResult.Failure("Payment method is not enabled in CMS.");
         }

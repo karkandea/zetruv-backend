@@ -21,6 +21,7 @@ public sealed record CheckoutPaymentOption(
 {
     // Null means not quoted; never infer a zero-fee checkout on the client.
     public decimal? PaymentFee { get; init; }
+    public string? Group { get; init; }
 }
 
 public sealed record CheckoutPaymentReadinessResponse(
@@ -105,6 +106,15 @@ public sealed class CheckoutPaymentOptionsController(
         var current = await readiness.GetAsync(ct);
         Response.Headers.CacheControl = "no-store";
         var gateway = gatewayResolver.Resolve();
+        if (gateway is MidtransSnapGateway { IsLiveConfigured: true } midtrans)
+        {
+            var masterEnabled = current.ConfiguredMethods.Any(x => x.Code == MidtransSnapGateway.SnapMethod && x.Operational);
+            var channels = masterEnabled ? await midtrans.GetEnabledChannelsAsync(ct) : Array.Empty<MidtransSnapGateway.SnapChannel>();
+            return Ok(new CheckoutPaymentReadinessResponse(
+                channels.Count > 0, channels.Count > 0 ? "Ready" : "NoSupportedMethods",
+                channels.Select(x => new CheckoutPaymentOption(x.Code, x.Name, null)
+                    { PaymentFee = 0m, Group = x.Group }).ToList()) { IsSandbox = true });
+        }
         // Snap redirects to Midtrans and the merchant absorbs gateway fees.
         // Zetruv never adds an unknown surcharge to the customer's total.
         var merchantAbsorbsFees =
