@@ -663,7 +663,6 @@ public sealed class CmsCatalogController(ZetruvDbContext db) : ControllerBase
         Guid? currentProductId,
         CancellationToken cancellationToken)
     {
-        if (request.Kind == ProductKind.TopUpLogin)
         {
             // Legacy products can still be edited on unrelated tabs without forcing a data migration.
             var previous = currentProductId.HasValue
@@ -677,10 +676,12 @@ public sealed class CmsCatalogController(ZetruvDbContext db) : ControllerBase
             {
                 if (request.Name.Trim().Length is < 2 or > 80 || !System.Text.RegularExpressions.Regex.IsMatch(request.Name, "[a-zA-Z0-9]"))
                     return BadRequest(new { message = "Nama produk harus 2–80 karakter dan mengandung huruf atau angka Latin." });
-                if (!request.GameId.HasValue || request.GameId == Guid.Empty)
+                if ((request.Kind is ProductKind.TopUpLogin or ProductKind.GameAccount or ProductKind.GameItem) && (!request.GameId.HasValue || request.GameId == Guid.Empty))
                     return BadRequest(new { message = "Pilih game terkait." });
-                if ((request.ShortDescription ?? "").Trim().Length is < 10 or > 160)
-                    return BadRequest(new { message = "Deskripsi singkat harus 10–160 karakter." });
+                if (request.Kind == ProductKind.TopUpLogin && (request.ShortDescription ?? "").Trim().Length < 10)
+                    return BadRequest(new { message = "Deskripsi singkat minimal 10 karakter." });
+                if ((request.ShortDescription ?? "").Trim().Length > 160)
+                    return BadRequest(new { message = "Deskripsi singkat maksimal 160 karakter." });
                 if ((request.Description ?? "").Trim().Length > 2000)
                     return BadRequest(new { message = "Detail produk maksimal 2.000 karakter." });
             }
@@ -770,16 +771,15 @@ public sealed class CmsCatalogController(ZetruvDbContext db) : ControllerBase
 
     private IActionResult? ValidateVariant(UpsertVariantRequest request, ProductKind kind)
     {
-        if (kind == ProductKind.TopUpLogin)
         {
             if (request.Name.Trim().Length is < 2 or > 60)
                 return BadRequest(new { message = "Nama varian harus 2–60 karakter." });
             if (!System.Text.RegularExpressions.Regex.IsMatch(request.Sku.Trim(), "^[A-Za-z0-9][A-Za-z0-9_-]{1,99}$"))
                 return BadRequest(new { message = "SKU harus 2–100 karakter: huruf, angka, tanda hubung, atau underscore." });
-            if (request.Price <= 0 || request.Price != decimal.Truncate(request.Price) || request.Price > 9007199254740991m)
-                return BadRequest(new { message = "Harga jual harus berupa rupiah bulat lebih dari 0 dalam batas nominal yang didukung." });
-            if (request.CompareAtPrice is decimal compare && (compare <= request.Price || compare != decimal.Truncate(compare) || compare > 9007199254740991m))
-                return BadRequest(new { message = "Harga coret harus berupa rupiah bulat dan lebih tinggi dari harga jual." });
+            if ((kind == ProductKind.TopUpLogin ? request.Price <= 0 : request.Price < 0) || request.Price != decimal.Truncate(request.Price) || request.Price > 9007199254740991m)
+                return BadRequest(new { message = kind == ProductKind.TopUpLogin ? "Harga jual harus berupa rupiah bulat lebih dari 0 dalam batas nominal yang didukung." : "Harga jual harus berupa rupiah bulat minimal 0 dalam batas nominal yang didukung." });
+            if (request.CompareAtPrice is decimal compare && ((kind == ProductKind.TopUpLogin ? compare <= request.Price : compare < request.Price) || compare != decimal.Truncate(compare) || compare > 9007199254740991m))
+                return BadRequest(new { message = kind == ProductKind.TopUpLogin ? "Harga coret harus berupa rupiah bulat dan lebih tinggi dari harga jual." : "Harga coret harus berupa rupiah bulat dan tidak lebih rendah dari harga jual." });
         }
         var from = !string.IsNullOrWhiteSpace(request.RankFrom);
         var to = !string.IsNullOrWhiteSpace(request.RankTo);
