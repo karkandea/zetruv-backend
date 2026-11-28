@@ -249,6 +249,10 @@ public sealed class ZetruvDbContext(
 
         modelBuilder.Entity<ProductVariant>(entity =>
         {
+            entity.Property(x => x.RankFrom).HasMaxLength(80);
+            entity.Property(x => x.RankTo).HasMaxLength(80);
+            entity.Property(x => x.RankFromIconUrl).HasMaxLength(1000);
+            entity.Property(x => x.RankToIconUrl).HasMaxLength(1000);
             entity.ToTable("product_variants");
             entity.HasKey(x => x.Id);
             entity.Property(x => x.Name).HasMaxLength(180).IsRequired();
@@ -437,6 +441,11 @@ public sealed class ZetruvDbContext(
 
         modelBuilder.Entity<OrderItem>(entity =>
         {
+            entity.Property(x => x.VariantIconUrl).HasMaxLength(1000);
+            entity.Property(x => x.RankFrom).HasMaxLength(80);
+            entity.Property(x => x.RankTo).HasMaxLength(80);
+            entity.Property(x => x.RankFromIconUrl).HasMaxLength(1000);
+            entity.Property(x => x.RankToIconUrl).HasMaxLength(1000);
             entity.ToTable("order_items");
             entity.HasKey(x => x.Id);
             entity.Property(x => x.ProductName).HasMaxLength(180).IsRequired();

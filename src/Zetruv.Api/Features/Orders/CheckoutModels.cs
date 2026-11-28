@@ -36,7 +36,12 @@ public sealed record CheckoutOrderItemResponse(
     string? GameName,
     decimal UnitPrice,
     int Quantity,
-    decimal LineTotal);
+    decimal LineTotal,
+    string? VariantIconUrl = null,
+    string? RankFrom = null,
+    string? RankTo = null,
+    string? RankFromIconUrl = null,
+    string? RankToIconUrl = null);
 
 public sealed record CreateCheckoutOrderResponse(
     Guid Id,

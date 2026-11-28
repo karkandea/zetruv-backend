@@ -90,6 +90,7 @@ public sealed class CheckoutService(
                 x.Id,
                 x.Name,
                 x.Sku,
+                x.IconUrl, x.RankFrom, x.RankTo, x.RankFromIconUrl, x.RankToIconUrl,
                 x.Price,
                 x.StockQuantity,
                 x.IsActive,
@@ -421,6 +422,11 @@ public sealed class CheckoutService(
                 FulfillmentMethod = variant.ProductFulfillmentMethod,
                 FulfillmentStatus = FulfillmentStatus.Pending,
                 VariantName = variant.Name,
+                VariantIconUrl = variant.IconUrl,
+                RankFrom = variant.RankFrom,
+                RankTo = variant.RankTo,
+                RankFromIconUrl = variant.RankFromIconUrl,
+                RankToIconUrl = variant.RankToIconUrl,
                 Sku = variant.Sku,
                 ThumbnailUrl = variant.ProductThumbnailUrl,
                 GameName = variant.GameName,
@@ -478,7 +484,7 @@ public sealed class CheckoutService(
                 variant.GameName,
                 unitPrice,
                 item.Quantity,
-                lineTotal));
+                lineTotal, variant.IconUrl, variant.RankFrom, variant.RankTo, variant.RankFromIconUrl, variant.RankToIconUrl));
         }
 
         var shippingAmount = shippingQuote?.Amount ?? 0m;

@@ -304,7 +304,7 @@ public sealed class CmsCatalogController(ZetruvDbContext db) : ControllerBase
                 .Select(x => new CmsProductVariantResponse(
                     x.Id, x.Name, x.Sku, x.Price, x.CompareAtPrice, x.StockQuantity,
                     x.WeightGrams, x.IsActive, x.SortOrder, x.CreatedAt, x.UpdatedAt,
-                    x.GroupName, x.IconUrl))
+                    x.GroupName, x.IconUrl, x.RankFrom, x.RankTo, x.RankFromIconUrl, x.RankToIconUrl))
                 .ToList(),
             product.Images
                 .OrderBy(x => x.SortOrder)
@@ -748,6 +748,11 @@ public sealed class CmsCatalogController(ZetruvDbContext db) : ControllerBase
 
     private IActionResult? ValidateVariant(UpsertVariantRequest request)
     {
+        var from = !string.IsNullOrWhiteSpace(request.RankFrom);
+        var to = !string.IsNullOrWhiteSpace(request.RankTo);
+        if (from != to || (!from && (!string.IsNullOrWhiteSpace(request.RankFromIconUrl) || !string.IsNullOrWhiteSpace(request.RankToIconUrl))))
+            return BadRequest(new { message = "Rank presentation requires both start and target rank." });
+
         if (request.CompareAtPrice.HasValue && request.CompareAtPrice < request.Price)
         {
             return BadRequest(new { message = "Compare-at price cannot be lower than price." });
@@ -818,6 +823,10 @@ public sealed class CmsCatalogController(ZetruvDbContext db) : ControllerBase
         variant.Sku = sku;
         variant.GroupName = string.IsNullOrWhiteSpace(request.GroupName) ? null : request.GroupName.Trim();
         variant.IconUrl = string.IsNullOrWhiteSpace(request.IconUrl) ? null : request.IconUrl.Trim();
+        variant.RankFrom = string.IsNullOrWhiteSpace(request.RankFrom) ? null : request.RankFrom.Trim();
+        variant.RankTo = string.IsNullOrWhiteSpace(request.RankTo) ? null : request.RankTo.Trim();
+        variant.RankFromIconUrl = string.IsNullOrWhiteSpace(request.RankFromIconUrl) ? null : request.RankFromIconUrl.Trim();
+        variant.RankToIconUrl = string.IsNullOrWhiteSpace(request.RankToIconUrl) ? null : request.RankToIconUrl.Trim();
         variant.Price = request.Price;
         variant.CompareAtPrice = request.CompareAtPrice;
         if (!preserveStock)

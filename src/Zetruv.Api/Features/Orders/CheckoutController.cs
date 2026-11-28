@@ -89,7 +89,7 @@ public sealed class CheckoutController(
                         x.ProductVariantId!.Value,
                         x.ProductName, x.ProductSlug, x.ProductKind,
                         x.FulfillmentMethod, x.FulfillmentStatus, x.VariantName ?? "",
-                        x.ThumbnailUrl, x.GameName, x.UnitPrice, x.Quantity, x.LineTotal))
+                        x.ThumbnailUrl, x.GameName, x.UnitPrice, x.Quantity, x.LineTotal, x.VariantIconUrl, x.RankFrom, x.RankTo, x.RankFromIconUrl, x.RankToIconUrl))
                     .ToList();
                 var replay = new CreateCheckoutOrderResponse(
                     existing.Id, existing.OrderNumber, existing.Status,
@@ -150,7 +150,7 @@ public sealed class CheckoutController(
                 x.ProductVariantId!.Value, x.ProductName, x.ProductSlug,
                 x.ProductKind, x.FulfillmentMethod, x.FulfillmentStatus,
                 x.VariantName ?? "", x.ThumbnailUrl, x.GameName,
-                x.UnitPrice, x.Quantity, x.LineTotal))
+                x.UnitPrice, x.Quantity, x.LineTotal, x.VariantIconUrl, x.RankFrom, x.RankTo, x.RankFromIconUrl, x.RankToIconUrl))
             .ToList();
         return Ok(WithAccessToken(new CreateCheckoutOrderResponse(
             order.Id, order.OrderNumber, order.Status, order.PaymentStatus,
