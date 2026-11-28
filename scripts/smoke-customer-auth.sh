@@ -332,9 +332,9 @@ INSERT INTO products ("Id","CategoryId","Name","Slug","Kind","FulfillmentMethod"
 VALUES ('e8100000-0000-4000-8000-000000000001',
  (SELECT "Id" FROM catalog_categories WHERE "Key"='top_up_games'),
  'Cart Checkout Fixture','cart-checkout-fixture','Joki','MANUAL',FALSE,TRUE,FALSE,1,NOW(),NOW());
-INSERT INTO product_variants ("Id","ProductId","Name","Sku","Price","IsActive","SortOrder","CreatedAt","UpdatedAt")
+INSERT INTO product_variants ("Id","ProductId","Name","Sku","Price","IsActive","SortOrder","CreatedAt","UpdatedAt","IconUrl","RankFrom","RankTo","RankFromIconUrl","RankToIconUrl")
 VALUES ('e8100000-0000-4000-8000-000000000002','e8100000-0000-4000-8000-000000000001',
- 'Package','CART-CHECKOUT-ONLY',12000,TRUE,0,NOW(),NOW());
+ 'Epic V → Legend V','CART-CHECKOUT-ONLY',12000,TRUE,0,NOW(),NOW(),'/media/catalog/value.webp','Epic V','Legend V','/media/catalog/epic.webp','/media/catalog/legend.webp');
 """
 subprocess.run(['docker','exec','-i',CONTAINER,'psql','-v','ON_ERROR_STOP=1','-U','zetruv','-d','zetruv_auth_smoke'],
  input=fixture2.encode(),check=True,stdout=subprocess.DEVNULL)
@@ -353,6 +353,10 @@ def place(body,key=None):
     return api('POST',checkout_path,body,cart_token,{'Idempotency-Key':key or str(uuid.uuid4())})
 first=put_cart(1)
 fresh=put_cart(2)
+value_fields={'variantIconUrl':'/media/catalog/value.webp','rankFrom':'Epic V','rankTo':'Legend V','rankFromIconUrl':'/media/catalog/epic.webp','rankToIconUrl':'/media/catalog/legend.webp'}
+def check_value(item):
+    assert all(item.get(k)==v for k,v in value_fields.items()), 'Missing purchased value snapshot'
+check_value(fresh['items'][0])
 expect(*place(payload(first)),409,'CART_CHANGED')
 assert cart()['revision']==fresh['revision']
 forged=payload(fresh)
@@ -366,10 +370,16 @@ key=str(uuid.uuid4())
 body=payload(fresh)
 status,placed=place(body,key)
 expect(status,placed,201)
+check_value(placed['items'][0])
+status,detail=api('GET','/api/v1/me/orders/'+placed['id'],token=cart_token)
+expect(status,detail,200)
+check_value(detail['items'][0])
 assert not cart()['items'], 'Durable checkout must consume purchased cart'
 new=put_cart(1)
 status,replayed=place(body,key)
 expect(status,replayed,200)
+check_value(replayed['items'][0])
+print('PASS: purchased value metadata survives cart, checkout, order detail and replay')
 assert replayed['id']==placed['id'] and cart()['revision']==new['revision'], 'Replay must not delete newly added item'
 expect(*place(body),409,'CART_CHANGED')
 assert cart()['revision']==new['revision']
