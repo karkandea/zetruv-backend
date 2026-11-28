@@ -92,18 +92,20 @@ assert check(api('GET','/api/v1/homepage'),200)['heroes']==[]
 # CMS catalog fixture: seeded category Joki, actual paid sales and verified reviews.
 cats=check(api('GET','/api/v1/cms/catalog/categories',token=admin),200)
 cat=next(x for x in cats if x['kind']=='Joki')
-product=check(api('POST','/api/v1/cms/catalog/products',{
+product_payload={
     'categoryId':cat['id'],'gameId':None,'name':'Storefront Joki',
     'slug':'storefront-joki','shortDescription':'Real test','description':'Test service',
     'thumbnailUrl':'https://example.test/item.png','kind':'Joki',
     'fulfillmentMethod':'MANUAL','requiresGameAccountValidation':False,
-    'isActive':True,'isFeatured':True,'sortOrder':1},admin),201)
+    'isActive':False,'isFeatured':True,'sortOrder':1}
+product=check(api('POST','/api/v1/cms/catalog/products',product_payload,admin),201)
 pid=product if isinstance(product,str) else product['id']
 variant=check(api('POST',f'/api/v1/cms/catalog/products/{pid}/variants',{
     'name':'Service A','sku':'STOREFRONT-JOKI-A','groupName':'Ranked','price':100000,
     'compareAtPrice':None,'stockQuantity':12,'weightGrams':None,
     'isActive':True,'sortOrder':1},admin),201)
 vid=variant if isinstance(variant,str) else variant['id']
+check(api('PUT',f'/api/v1/cms/catalog/products/{pid}',{**product_payload,'isActive':True},admin),204)
 detail=check(api('GET',f'/api/v1/cms/catalog/products/{pid}',token=admin),200)
 assert detail['variants'][0]['groupName']=='Ranked'
 public=check(api('GET','/api/v1/catalog/products/storefront-joki'),200)
@@ -124,13 +126,14 @@ target_game=check(api('POST','/api/v1/cms/catalog/games',{
     'name':'Cart Target Game','slug':'cart-target-game','publisher':'Test',
     'imageUrl':None,'isActive':True,'isPopular':False,'sortOrder':2},admin),201)
 target_game_id=target_game if isinstance(target_game,str) else target_game['id']
-target_product=check(api('POST','/api/v1/cms/catalog/products',{
+target_payload={
     'categoryId':topup_cat['id'],'gameId':target_game_id,
     'name':'Cart Target Top Up','slug':'cart-target-top-up',
     'shortDescription':'Target-aware cart','description':'Target-aware cart',
     'thumbnailUrl':'https://example.test/target.png','kind':'TopUpGame',
     'fulfillmentMethod':'AUTO_ID','requiresGameAccountValidation':True,
-    'isActive':True,'isFeatured':False,'sortOrder':2},admin),201)
+    'isActive':False,'isFeatured':False,'sortOrder':2}
+target_product=check(api('POST','/api/v1/cms/catalog/products',target_payload,admin),201)
 target_pid=target_product if isinstance(target_product,str) else target_product['id']
 for sort_order,(key,label) in enumerate([
     ('user_id','User ID'),('zone','Zone'),('nickname','Nickname')]):
@@ -143,6 +146,9 @@ target_variant=check(api('POST',f'/api/v1/cms/catalog/products/{target_pid}/vari
     'compareAtPrice':None,'stockQuantity':20,'weightGrams':None,
     'isActive':True,'sortOrder':1},admin),201)
 target_vid=target_variant if isinstance(target_variant,str) else target_variant['id']
+check(api('PUT',f'/api/v1/cms/provider-mappings/games/{target_game_id}',{'providerCode':'mock','nicknameCheckEnabled':True,'isActive':True},admin),204)
+check(api('PUT',f'/api/v1/cms/provider-mappings/variants/{target_vid}',{'providerSku':'CART-TARGET-86','isActive':True},admin),204)
+check(api('PUT',f'/api/v1/cms/catalog/products/{target_pid}',{**target_payload,'isActive':True},admin),204)
 def validate_target(user_id,zone,nickname):
     return check(api('POST','/api/v1/game-account/validate',{
         'productId':target_pid,
@@ -388,13 +394,15 @@ check(api('POST',f'/api/v1/cms/catalog/games/{ml}/account-attributes',
     {**rank_request,'key':'bad value'},admin),400)
 check(api('POST',f'/api/v1/cms/catalog/games/{ml}/account-attributes',
     {**rank_request,'key':'dupe_options','options':['A','a']},admin),400)
+listing_payloads={}
 def listing(game_id,name,slug,sku):
-    prod=check(api('POST','/api/v1/cms/catalog/products',{
+    payload={
         'categoryId':account_cat['id'],'gameId':game_id,'name':name,
         'slug':slug,'shortDescription':'Real account','description':'Account details',
         'thumbnailUrl':'https://example.test/account.png','kind':'GameAccount',
         'fulfillmentMethod':'MANUAL','requiresGameAccountValidation':False,
-        'isActive':True,'isFeatured':True,'sortOrder':1},admin),201)
+        'isActive':False,'isFeatured':True,'sortOrder':1}
+    prod=check(api('POST','/api/v1/cms/catalog/products',payload,admin),201)
     pid=prod if isinstance(prod,str) else prod['id']
     check(api('POST',f'/api/v1/cms/catalog/products/{pid}/variants',{
         'name':'Invalid unlimited account','sku':sku+'-BAD',
@@ -403,6 +411,7 @@ def listing(game_id,name,slug,sku):
     check(api('POST',f'/api/v1/cms/catalog/products/{pid}/variants',{
         'name':'Unique account','sku':sku,'price':1850000,'compareAtPrice':None,
         'stockQuantity':1,'weightGrams':None,'isActive':True,'sortOrder':1},admin),201)
+    listing_payloads[pid]=payload
     return pid
 aid=listing(ml,'Real ML Account','real-ml-account','STOREFRONT-ML-A')
 dota_id=listing(dota,'Real Dota Account','real-dota-account','STOREFRONT-DOTA-A')
@@ -420,6 +429,8 @@ check(api('PUT',f'/api/v1/cms/catalog/products/{other_ml}/game-account-details',
     {'attributes':{'rank':'Legend','skinCount':52,'starlight':False}},admin),200)
 check(api('PUT',f'/api/v1/cms/catalog/products/{dota_id}/game-account-details',
     {'attributes':{'mmr':6200,'medal':'Immortal','arcana':3}},admin),200)
+for pid,payload in listing_payloads.items():
+    check(api('PUT',f'/api/v1/cms/catalog/products/{pid}',{**payload,'isActive':True},admin),204)
 editor=check(api('GET',url,token=admin),200)
 assert editor['values']['starlight'] is True and editor['gameId']==ml
 assert len(editor['schema'])==5 and not editor['isLegacyUnlinked']
