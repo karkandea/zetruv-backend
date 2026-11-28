@@ -393,7 +393,7 @@ public sealed class CmsCatalogController(ZetruvDbContext db) : ControllerBase
             return Conflict(new { message = "SKU already exists." });
         }
 
-        var validation = ValidateVariant(request);
+        var validation = ValidateVariant(request, kind.Value);
         if (validation is not null)
         {
             return validation;
@@ -441,7 +441,7 @@ public sealed class CmsCatalogController(ZetruvDbContext db) : ControllerBase
             return Conflict(new { message = "SKU already exists." });
         }
 
-        var validation = ValidateVariant(request);
+        var validation = ValidateVariant(request, variant.Product.Kind);
         if (validation is not null)
         {
             return validation;
@@ -663,6 +663,28 @@ public sealed class CmsCatalogController(ZetruvDbContext db) : ControllerBase
         Guid? currentProductId,
         CancellationToken cancellationToken)
     {
+        if (request.Kind == ProductKind.TopUpLogin)
+        {
+            // Legacy products can still be edited on unrelated tabs without forcing a data migration.
+            var previous = currentProductId.HasValue
+                ? await db.Products.AsNoTracking().SingleOrDefaultAsync(x => x.Id == currentProductId.Value, cancellationToken)
+                : null;
+            var informationChanged = previous is null || previous.Kind != request.Kind ||
+                previous.Name.Trim() != request.Name.Trim() || previous.CategoryId != request.CategoryId ||
+                previous.GameId != request.GameId || (previous.ShortDescription ?? "").Trim() != (request.ShortDescription ?? "").Trim() ||
+                (previous.Description ?? "").Trim() != (request.Description ?? "").Trim();
+            if (informationChanged)
+            {
+                if (request.Name.Trim().Length is < 2 or > 80 || !System.Text.RegularExpressions.Regex.IsMatch(request.Name, "[a-zA-Z0-9]"))
+                    return BadRequest(new { message = "Nama produk harus 2–80 karakter dan mengandung huruf atau angka Latin." });
+                if (!request.GameId.HasValue || request.GameId == Guid.Empty)
+                    return BadRequest(new { message = "Pilih game terkait." });
+                if ((request.ShortDescription ?? "").Trim().Length is < 10 or > 160)
+                    return BadRequest(new { message = "Deskripsi singkat harus 10–160 karakter." });
+                if ((request.Description ?? "").Trim().Length > 2000)
+                    return BadRequest(new { message = "Detail produk maksimal 2.000 karakter." });
+            }
+        }
         var slug = CatalogText.NormalizeSlug(request.Slug);
         if (await db.Products.AnyAsync(
                 x => x.Id != currentProductId && x.Slug == slug,
@@ -746,8 +768,19 @@ public sealed class CmsCatalogController(ZetruvDbContext db) : ControllerBase
             _ => fulfillmentMethod == FulfillmentMethod.MANUAL
         };
 
-    private IActionResult? ValidateVariant(UpsertVariantRequest request)
+    private IActionResult? ValidateVariant(UpsertVariantRequest request, ProductKind kind)
     {
+        if (kind == ProductKind.TopUpLogin)
+        {
+            if (request.Name.Trim().Length is < 2 or > 60)
+                return BadRequest(new { message = "Nama varian harus 2–60 karakter." });
+            if (!System.Text.RegularExpressions.Regex.IsMatch(request.Sku.Trim(), "^[A-Za-z0-9][A-Za-z0-9_-]{1,99}$"))
+                return BadRequest(new { message = "SKU harus 2–100 karakter: huruf, angka, tanda hubung, atau underscore." });
+            if (request.Price <= 0 || request.Price != decimal.Truncate(request.Price) || request.Price > 9007199254740991m)
+                return BadRequest(new { message = "Harga jual harus berupa rupiah bulat lebih dari 0 dalam batas nominal yang didukung." });
+            if (request.CompareAtPrice is decimal compare && (compare <= request.Price || compare != decimal.Truncate(compare) || compare > 9007199254740991m))
+                return BadRequest(new { message = "Harga coret harus berupa rupiah bulat dan lebih tinggi dari harga jual." });
+        }
         var from = !string.IsNullOrWhiteSpace(request.RankFrom);
         var to = !string.IsNullOrWhiteSpace(request.RankTo);
         if (from != to || (!from && (!string.IsNullOrWhiteSpace(request.RankFromIconUrl) || !string.IsNullOrWhiteSpace(request.RankToIconUrl))))
