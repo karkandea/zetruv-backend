@@ -21,17 +21,46 @@ public sealed class BannerMediaService(
     public const long StorageQuota = 100 * 1024 * 1024;
     public const int BannerLimit = 50; // Homepage controller enforces the number of banners.
 
-    public Task<MediaUploadResult> UploadAsync(IFormFile file, CancellationToken ct) =>
-        UploadOptimizedAsync(file, "banners", ct);
+    private static readonly Dictionary<string, (int Width, int Height, long Target, string Category)> Profiles = new()
+    {
+        ["variant"] = (256, 256, 100 * 1024, "catalog"),
+        ["category"] = (256, 256, 100 * 1024, "catalog"),
+        ["game"] = (512, 512, 150 * 1024, "catalog"),
+        ["thumbnail"] = (512, 512, 150 * 1024, "catalog"),
+        ["desktop"] = (1920, 480, OutputTarget, "catalog"),
+        ["mobile"] = (1080, 600, OutputTarget, "catalog"),
+        ["bannerDesktop"] = (2400, 600, OutputTarget, "banners"),
+        ["bannerMobile"] = (1080, 1080, OutputTarget, "banners"),
+        ["accountGallery"] = (1200, 900, OutputTarget, "catalog"),
+        ["merchandise"] = (1200, 1200, OutputTarget, "catalog"),
+        ["article"] = (1280, 720, OutputTarget, "catalog"),
+        ["social"] = (128, 128, 100 * 1024, "catalog"),
+        ["payment"] = (320, 160, 100 * 1024, "catalog"),
+        ["brand"] = (640, 240, 150 * 1024, "catalog"),
+    };
 
-    public Task<MediaUploadResult> UploadCatalogAsync(IFormFile file, CancellationToken ct) =>
-        UploadOptimizedAsync(file, "catalog", ct);
+    public Task<MediaUploadResult> UploadAsync(IFormFile file, CancellationToken ct, string? profile = null) =>
+        UploadWithProfile(file, "banners", ct, profile);
 
-    public Task<MediaUploadResult> UploadVariantIconAsync(IFormFile file, CancellationToken ct) =>
-        UploadOptimizedAsync(file, "catalog", ct, VariantIconMaxDimension, VariantIconOutputTarget);
+    public Task<MediaUploadResult> UploadCatalogAsync(IFormFile file, CancellationToken ct, string? profile = null) =>
+        UploadWithProfile(file, "catalog", ct, profile);
+
+    public Task<MediaUploadResult> UploadVariantIconAsync(IFormFile file, CancellationToken ct, string? profile = null) =>
+        string.IsNullOrEmpty(profile)
+            ? UploadOptimizedAsync(file, "catalog", ct, VariantIconMaxDimension, VariantIconOutputTarget)
+            : profile == "variant" ? UploadWithProfile(file, "catalog", ct, profile)
+            : Task.FromResult(MediaUploadResult.Failure("Profil ikon varian tidak sesuai.", 400));
+
+    private Task<MediaUploadResult> UploadWithProfile(IFormFile file, string category, CancellationToken ct, string? profile)
+    {
+        if (string.IsNullOrEmpty(profile)) return UploadOptimizedAsync(file, category, ct);
+        if (!Profiles.TryGetValue(profile, out var spec) || spec.Category != category)
+            return Task.FromResult(MediaUploadResult.Failure("Profil gambar tidak sesuai.", 400));
+        return UploadOptimizedAsync(file, category, ct, 0, spec.Target, spec.Width, spec.Height);
+    }
 
     private async Task<MediaUploadResult> UploadOptimizedAsync(
-        IFormFile file, string category, CancellationToken ct, int maxDimension = 0, long targetBytes = OutputTarget)
+        IFormFile file, string category, CancellationToken ct, int maxDimension = 0, long targetBytes = OutputTarget, int expectedWidth = 0, int expectedHeight = 0)
     {
         if (file is null || file.Length == 0)
             return MediaUploadResult.Failure("Pilih gambar untuk diunggah.", 400);
@@ -58,6 +87,9 @@ public sealed class BannerMediaService(
                 info.Width > 4096 || info.Height > 4096 ||
                 (long)info.Width * info.Height > 8_388_608)
                 return MediaUploadResult.Failure("Dimensi gambar tidak didukung. Gunakan maksimal 4096 piksel dan 8 megapiksel.", 422);
+
+            if (expectedWidth > 0 && (info.Width != expectedWidth || info.Height != expectedHeight))
+                return MediaUploadResult.Failure($"Dimensi gambar harus {expectedWidth} × {expectedHeight} px.", 422);
 
             using var bitmap = SKBitmap.Decode(data);
             if (bitmap is null)

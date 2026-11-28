@@ -175,7 +175,11 @@ public sealed class MediaService(
                     (x.RankFromIconUrl != null && x.RankFromIconUrl.EndsWith(reference)) ||
                     (x.RankToIconUrl != null && x.RankToIconUrl.EndsWith(reference)), cancellationToken) ||
                 await db.CatalogCategories.AnyAsync(x => x.IconUrl != null && x.IconUrl.EndsWith(reference), cancellationToken) ||
-                await db.Games.AnyAsync(x => x.ImageUrl != null && x.ImageUrl.EndsWith(reference), cancellationToken))
+                await db.Games.AnyAsync(x => x.ImageUrl != null && x.ImageUrl.EndsWith(reference), cancellationToken) ||
+                await db.Articles.AnyAsync(x => x.ThumbnailUrl.EndsWith(reference), cancellationToken) ||
+                await db.SiteSettings.AnyAsync(x => x.LogoUrl != null && x.LogoUrl.EndsWith(reference), cancellationToken) ||
+                await db.SiteSocialLinks.AnyAsync(x => x.IconUrl != null && x.IconUrl.EndsWith(reference), cancellationToken) ||
+                await db.SitePaymentMethods.AnyAsync(x => x.IconUrl != null && x.IconUrl.EndsWith(reference), cancellationToken))
                 throw new InvalidOperationException("Gambar masih digunakan di katalog. Ganti gambar pada produk, varian, kategori, atau game terlebih dahulu.");
         }
 
