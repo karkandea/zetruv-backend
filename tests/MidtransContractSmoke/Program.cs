@@ -70,13 +70,18 @@ handler.Reply = async req => {
         new { name="other_qris", enabled=true }, new { name="bca_va", enabled=false },
         new { name="unknown", enabled=true } } });
     using var json = JsonDocument.Parse(await req.Content!.ReadAsStringAsync());
-    var chosen = json.RootElement.GetProperty("enabled_payments");
-    Check(chosen.GetArrayLength() == 1 && chosen[0].GetString() == "other_qris", "exactly one selected Snap channel");
-    return Json(201, new { token="synthetic", redirect_url="https://app.sandbox.midtrans.com/snap/v3/redirection/TEST" });
+    Check(req.RequestUri?.AbsoluteUri == "https://api.sandbox.midtrans.com/v2/charge", "QRIS uses Core charge");
+    Check(json.RootElement.GetProperty("payment_type").GetString() == "qris" &&
+        json.RootElement.GetProperty("transaction_details").GetProperty("gross_amount").GetInt64() == 25000 &&
+        json.RootElement.GetProperty("custom_expiry").GetProperty("expiry_duration").GetInt32() == 60, "native QRIS exact amount and expiry");
+    return Json(201, new { status_code="201", transaction_status="pending", payment_type="qris",
+        order_id="ZTR-SYNTHETIC-A2", gross_amount="25000.00", transaction_id="12345678-1234-4234-8234-123456789012",
+        actions=new[] { new { name="generate-qr-code", method="GET", url="https://api.sandbox.midtrans.com/v2/qris/12345678-1234-4234-8234-123456789012/qr-code" } } });
 };
 var enabled = await gateway.GetEnabledChannelsAsync(default);
 Check(enabled.Count == 1 && enabled[0].Code == "MIDTRANS_OTHER_QRIS", "only allowlisted enabled preference channels");
-Check((await gateway.CreatePaymentAsync(request with { MethodCode = "MIDTRANS_OTHER_QRIS" })).IsSuccess, "selected QRIS session created");
+var native = await gateway.CreatePaymentAsync(request with { MethodCode = "MIDTRANS_OTHER_QRIS" });
+Check(native.IsSuccess && native.PaymentUrl?.EndsWith("/qr-code") == true && native.QrString is null, "provider QR image returned without Snap redirect");
 var beforeDisabled = calls;
 Check(!(await gateway.CreatePaymentAsync(request with { MethodCode = "MIDTRANS_BCA_VA" })).IsSuccess && calls == beforeDisabled+1, "disabled channel never creates session");
 handler.Reply = _ => Task.FromResult(Json(503, new { }));
