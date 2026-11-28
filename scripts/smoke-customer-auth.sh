@@ -330,7 +330,7 @@ INSERT INTO products ("Id","CategoryId","Name","Slug","Kind","FulfillmentMethod"
  "RequiresGameAccountValidation","IsActive","IsFeatured","SortOrder","CreatedAt","UpdatedAt")
 VALUES ('e8100000-0000-4000-8000-000000000001',
  (SELECT "Id" FROM catalog_categories WHERE "Key"='top_up_games'),
- 'Cart Checkout Fixture','cart-checkout-fixture','Joki','JOKI_MANUAL',FALSE,TRUE,FALSE,1,NOW(),NOW());
+ 'Cart Checkout Fixture','cart-checkout-fixture','Joki','MANUAL',FALSE,TRUE,FALSE,1,NOW(),NOW());
 INSERT INTO product_variants ("Id","ProductId","Name","Sku","Price","IsActive","SortOrder","CreatedAt","UpdatedAt")
 VALUES ('e8100000-0000-4000-8000-000000000002','e8100000-0000-4000-8000-000000000001',
  'Package','CART-CHECKOUT-ONLY',12000,TRUE,0,NOW(),NOW());
