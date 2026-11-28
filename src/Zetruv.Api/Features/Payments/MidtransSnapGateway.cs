@@ -149,6 +149,8 @@ public sealed class MidtransSnapGateway(
             var enabled = await GetEnabledChannelsAsync(ct);
             if (!enabled.Any(x => x.Code == channel.Code))
                 return PaymentGatewayCreateResult.Failure("The selected payment method is no longer available.");
+            if (channel.ProviderCode == "other_qris")
+                return await CreateQrisAsync(request, reference, now, startTime, ct);
             body["enabled_payments"] = new[] { channel.ProviderCode };
         }
         var finishUrl = configuration["Payments:Midtrans:FinishUrl"]?.Trim();
@@ -196,6 +198,67 @@ public sealed class MidtransSnapGateway(
         {
             return PaymentGatewayCreateResult.Failure("Invalid Midtrans payment response.");
         }
+    }
+
+    // Native QRIS: retain the existing Midtrans provider, reference and status
+    // reconciliation contract. PaymentUrl carries the provider QR image URL;
+    // it is never a redirect in this branch. No locally generated QR payload.
+    private async Task<PaymentGatewayCreateResult> CreateQrisAsync(
+        PaymentGatewayCreateRequest request, string reference, DateTimeOffset now,
+        string startTime, CancellationToken ct)
+    {
+        try
+        {
+            using var client = Client();
+            var body = new {
+                payment_type = "qris",
+                transaction_details = new { order_id = reference, gross_amount = (long)request.Amount },
+                qris = new { acquirer = "gopay" },
+                custom_expiry = new { order_time = startTime, expiry_duration = 60, unit = "minute" },
+                customer_details = new {
+                    first_name = Truncate(request.CustomerName, 100),
+                    email = Truncate(request.CustomerEmail, 100),
+                    phone = Truncate(request.CustomerPhone, 30)
+                }
+            };
+            using var message = new HttpRequestMessage(HttpMethod.Post, new Uri(StatusBase, "v2/charge")) {
+                Content = new StringContent(JsonSerializer.Serialize(body, JsonOptions), Encoding.UTF8, "application/json")
+            };
+            using var response = await client.SendAsync(message, ct);
+            if (!response.IsSuccessStatusCode)
+                return PaymentGatewayCreateResult.Failure("QRIS payment could not be created.");
+            using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
+            var root = json.RootElement;
+            if (!TryString(root, "status_code", out var code) || code != "201" ||
+                !TryString(root, "transaction_status", out var state) || state != "pending" ||
+                !TryString(root, "payment_type", out var paymentType) || paymentType != "qris" ||
+                !TryString(root, "order_id", out var orderId) || orderId != reference ||
+                !TryString(root, "gross_amount", out var amountText) ||
+                !decimal.TryParse(amountText, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var amount) ||
+                amount != request.Amount ||
+                !TryString(root, "transaction_id", out var transactionId) || !Guid.TryParse(transactionId, out _) ||
+                !root.TryGetProperty("actions", out var actions) || actions.ValueKind != JsonValueKind.Array)
+                return PaymentGatewayCreateResult.Failure("Invalid QRIS payment response.");
+            foreach (var action in actions.EnumerateArray())
+            {
+                if (!TryString(action, "name", out var name) || name != "generate-qr-code" ||
+                    !TryString(action, "method", out var method) || method != "GET" ||
+                    !TryString(action, "url", out var url) ||
+                    !Uri.TryCreate(url, UriKind.Absolute, out var image) ||
+                    image.Scheme != Uri.UriSchemeHttps || !image.IsDefaultPort ||
+                    image.Host != StatusBase.Host || image.UserInfo.Length != 0 ||
+                    image.Query.Length != 0 || image.Fragment.Length != 0 ||
+                    (image.AbsolutePath != "/v2/qris/" + transactionId + "/qr-code" &&
+                     image.AbsolutePath != "/v2/gopay/" + transactionId + "/qr-code"))
+                    continue;
+                return PaymentGatewayCreateResult.Success(reference, paymentUrl: image.AbsoluteUri, expiresAt: now.AddMinutes(60));
+            }
+            return PaymentGatewayCreateResult.Failure("Midtrans QR image is unavailable.");
+        }
+        catch (HttpRequestException) { return PaymentGatewayCreateResult.Failure("QRIS provider is temporarily unavailable."); }
+        catch (JsonException) { return PaymentGatewayCreateResult.Failure("Invalid QRIS payment response."); }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        { return PaymentGatewayCreateResult.Failure("QRIS provider timed out. Check the existing order before retrying."); }
     }
 
     public Task<PaymentGatewayStatusResult> GetPaymentStatusAsync(
