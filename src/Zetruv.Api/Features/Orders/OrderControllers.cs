@@ -17,7 +17,7 @@ public sealed class CmsOrdersController(
     FulfillmentExecutionService executionService,
     InventoryReservationService inventoryReservations,
     ShipmentFulfillmentService shipmentFulfillment,
-    DiscountVoucherService discountVouchers) : ControllerBase
+    DiscountVoucherService discountVouchers, InvoiceService invoices) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<OrderPageResponse>> GetOrders(
@@ -42,7 +42,7 @@ public sealed class CmsOrdersController(
     {
         Response.Headers.CacheControl = "private, no-store";
         var order = await orderService.GetAdminOrderAsync(id, cancellationToken);
-        return order is null ? NotFound() : Ok(order);
+        return order is null ? NotFound() : Ok(order with { Invoice = await invoices.Info(id, cancellationToken) });
     }
 
     [HttpPut("{id:guid}/status")]

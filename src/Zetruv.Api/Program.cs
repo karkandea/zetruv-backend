@@ -366,6 +366,8 @@ builder.Services.AddHostedService<PaymentReconciliationBackgroundService>();
 builder.Services.AddScoped<AutoIdRuntimeProviderMappingService>();
 builder.Services.AddScoped<AutoIdFulfillmentProviderResolver>();
 builder.Services.AddScoped<PaymentService>();
+builder.Services.AddScoped<InvoiceService>();
+builder.Services.AddHostedService<InvoiceWorker>();
 builder.Services.AddScoped<SiteService>();
 builder.Services.AddScoped<SiteSeeder>();
 builder.Services.AddScoped<HomepageService>();

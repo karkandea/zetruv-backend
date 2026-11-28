@@ -22,37 +22,6 @@ namespace Zetruv.Api.Persistence.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
-            modelBuilder.Entity("Zetruv.Api.Features.Support.SupportReport", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Description")
-                        .IsRequired()
-                        .HasMaxLength(2000)
-                        .HasColumnType("character varying(2000)");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(120)
-                        .HasColumnType("character varying(120)");
-
-                    b.Property<string>("Phone")
-                        .IsRequired()
-                        .HasMaxLength(40)
-                        .HasColumnType("character varying(40)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CreatedAt", "Id");
-
-                    b.ToTable("support_reports", (string)null);
-                });
-
             modelBuilder.Entity("Zetruv.Api.Features.Articles.Article", b =>
                 {
                     b.Property<Guid>("Id")
@@ -295,10 +264,6 @@ namespace Zetruv.Api.Persistence.Migrations
                         .HasMaxLength(120)
                         .HasColumnType("character varying(120)");
 
-                    b.Property<string>("Phone")
-                        .HasMaxLength(24)
-                        .HasColumnType("character varying(24)");
-
                     b.Property<string>("NormalizedEmail")
                         .IsRequired()
                         .HasMaxLength(320)
@@ -308,6 +273,10 @@ namespace Zetruv.Api.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
+
+                    b.Property<string>("Phone")
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)");
 
                     b.Property<int>("TokenVersion")
                         .HasColumnType("integer");
@@ -739,23 +708,6 @@ namespace Zetruv.Api.Persistence.Migrations
 
             modelBuilder.Entity("Zetruv.Api.Features.Catalog.ProductVariant", b =>
                 {
-                    b.Property<string>("RankFrom")
-                        .HasMaxLength(80)
-                        .HasColumnType("character varying(80)");
-
-                    b.Property<string>("RankTo")
-                        .HasMaxLength(80)
-                        .HasColumnType("character varying(80)");
-
-                    b.Property<string>("RankFromIconUrl")
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)");
-
-                    b.Property<string>("RankToIconUrl")
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)");
-
-
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
@@ -789,6 +741,22 @@ namespace Zetruv.Api.Persistence.Migrations
 
                     b.Property<Guid>("ProductId")
                         .HasColumnType("uuid");
+
+                    b.Property<string>("RankFrom")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("RankFromIconUrl")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<string>("RankTo")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("RankToIconUrl")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
 
                     b.Property<string>("Sku")
                         .IsRequired()
@@ -1110,34 +1078,6 @@ namespace Zetruv.Api.Persistence.Migrations
                     b.HasIndex("DeletedAt", "CreatedAt");
 
                     b.ToTable("media_assets", (string)null);
-                });
-
-            modelBuilder.Entity("Zetruv.Api.Features.Shipping.CustomerAddress", b =>
-                {
-                    b.Property<Guid>("Id").ValueGeneratedOnAdd().HasColumnType("uuid");
-                    b.Property<Guid>("CustomerUserId").HasColumnType("uuid");
-                    b.Property<string>("City").IsRequired().HasMaxLength(120).HasColumnType("character varying(120)");
-                    b.Property<DateTimeOffset>("CreatedAt").HasColumnType("timestamp with time zone");
-                    b.Property<string>("District").IsRequired().HasMaxLength(120).HasColumnType("character varying(120)");
-                    b.Property<string>("Email").HasMaxLength(320).HasColumnType("character varying(320)");
-                    b.Property<string>("FullAddress").IsRequired().HasMaxLength(500).HasColumnType("character varying(500)");
-                    b.Property<bool>("IsDefault").HasColumnType("boolean");
-                    b.Property<string>("Label").IsRequired().HasMaxLength(40).HasColumnType("character varying(40)");
-                    b.Property<decimal?>("Latitude").HasPrecision(10, 7).HasColumnType("numeric(10,7)");
-                    b.Property<decimal?>("Longitude").HasPrecision(10, 7).HasColumnType("numeric(10,7)");
-                    b.Property<string>("Note").HasMaxLength(250).HasColumnType("character varying(250)");
-                    b.Property<string>("PostalCode").IsRequired().HasMaxLength(5).HasColumnType("character varying(5)");
-                    b.Property<string>("Province").IsRequired().HasMaxLength(120).HasColumnType("character varying(120)");
-                    b.Property<int>("RajaOngkirDeliveryId").HasColumnType("integer");
-                    b.Property<string>("RecipientName").IsRequired().HasMaxLength(120).HasColumnType("character varying(120)");
-                    b.Property<string>("RecipientPhone").IsRequired().HasMaxLength(24).HasColumnType("character varying(24)");
-                    b.Property<string>("Subdistrict").IsRequired().HasMaxLength(120).HasColumnType("character varying(120)");
-                    b.Property<DateTimeOffset>("UpdatedAt").HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Id");
-                    b.HasIndex("CustomerUserId", "IsDefault").IsUnique().HasFilter("\"IsDefault\" = TRUE");
-                    b.HasIndex("CustomerUserId", "UpdatedAt");
-                    b.ToTable("customer_addresses", (string)null);
                 });
 
             modelBuilder.Entity("Zetruv.Api.Features.Orders.CustomerCartItem", b =>
@@ -1596,29 +1536,74 @@ namespace Zetruv.Api.Persistence.Migrations
                     b.ToTable("orders", (string)null);
                 });
 
+            modelBuilder.Entity("Zetruv.Api.Features.Orders.OrderInvoice", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("AttemptCount")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("InvoiceNumber")
+                        .IsRequired()
+                        .HasMaxLength(48)
+                        .HasColumnType("character varying(48)");
+
+                    b.Property<DateTimeOffset>("IssuedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("LastAttemptAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("NextAttemptAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("OrderId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("PaidAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("PaymentTransactionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<byte[]>("Pdf")
+                        .HasColumnType("bytea");
+
+                    b.Property<string>("PdfSha256")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("SnapshotJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<int>("TemplateVersion")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("InvoiceNumber")
+                        .IsUnique();
+
+                    b.HasIndex("OrderId")
+                        .IsUnique();
+
+                    b.HasIndex("PaymentTransactionId");
+
+                    b.HasIndex("Status", "NextAttemptAt");
+
+                    b.ToTable("order_invoices", (string)null);
+                });
+
             modelBuilder.Entity("Zetruv.Api.Features.Orders.OrderItem", b =>
                 {
-                    b.Property<string>("VariantIconUrl")
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)");
-
-                    b.Property<string>("RankFrom")
-                        .HasMaxLength(80)
-                        .HasColumnType("character varying(80)");
-
-                    b.Property<string>("RankTo")
-                        .HasMaxLength(80)
-                        .HasColumnType("character varying(80)");
-
-                    b.Property<string>("RankFromIconUrl")
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)");
-
-                    b.Property<string>("RankToIconUrl")
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)");
-
-
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
@@ -1694,6 +1679,22 @@ namespace Zetruv.Api.Persistence.Migrations
                     b.Property<int>("Quantity")
                         .HasColumnType("integer");
 
+                    b.Property<string>("RankFrom")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("RankFromIconUrl")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<string>("RankTo")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("RankToIconUrl")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
                     b.Property<string>("Sku")
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
@@ -1705,6 +1706,10 @@ namespace Zetruv.Api.Persistence.Migrations
                     b.Property<decimal>("UnitPrice")
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
+
+                    b.Property<string>("VariantIconUrl")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
 
                     b.Property<string>("VariantName")
                         .HasMaxLength(180)
@@ -1876,6 +1881,99 @@ namespace Zetruv.Api.Persistence.Migrations
                         .IsUnique();
 
                     b.ToTable("payment_webhook_events", (string)null);
+                });
+
+            modelBuilder.Entity("Zetruv.Api.Features.Shipping.CustomerAddress", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("City")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("CustomerUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("District")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<string>("Email")
+                        .HasMaxLength(320)
+                        .HasColumnType("character varying(320)");
+
+                    b.Property<string>("FullAddress")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<bool>("IsDefault")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Label")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<decimal?>("Latitude")
+                        .HasPrecision(10, 7)
+                        .HasColumnType("numeric(10,7)");
+
+                    b.Property<decimal?>("Longitude")
+                        .HasPrecision(10, 7)
+                        .HasColumnType("numeric(10,7)");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(250)
+                        .HasColumnType("character varying(250)");
+
+                    b.Property<string>("PostalCode")
+                        .IsRequired()
+                        .HasMaxLength(5)
+                        .HasColumnType("character varying(5)");
+
+                    b.Property<string>("Province")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<int>("RajaOngkirDeliveryId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("RecipientName")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<string>("RecipientPhone")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)");
+
+                    b.Property<string>("Subdistrict")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CustomerUserId", "IsDefault")
+                        .IsUnique()
+                        .HasFilter("\"IsDefault\" = TRUE");
+
+                    b.HasIndex("CustomerUserId", "UpdatedAt");
+
+                    b.ToTable("customer_addresses", (string)null);
                 });
 
             modelBuilder.Entity("Zetruv.Api.Features.Shipping.Shipment", b =>
@@ -2272,6 +2370,37 @@ namespace Zetruv.Api.Persistence.Migrations
                     b.ToTable("site_social_links", (string)null);
                 });
 
+            modelBuilder.Entity("Zetruv.Api.Features.Support.SupportReport", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<string>("Phone")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt", "Id");
+
+                    b.ToTable("support_reports", (string)null);
+                });
+
             modelBuilder.Entity("Zetruv.Api.Features.Articles.Article", b =>
                 {
                     b.HasOne("Zetruv.Api.Features.Articles.ArticleCategory", "Category")
@@ -2435,15 +2564,6 @@ namespace Zetruv.Api.Persistence.Migrations
                     b.Navigation("Product");
                 });
 
-            modelBuilder.Entity("Zetruv.Api.Features.Shipping.CustomerAddress", b =>
-                {
-                    b.HasOne("Zetruv.Api.Features.Auth.CustomerUser", null)
-                        .WithMany()
-                        .HasForeignKey("CustomerUserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-                });
-
             modelBuilder.Entity("Zetruv.Api.Features.Orders.CustomerCartItem", b =>
                 {
                     b.HasOne("Zetruv.Api.Features.Auth.CustomerUser", null)
@@ -2549,6 +2669,21 @@ namespace Zetruv.Api.Persistence.Migrations
                         .OnDelete(DeleteBehavior.SetNull);
                 });
 
+            modelBuilder.Entity("Zetruv.Api.Features.Orders.OrderInvoice", b =>
+                {
+                    b.HasOne("Zetruv.Api.Features.Orders.Order", null)
+                        .WithMany()
+                        .HasForeignKey("OrderId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Zetruv.Api.Features.Orders.PaymentTransaction", null)
+                        .WithMany()
+                        .HasForeignKey("PaymentTransactionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Zetruv.Api.Features.Orders.OrderItem", b =>
                 {
                     b.HasOne("Zetruv.Api.Features.Orders.Order", "Order")
@@ -2583,6 +2718,15 @@ namespace Zetruv.Api.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("Order");
+                });
+
+            modelBuilder.Entity("Zetruv.Api.Features.Shipping.CustomerAddress", b =>
+                {
+                    b.HasOne("Zetruv.Api.Features.Auth.CustomerUser", null)
+                        .WithMany()
+                        .HasForeignKey("CustomerUserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Zetruv.Api.Features.Shipping.Shipment", b =>

@@ -70,6 +70,7 @@ public sealed class PaymentService(
     FulfillmentExecutionService executionService,
     PaymentWebhookEventLedger webhookEventLedger,
     IOptions<PaymentReconciliationOptions> reconciliationOptions,
+    InvoiceService invoices,
     ILogger<PaymentService> logger)
 {
     public async Task<InitiatePaymentResult> InitiateAsync(
@@ -603,6 +604,7 @@ public sealed class PaymentService(
                     order.PaymentReference = paymentTransaction.ProviderReference;
                     order.PaidAt ??= now;
                     fulfillmentService.StartPaidOrder(order, now);
+                    invoices.Issue(order, paymentTransaction, now);
 
                     await db.PaymentTransactions
                         .Where(x =>

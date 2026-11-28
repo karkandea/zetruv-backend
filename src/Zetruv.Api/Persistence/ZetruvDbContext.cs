@@ -439,6 +439,21 @@ public sealed class ZetruvDbContext(
             entity.HasIndex(x => x.PaymentReference);
         });
 
+        modelBuilder.Entity<OrderInvoice>(entity =>
+        {
+            entity.ToTable("order_invoices");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.InvoiceNumber).HasMaxLength(48).IsRequired();
+            entity.Property(x => x.SnapshotJson).HasColumnType("jsonb").IsRequired();
+            entity.Property(x => x.Status).HasMaxLength(16).IsRequired();
+            entity.Property(x => x.PdfSha256).HasMaxLength(64);
+            entity.HasIndex(x => x.OrderId).IsUnique();
+            entity.HasIndex(x => x.InvoiceNumber).IsUnique();
+            entity.HasIndex(x => new { x.Status, x.NextAttemptAt });
+            entity.HasOne<Order>().WithMany().HasForeignKey(x => x.OrderId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<PaymentTransaction>().WithMany().HasForeignKey(x => x.PaymentTransactionId).OnDelete(DeleteBehavior.Restrict);
+        });
+
         modelBuilder.Entity<OrderItem>(entity =>
         {
             entity.Property(x => x.VariantIconUrl).HasMaxLength(1000);
