@@ -6,6 +6,7 @@ TMP=$(mktemp -d)
 C="zetruv-pg-customer-auth-$$"
 PID=""
 cleanup() {
+  rc=$?; if [[ $rc != 0 && -f "$TMP/api.log" ]]; then tail -80 "$TMP/api.log" >&2; fi
   [[ -n "$PID" ]] && kill "$PID" >/dev/null 2>&1 || true
   docker rm -fv "$C" >/dev/null 2>&1 || true
   rm -rf "$TMP"
