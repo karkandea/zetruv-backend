@@ -177,6 +177,7 @@ public sealed class CheckoutController(
                     message = result.Error,
                     priceChanges = result.PriceChanges
                 });
+            if (result.CartChanged) return Conflict(new { code = "CART_CHANGED", message = result.Error });
             return BadRequest(new { message = result.Error });
         }
         return StatusCode(StatusCodes.Status201Created, WithAccessToken(result.Order));
