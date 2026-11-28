@@ -8,8 +8,7 @@ using Zetruv.Api.Persistence;
 namespace Zetruv.Api.Features.Payments;
 
 // A read-only projection of the existing payment state machine.
-// This endpoint NEVER settles payments; only verified provider callbacks or
-// reconciliation are allowed to make a payment Paid.
+// GET is read-only. POST refresh delegates to verified reconciliation.
 public sealed record CustomerPaymentStatusResponse(
     Guid OrderId,
     string OrderNumber,
@@ -32,8 +31,32 @@ public sealed record CustomerPaymentStatusResponse(
 [Route("api/v1/checkout/orders/{orderId:guid}/payment")]
 public sealed class CustomerPaymentStatusController(
     ZetruvDbContext db,
-    OrderAccessTokenService orderAccessTokens) : ControllerBase
+    OrderAccessTokenService orderAccessTokens, PaymentService paymentService) : ControllerBase
 {
+    [HttpPost("refresh")]
+    [EnableRateLimiting("payment-status-refresh")]
+    public async Task<ActionResult<CustomerPaymentStatusResponse>> Refresh(
+        Guid orderId, [FromHeader(Name = "X-Order-Access-Token")] string? orderAccessToken, CancellationToken ct)
+    {
+        Response.Headers.CacheControl = "private, no-store";
+        if (!orderAccessTokens.Validate(orderId, orderAccessToken))
+            return NotFound(new { message = "Order was not found or the access token is invalid." });
+        var now = DateTimeOffset.UtcNow;
+        var transactionId = await db.PaymentTransactions.AsNoTracking()
+            .Where(x => x.OrderId == orderId && x.Type == PaymentTransactionType.Payment &&
+                x.Status == PaymentTransactionStatus.Pending && x.Order.PaymentStatus == PaymentStatus.Pending &&
+                x.ProviderReference != null && (!x.ExpiresAt.HasValue || x.ExpiresAt > now))
+            .OrderByDescending(x => x.CreatedAt).ThenByDescending(x => x.Id)
+            .Select(x => (Guid?)x.Id).FirstOrDefaultAsync(ct);
+        if (transactionId.HasValue)
+        {
+            var result = await paymentService.ReconcileTransactionAsync(transactionId.Value, ct, customerRefresh: true);
+            if (result.Reconciliation is null && !result.IsConflict && !result.IsNotFound)
+                return StatusCode(503, new { message = "Payment provider status is temporarily unavailable." });
+        }
+        return await Get(orderId, orderAccessToken, ct);
+    }
+
     [HttpGet]
     [EnableRateLimiting("payment-status")]
     public async Task<ActionResult<CustomerPaymentStatusResponse>> Get(

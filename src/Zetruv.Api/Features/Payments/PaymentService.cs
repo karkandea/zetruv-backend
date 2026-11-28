@@ -793,7 +793,8 @@ public sealed class PaymentService(
 
     public async Task<PaymentReconciliationAttemptResult> ReconcileTransactionAsync(
         Guid transactionId,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        bool customerRefresh = false)
     {
         var orderId = await db.PaymentTransactions
             .AsNoTracking()
@@ -826,7 +827,7 @@ public sealed class PaymentService(
         try
         {
             db.ChangeTracker.Clear();
-            return await ReconcileTransactionLockedAsync(transactionId, cancellationToken);
+            return await ReconcileTransactionLockedAsync(transactionId, cancellationToken, customerRefresh);
         }
         finally
         {
@@ -851,7 +852,8 @@ public sealed class PaymentService(
 
     private async Task<PaymentReconciliationAttemptResult> ReconcileTransactionLockedAsync(
         Guid transactionId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool customerRefresh)
     {
         var snapshot = await db.PaymentTransactions
             .AsNoTracking()
@@ -868,7 +870,8 @@ public sealed class PaymentService(
                 x.Amount,
                 x.Currency,
                 x.ExpiresAt,
-                x.ReconciliationAttemptCount
+                x.ReconciliationAttemptCount,
+                x.LastReconciliationAttemptAt
             })
             .SingleOrDefaultAsync(cancellationToken);
 
@@ -901,6 +904,8 @@ public sealed class PaymentService(
         }
 
         var now = DateTimeOffset.UtcNow;
+        if (customerRefresh && snapshot.LastReconciliationAttemptAt >= now.AddSeconds(-10))
+            return PaymentReconciliationAttemptResult.Failure("Payment status was just checked.", isConflict: true);
         if (snapshot.ExpiresAt.HasValue && snapshot.ExpiresAt.Value <= now)
         {
             // Manual reconcile follows the same expiry rule as the worker.
