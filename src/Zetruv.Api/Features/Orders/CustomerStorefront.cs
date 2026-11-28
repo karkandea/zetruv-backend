@@ -512,7 +512,7 @@ public sealed class CustomerStorefrontController(ZetruvDbContext db) : Controlle
         });
     }
 
-    private static string ComputeCartRevision(
+    internal static string ComputeCartRevision(
         IEnumerable<(Guid Id, Guid VariantId, Guid? TargetId, int Quantity, DateTimeOffset UpdatedAt)> items)
     {
         var fingerprint = string.Join("|", items.OrderBy(x => x.Id)
