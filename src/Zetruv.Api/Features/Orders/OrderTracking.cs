@@ -24,7 +24,12 @@ public sealed record TrackOrderItemResponse(
     string? GameName,
     decimal UnitPrice,
     int Quantity,
-    decimal LineTotal);
+    decimal LineTotal,
+    string? VariantIconUrl = null,
+    string? RankFrom = null,
+    string? RankTo = null,
+    string? RankFromIconUrl = null,
+    string? RankToIconUrl = null);
 
 public sealed record TrackOrderResponse(
     Guid OrderId,
@@ -139,7 +144,7 @@ public sealed class OrderTrackingService(
                         i.GameName,
                         i.UnitPrice,
                         i.Quantity,
-                        i.LineTotal))
+                        i.LineTotal, i.VariantIconUrl, i.RankFrom, i.RankTo, i.RankFromIconUrl, i.RankToIconUrl))
                     .ToList()))
             .SingleOrDefaultAsync(cancellationToken);
 

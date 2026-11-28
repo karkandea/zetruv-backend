@@ -99,6 +99,11 @@ public sealed class OrderItem
     public int FulfillmentAttemptCount { get; set; }
     public DateTimeOffset? LastFulfillmentAttemptAt { get; set; }
     public string? VariantName { get; set; }
+    public string? VariantIconUrl { get; set; }
+    public string? RankFrom { get; set; }
+    public string? RankTo { get; set; }
+    public string? RankFromIconUrl { get; set; }
+    public string? RankToIconUrl { get; set; }
     public string? Sku { get; set; }
     public string? ThumbnailUrl { get; set; }
     public string? GameName { get; set; }
@@ -188,7 +193,12 @@ public sealed record OrderItemResponse(
     string? GameName,
     decimal UnitPrice,
     int Quantity,
-    decimal LineTotal)
+    decimal LineTotal,
+    string? VariantIconUrl = null,
+    string? RankFrom = null,
+    string? RankTo = null,
+    string? RankFromIconUrl = null,
+    string? RankToIconUrl = null)
 {
     // Only included in the CMS authenticated order detail, never guest tracking.
     public OrderAccountTargetResponse? AccountTarget { get; init; }

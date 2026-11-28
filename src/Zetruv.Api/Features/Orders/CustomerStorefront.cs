@@ -41,6 +41,11 @@ public sealed record CartItemResponse(
     string ProductSlug, string VariantName, ProductKind Kind,
     string? ThumbnailUrl, decimal UnitPrice, int Quantity, bool IsAvailable)
 {
+    public string? VariantIconUrl { get; init; }
+    public string? RankFrom { get; init; }
+    public string? RankTo { get; init; }
+    public string? RankFromIconUrl { get; init; }
+    public string? RankToIconUrl { get; init; }
     public CartTargetResponse? Target { get; init; }
     public FulfillmentMethod FulfillmentMethod { get; init; }
     public decimal RegularPrice { get; init; }
@@ -104,6 +109,11 @@ public sealed class CustomerStorefrontController(ZetruvDbContext db) : Controlle
                 ProductName = x.ProductVariant.Product.Name,
                 ProductSlug = x.ProductVariant.Product.Slug,
                 VariantName = x.ProductVariant.Name,
+                VariantIconUrl = x.ProductVariant.IconUrl,
+                x.ProductVariant.RankFrom,
+                x.ProductVariant.RankTo,
+                x.ProductVariant.RankFromIconUrl,
+                x.ProductVariant.RankToIconUrl,
                 Kind = x.ProductVariant.Product.Kind,
                 ThumbnailUrl = x.ProductVariant.Product.ThumbnailUrl,
                 UnitPrice = x.ProductVariant.Price,
@@ -202,6 +212,11 @@ public sealed class CustomerStorefrontController(ZetruvDbContext db) : Controlle
                 x.Quantity,
                 x.BaseAvailable && targetAvailable)
             {
+                VariantIconUrl = x.VariantIconUrl,
+                RankFrom = x.RankFrom,
+                RankTo = x.RankTo,
+                RankFromIconUrl = x.RankFromIconUrl,
+                RankToIconUrl = x.RankToIconUrl,
                 Target = target,
                 FulfillmentMethod = x.FulfillmentMethod,
                 RegularPrice = x.UnitPrice,

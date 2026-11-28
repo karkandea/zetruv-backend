@@ -83,6 +83,10 @@ public sealed class ProductVariant
     public Product Product { get; set; } = null!;
     public string Name { get; set; } = string.Empty;
     public string Sku { get; set; } = string.Empty;
+    public string? RankFrom { get; set; }
+    public string? RankTo { get; set; }
+    public string? RankFromIconUrl { get; set; }
+    public string? RankToIconUrl { get; set; }
     // CMS-defined package tab (for example Diamonds or Starlight).
     public string? GroupName { get; set; }
     public string? IconUrl { get; set; }
@@ -191,7 +195,11 @@ public sealed record ProductVariantResponse(
     DateTimeOffset? PromotionEndsAt,
     int SortOrder,
     string? GroupName = null,
-    string? IconUrl = null);
+    string? IconUrl = null,
+    string? RankFrom = null,
+    string? RankTo = null,
+    string? RankFromIconUrl = null,
+    string? RankToIconUrl = null);
 
 public sealed record ProductImageResponse(
     Guid Id,
@@ -244,7 +252,11 @@ public sealed record CmsProductVariantResponse(
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
     string? GroupName = null,
-    string? IconUrl = null);
+    string? IconUrl = null,
+    string? RankFrom = null,
+    string? RankTo = null,
+    string? RankFromIconUrl = null,
+    string? RankToIconUrl = null);
 
 public sealed record CmsProductDetailResponse(
     Guid Id,
@@ -349,7 +361,11 @@ public sealed record UpsertVariantRequest(
     bool IsActive,
     int SortOrder,
     [MaxLength(80)] string? GroupName = null,
-    [MaxLength(1000)] string? IconUrl = null);
+    [MaxLength(1000)] string? IconUrl = null,
+    [MaxLength(80)] string? RankFrom = null,
+    [MaxLength(80)] string? RankTo = null,
+    [MaxLength(1000)] string? RankFromIconUrl = null,
+    [MaxLength(1000)] string? RankToIconUrl = null);
 
 public sealed record UpsertImageRequest(
     [Required, MaxLength(1000)] string Url,

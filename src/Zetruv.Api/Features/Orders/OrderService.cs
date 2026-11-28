@@ -197,7 +197,7 @@ public sealed class OrderService(ZetruvDbContext db, ManualLoginCredentialProtec
                         i.GameName,
                         i.UnitPrice,
                         i.Quantity,
-                        i.LineTotal))
+                        i.LineTotal, i.VariantIconUrl, i.RankFrom, i.RankTo, i.RankFromIconUrl, i.RankToIconUrl))
                     .ToList(),
                 x.Transactions
                     .OrderByDescending(t => t.CreatedAt)

@@ -739,6 +739,23 @@ namespace Zetruv.Api.Persistence.Migrations
 
             modelBuilder.Entity("Zetruv.Api.Features.Catalog.ProductVariant", b =>
                 {
+                    b.Property<string>("RankFrom")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("RankTo")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("RankFromIconUrl")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<string>("RankToIconUrl")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
@@ -1581,6 +1598,27 @@ namespace Zetruv.Api.Persistence.Migrations
 
             modelBuilder.Entity("Zetruv.Api.Features.Orders.OrderItem", b =>
                 {
+                    b.Property<string>("VariantIconUrl")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<string>("RankFrom")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("RankTo")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("RankFromIconUrl")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<string>("RankToIconUrl")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");

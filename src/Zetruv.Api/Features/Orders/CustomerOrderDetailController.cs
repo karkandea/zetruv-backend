@@ -28,6 +28,12 @@ public sealed record CustomerOrderDetailItem(
     decimal LineTotal,
     CustomerOrderTarget? Target)
 {
+    public string? ProductSlug { get; init; }
+    public string? VariantIconUrl { get; init; }
+    public string? RankFrom { get; init; }
+    public string? RankTo { get; init; }
+    public string? RankFromIconUrl { get; init; }
+    public string? RankToIconUrl { get; init; }
     public string? ThumbnailUrl { get; init; }
     public bool CanReview { get; init; }
     public ProductReviewStatus? ReviewStatus { get; init; }
@@ -175,6 +181,12 @@ public sealed class CustomerOrderDetailController(ZetruvDbContext db) : Controll
                 x.LineTotal,
                 targets.GetValueOrDefault(x.Id))
             {
+                ProductSlug = x.ProductSlug,
+                VariantIconUrl = x.VariantIconUrl,
+                RankFrom = x.RankFrom,
+                RankTo = x.RankTo,
+                RankFromIconUrl = x.RankFromIconUrl,
+                RankToIconUrl = x.RankToIconUrl,
                 ThumbnailUrl = x.ThumbnailUrl,
                 CanReview = reviewEligible && x.ProductId.HasValue && !reviewStatuses.ContainsKey(x.Id),
                 ReviewStatus = reviewStatuses.TryGetValue(x.Id, out var status) ? status : null
