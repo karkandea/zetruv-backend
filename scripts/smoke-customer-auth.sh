@@ -385,6 +385,54 @@ expect(*place(body),409,'CART_CHANGED')
 assert cart()['revision']==new['revision']
 print('PASS: atomic cart consumption, stale/forged revision rejection, direct purchase isolation, idempotent replay preserves new cart')
 
+# Invoice: real mock gateway settlement, owner-only download, immutable PDF.
+import hashlib, hmac
+invoice_order=placed['id']
+inv_url='/api/v1/me/orders/'+invoice_order+'/invoice'
+status,detail=api('GET','/api/v1/me/orders/'+invoice_order,token=cart_token)
+assert status==200 and detail['invoice'] is None
+expect(*api('GET',inv_url,token=cart_token),404)
+status,payment=api('POST','/api/v1/checkout/orders/'+invoice_order+'/payment',
+  headers={'X-Order-Access-Token':placed['orderAccessToken']})
+expect(status,payment,200)
+webhook=json.dumps({'providerReference':payment['providerReference'],'status':'Paid','amount':placed['grandTotal'],'currency':'IDR'}).encode()
+sig=hmac.new(b'smoke-secret',webhook,hashlib.sha256).hexdigest()
+def settle():
+    req=urllib.request.Request(BASE+'/api/v1/payments/webhooks/mock', data=webhook, method='POST',
+      headers={'Content-Type':'application/json','X-Mock-Signature':sig})
+    with urllib.request.urlopen(req,timeout=15) as response: assert response.status==200
+settle();settle()
+for _ in range(25):
+    status,detail=api('GET','/api/v1/me/orders/'+invoice_order,token=cart_token)
+    if (detail.get('invoice') or {}).get('available'): break
+    time.sleep(1)
+assert detail['paymentState']=='Paid' and detail['status']=='Processing' and detail['invoice']['available'],detail
+def pdf_download(path,token=None):
+    req=urllib.request.Request(BASE+path,headers={'Authorization':'Bearer '+token} if token else {})
+    try:
+        with urllib.request.urlopen(req,timeout=10) as response:
+            return response.status,response.read(),response.headers
+    except urllib.error.HTTPError as e: return e.code,e.read(),e.headers
+code,pdf,headers=pdf_download(inv_url,cart_token)
+assert code==200 and pdf.startswith(b'%PDF-') and len(pdf)>1000
+assert headers['Content-Type']=='application/pdf' and 'private' in headers['Cache-Control']
+assert detail['invoice']['number']+'.pdf' in headers['Content-Disposition']
+assert pdf_download(inv_url)[0]==401
+assert pdf_download(inv_url,second_verified['accessToken'])[0]==404
+assert pdf_download(inv_url,admin['accessToken'])[0]==401
+cms_url='/api/v1/cms/orders/'+invoice_order+'/invoice'
+assert pdf_download(cms_url,admin['accessToken'])[1]==pdf
+assert pdf_download(cms_url,cart_token)[0] in (401,403)
+expect(*api('POST',cms_url+'/retry',token=admin['accessToken']),409)
+sql=f"""SELECT count(*),min("Status"),min("PdfSha256") FROM order_invoices WHERE "OrderId"='{invoice_order}';"""
+row=subprocess.check_output(['docker','exec',CONTAINER,'psql','-At','-U','zetruv','-d','zetruv_auth_smoke','-c',sql],text=True).strip().split('|')
+assert row==['1','Ready',hashlib.sha256(pdf).hexdigest()],row
+# Changing catalog price cannot change historical PDF.
+subprocess.run(['docker','exec',CONTAINER,'psql','-v','ON_ERROR_STOP=1','-U','zetruv','-d','zetruv_auth_smoke','-c',
+  f"""UPDATE product_variants SET "Price"=99999 WHERE "Id"='{joki_variant}';"""],check=True,stdout=subprocess.DEVNULL)
+assert pdf_download(inv_url,cart_token)[1]==pdf
+print('PASS: verified paid invoice, duplicate webhook, PDF, owner-only/CMS access, snapshot immutability')
+
 print('PASS: customer register, verify, edit email, resend, cooldown, expiry, auto-login, JWT isolation,')
 print('PASS: forgot generic response, reset, password history, replay guard, old session revocation')
 PY

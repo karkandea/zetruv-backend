@@ -253,6 +253,7 @@ public sealed record OrderDetailResponse(
     IReadOnlyList<OrderItemResponse> Items,
     IReadOnlyList<PaymentTransactionResponse> Transactions)
 {
+    public InvoiceInfo? Invoice { get; init; }
     public string? VoucherCode { get; init; }
     public decimal VoucherDiscountAmount { get; init; }
     public string PaymentState { get; init; } = "NotStarted";

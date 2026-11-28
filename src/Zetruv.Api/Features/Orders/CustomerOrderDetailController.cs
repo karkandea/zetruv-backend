@@ -56,6 +56,7 @@ public sealed record CustomerOrderDetail(
     IReadOnlyList<CustomerOrderDetailItem> Items)
 {
     public string PaymentState { get; init; } = string.Empty;
+    public InvoiceInfo? Invoice { get; init; }
     public bool HasFulfillmentIssue { get; init; }
     public ShipmentTrackingResponse? Shipment { get; init; }
     public string? GameItemSupportPhone { get; init; }
@@ -75,7 +76,7 @@ public sealed record CustomerOrderPage(IReadOnlyList<CustomerOrderSummary> Items
 [ApiController]
 [Authorize(AuthenticationSchemes = CustomerAuthConstants.Scheme)]
 [Route("api/v1/me/orders")]
-public sealed class CustomerOrderDetailController(ZetruvDbContext db) : ControllerBase
+public sealed class CustomerOrderDetailController(ZetruvDbContext db, InvoiceService invoices) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<CustomerOrderPage>> List(
@@ -206,6 +207,7 @@ public sealed class CustomerOrderDetailController(ZetruvDbContext db) : Controll
             order.GrandTotal, order.Currency, order.VoucherCode,
             order.CreatedAt, order.PaidAt, order.CompletedAt, items)
         {
+            Invoice = await invoices.Info(order.Id, ct),
             PaymentState = PaymentSessionState.Resolve(order.PaymentStatus, order.Status, attempts, DateTimeOffset.UtcNow),
             HasFulfillmentIssue = items.Any(x => x.FulfillmentStatus == FulfillmentStatus.Failed),
             GameItemSupportPhone = order.PaymentStatus == PaymentStatus.Paid && items.Any(x => x.Kind == ProductKind.GameItem)
