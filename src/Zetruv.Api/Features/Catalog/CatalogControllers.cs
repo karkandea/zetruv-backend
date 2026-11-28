@@ -75,7 +75,7 @@ public sealed class CatalogController(CatalogService catalogService) : Controlle
 [ApiController]
 [Authorize(Policy = AuthPolicies.CmsAdmin)]
 [Route("api/v1/cms/catalog")]
-public sealed class CmsCatalogController(ZetruvDbContext db) : ControllerBase
+public sealed class CmsCatalogController(ZetruvDbContext db, CatalogService catalogService) : ControllerBase
 {
     [HttpGet("categories")]
     public async Task<IActionResult> GetCategories(CancellationToken cancellationToken) =>
@@ -170,13 +170,15 @@ public sealed class CmsCatalogController(ZetruvDbContext db) : ControllerBase
     }
 
     [HttpGet("games")]
-    public async Task<IActionResult> GetGames(CancellationToken cancellationToken) =>
-        Ok(await db.Games
-            .AsNoTracking()
-            .OrderByDescending(x => x.IsPopular)
-            .ThenBy(x => x.SortOrder)
-            .ThenBy(x => x.Name)
-            .ToListAsync(cancellationToken));
+    public async Task<IActionResult> GetGames(CancellationToken cancellationToken)
+    {
+        var games = await db.Games.AsNoTracking().OrderByDescending(x => x.IsPopular)
+            .ThenBy(x => x.SortOrder).ThenBy(x => x.Name).ToListAsync(cancellationToken);
+        var services = await catalogService.GetGameServicesAsync(ct: cancellationToken);
+        return Ok(games.Select(g => new { g.Id, g.Name, g.Slug, g.Publisher, g.ImageUrl,
+            g.IsActive, g.IsPopular, g.SortOrder, g.CreatedAt, g.UpdatedAt,
+            AvailableCategories = services.GetValueOrDefault(g.Id) ?? [] }));
+    }
 
     [HttpPost("games")]
     public async Task<IActionResult> CreateGame(

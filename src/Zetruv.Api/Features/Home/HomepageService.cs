@@ -92,7 +92,12 @@ public sealed class HomepageService(
             joki,
             gameAccounts,
             merchandise,
-            latestArticles);
+            latestArticles)
+        {
+            TopUpGames = await catalogService.GetServiceGamesAsync(ProductKind.TopUpGame, 10, cancellationToken),
+            ItemGames = await catalogService.GetServiceGamesAsync(ProductKind.GameItem, 10, cancellationToken),
+            TopUpLoginGames = await catalogService.GetServiceGamesAsync(ProductKind.TopUpLogin, 10, cancellationToken)
+        };
     }
 
     public async Task<HomepageResponse> GetPersonalAsync(

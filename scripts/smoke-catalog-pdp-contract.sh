@@ -133,4 +133,47 @@ CODE=$(curl -sS -o /tmp/zetruv-price-ack.json -w '%{http_code}' -X POST "http://
 python3 -c 'import json; x=json.load(open("/tmp/zetruv-price-ack.json")); assert x["items"][0]["unitPrice"]==15000'
 echo 'PASS: stale/missing-price acknowledgments rejected, latest quoted price accepted'
 
+echo '=== DYNAMIC GAME DISCOVERY ==='
+docker exec -i "$C" psql -v ON_ERROR_STOP=1 -U zetruv -d "$DB" <<'SQL'
+INSERT INTO products ("Id","CategoryId","GameId","Name","Slug","Kind","FulfillmentMethod","RequiresGameAccountValidation","IsActive","IsFeatured","SortOrder","CreatedAt","UpdatedAt") VALUES
+('a2000000-0000-0000-0000-000000000010',(SELECT "Id" FROM catalog_categories WHERE "Key"='joki_game' OR "Kind"='Joki' LIMIT 1),'a1000000-0000-0000-0000-000000000001','QA Joki One','qa-joki-one','Joki','MANUAL',FALSE,TRUE,FALSE,0,NOW(),NOW()),
+('a2000000-0000-0000-0000-000000000011',(SELECT "Id" FROM catalog_categories WHERE "Kind"='Joki' LIMIT 1),'a1000000-0000-0000-0000-000000000001','QA Joki Two','qa-joki-two','Joki','MANUAL',FALSE,TRUE,FALSE,1,NOW(),NOW()),
+('a2000000-0000-0000-0000-000000000012',(SELECT "Id" FROM catalog_categories WHERE "Kind"='GameItem' LIMIT 1),'a1000000-0000-0000-0000-000000000001','QA Item','qa-item','GameItem','MANUAL',FALSE,TRUE,FALSE,2,NOW(),NOW());
+INSERT INTO product_variants ("Id","ProductId","Name","Sku","Price","IsActive","SortOrder","CreatedAt","UpdatedAt") VALUES
+('a3000000-0000-0000-0000-000000000010','a2000000-0000-0000-0000-000000000010','QA Joki','QA-JOKI1',10000,TRUE,0,NOW(),NOW()),
+('a3000000-0000-0000-0000-000000000011','a2000000-0000-0000-0000-000000000011','QA Joki','QA-JOKI2',10000,TRUE,0,NOW(),NOW()),
+('a3000000-0000-0000-0000-000000000012','a2000000-0000-0000-0000-000000000012','QA Item','QA-ITEM1',10000,TRUE,0,NOW(),NOW());
+SQL
+export DISCOVERY_API="http://127.0.0.1:$API/api/v1"
+python3 - <<'PYTEST'
+import json, os, urllib.request
+base=os.environ['DISCOVERY_API']
+def get(path):
+    with urllib.request.urlopen(base+path) as r: return json.load(r)
+p=get('/catalog/products/genshin-impact')
+c={x['kind']:x for x in p['availableCategories']}
+assert set(c)=={'TopUpLogin','Joki','GameItem'},c
+assert c['Joki']['productCount']==2 and c['Joki']['productSlug'] is None
+assert c['TopUpLogin']['productSlug']=='genshin-impact'
+assert c['GameItem']['productSlug']=='qa-item'
+h=get('/homepage')
+assert [x['game']['slug'] for x in h['topUpGames']]==['mobile-legends'],h['topUpGames']
+assert [x['game']['slug'] for x in h['topUpLoginGames']]==['genshin-impact']
+assert [x['game']['slug'] for x in h['itemGames']]==['genshin-impact']
+rows=get('/catalog/products?game=genshin-impact&kind=Joki&pageSize=1')
+assert rows['totalItems']==2 and rows['totalPages']==2 and len(rows['items'])==1
+assert rows['items'][0]['gameSlug']=='genshin-impact'
+PYTEST
+docker exec -i "$C" psql -v ON_ERROR_STOP=1 -U zetruv -d "$DB" <<'SQL'
+UPDATE product_variants SET "IsActive"=false WHERE "Id"='a3000000-0000-0000-0000-000000000012';
+SQL
+python3 - <<'PYTEST'
+import json,os,urllib.request
+base=os.environ['DISCOVERY_API']
+with urllib.request.urlopen(base+'/catalog/products/genshin-impact') as r: p=json.load(r)
+assert 'GameItem' not in [x['kind'] for x in p['availableCategories']]
+with urllib.request.urlopen(base+'/homepage') as r: h=json.load(r)
+assert not h['itemGames']
+PYTEST
+echo 'PASS: grouped homepage games, exact category routing, inactive exclusion and dynamic removal'
 echo 'PASS: catalog search + public gating + promo-aware PDP + checkout price parity'

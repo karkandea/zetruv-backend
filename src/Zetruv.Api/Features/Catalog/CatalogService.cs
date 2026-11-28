@@ -55,6 +55,41 @@ public sealed class CatalogService(ZetruvDbContext db)
             .ToListAsync(cancellationToken);
     }
 
+    private IQueryable<Product> GameServiceProducts() => PublicProductsQuery()
+        .Where(x => x.GameId != null && x.Kind != ProductKind.Merchandise);
+
+    public async Task<IReadOnlyDictionary<Guid, IReadOnlyList<GameServiceResponse>>> GetGameServicesAsync(
+        Guid? gameId = null, CancellationToken ct = default)
+    {
+        var query = GameServiceProducts();
+        if (gameId.HasValue) query = query.Where(x => x.GameId == gameId.Value);
+        var rows = await query.GroupBy(x => new { GameId = x.GameId!.Value, x.Kind })
+            .Select(g => new { g.Key.GameId, g.Key.Kind, Count = g.Count(), Slug = g.Min(x => x.Slug) })
+            .ToListAsync(ct);
+        return rows.GroupBy(x => x.GameId).ToDictionary(g => g.Key,
+            g => (IReadOnlyList<GameServiceResponse>)g.OrderBy(x => x.Kind)
+                .Select(x => new GameServiceResponse(x.Kind, x.Count, x.Count == 1 ? x.Slug : null)).ToArray());
+    }
+
+    public async Task<IReadOnlyList<GameServiceCard>> GetServiceGamesAsync(ProductKind kind, int limit, CancellationToken ct)
+    {
+        var products = GameServiceProducts();
+        var games = await db.Games.AsNoTracking()
+            .Where(g => g.IsActive && products.Any(p => p.GameId == g.Id && p.Kind == kind))
+            .OrderByDescending(g => g.IsPopular).ThenBy(g => g.SortOrder).ThenBy(g => g.Name).ThenBy(g => g.Id)
+            .Take(Math.Clamp(limit, 1, 50)).ToListAsync(ct);
+        var ids = games.Select(g => g.Id).ToArray();
+        var rows = await GameServiceProducts().Where(p => p.Kind == kind && ids.Contains(p.GameId!.Value))
+            .GroupBy(p => p.GameId!.Value)
+            .Select(g => new { Id = g.Key, Count = g.Count(), Slug = g.Min(p => p.Slug) }).ToListAsync(ct);
+        var byId = rows.ToDictionary(x => x.Id);
+        return games.Where(g => byId.ContainsKey(g.Id)).Select(g =>
+        {
+            var row = byId[g.Id];
+            return new GameServiceCard(ToGameResponse(g), new GameServiceResponse(kind, row.Count, row.Count == 1 ? row.Slug : null));
+        }).ToArray();
+    }
+
     public async Task<ProductPageResponse> GetProductsAsync(
         string? categorySlug,
         string? gameSlug,
@@ -180,6 +215,9 @@ public sealed class CatalogService(ZetruvDbContext db)
         var account = accountJson is null ? null :
             GameAccountAttributeRules.ToPublic(product.GameId, accountJson, accountSchema);
 
+        var services = product.GameId is Guid gameId
+            ? (await GetGameServicesAsync(gameId, cancellationToken)).GetValueOrDefault(gameId) ?? []
+            : [];
         return new ProductDetailResponse(
             product.Id,
             product.Name,
@@ -215,7 +253,8 @@ public sealed class CatalogService(ZetruvDbContext db)
             SoldQuantity = metric?.SoldQuantity ?? 0,
             Rating = metric?.Rating,
             ReviewCount = metric?.ReviewCount ?? 0,
-            AccountDetails = account
+            AccountDetails = account,
+            AvailableCategories = services
         };
     }
 
