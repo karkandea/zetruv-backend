@@ -37,9 +37,10 @@ public sealed class CmsMediaController(
     [RequestSizeLimit(4 * 1024 * 1024)]
     public async Task<ActionResult<MediaAssetResponse>> UploadBanner(
         [FromForm] IFormFile file,
+        [FromForm] string? profile,
         CancellationToken cancellationToken)
     {
-        var result = await bannerMediaService.UploadAsync(file, cancellationToken);
+        var result = await bannerMediaService.UploadAsync(file, cancellationToken, profile);
         return result.Asset is null
             ? StatusCode(result.StatusCode, new { message = result.Error })
             : StatusCode(StatusCodes.Status201Created, ToResponse(result.Asset));
@@ -61,9 +62,10 @@ public sealed class CmsMediaController(
     [Consumes("multipart/form-data")]
     [RequestSizeLimit(4 * 1024 * 1024)]
     public async Task<ActionResult<MediaAssetResponse>> UploadCatalog(
-        [FromForm] IFormFile file, CancellationToken cancellationToken)
+        [FromForm] IFormFile file,
+        [FromForm] string? profile, CancellationToken cancellationToken)
     {
-        var result = await bannerMediaService.UploadCatalogAsync(file, cancellationToken);
+        var result = await bannerMediaService.UploadCatalogAsync(file, cancellationToken, profile);
         return result.Asset is null
             ? StatusCode(result.StatusCode, new { message = result.Error })
             : StatusCode(StatusCodes.Status201Created, ToResponse(result.Asset));
@@ -73,9 +75,10 @@ public sealed class CmsMediaController(
     [Consumes("multipart/form-data")]
     [RequestSizeLimit(4 * 1024 * 1024)]
     public async Task<ActionResult<MediaAssetResponse>> UploadVariantIcon(
-        [FromForm] IFormFile file, CancellationToken cancellationToken)
+        [FromForm] IFormFile file,
+        [FromForm] string? profile, CancellationToken cancellationToken)
     {
-        var result = await bannerMediaService.UploadVariantIconAsync(file, cancellationToken);
+        var result = await bannerMediaService.UploadVariantIconAsync(file, cancellationToken, profile);
         return result.Asset is null
             ? StatusCode(result.StatusCode, new { message = result.Error })
             : StatusCode(StatusCodes.Status201Created, ToResponse(result.Asset));

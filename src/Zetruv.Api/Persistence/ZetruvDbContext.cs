@@ -134,6 +134,7 @@ public sealed class ZetruvDbContext(
             entity.Property(x => x.Title).HasMaxLength(160).IsRequired();
             entity.Property(x => x.Subtitle).HasMaxLength(500).IsRequired();
             entity.Property(x => x.ImageUrl).HasMaxLength(1000).IsRequired();
+            entity.Property(x => x.MobileImageUrl).HasMaxLength(1000);
             entity.Property(x => x.PrimaryCtaLabel).HasMaxLength(80);
             entity.Property(x => x.PrimaryCtaUrl).HasMaxLength(500);
             entity.Property(x => x.SecondaryCtaLabel).HasMaxLength(80);
@@ -189,6 +190,8 @@ public sealed class ZetruvDbContext(
             entity.Property(x => x.Slug).HasMaxLength(220).IsRequired();
             entity.Property(x => x.ShortDescription).HasMaxLength(500);
             entity.Property(x => x.ThumbnailUrl).HasMaxLength(1000);
+            entity.Property(x => x.HeroDesktopUrl).HasMaxLength(1000);
+            entity.Property(x => x.HeroMobileUrl).HasMaxLength(1000);
             entity.Property(x => x.Kind).HasConversion<string>().HasMaxLength(30).IsRequired();
             entity.Property(x => x.FulfillmentMethod).HasConversion<string>().HasMaxLength(30).IsRequired();
             entity.HasIndex(x => x.Slug).IsUnique();

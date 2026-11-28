@@ -11,6 +11,7 @@ public sealed class HomeHero
     public string Title { get; set; } = string.Empty;
     public string Subtitle { get; set; } = string.Empty;
     public string ImageUrl { get; set; } = string.Empty;
+    public string? MobileImageUrl { get; set; }
     public string? PrimaryCtaLabel { get; set; }
     public string? PrimaryCtaUrl { get; set; }
     public string? SecondaryCtaLabel { get; set; }
@@ -46,7 +47,8 @@ public sealed record HeroResponse(
     string? PrimaryCtaLabel,
     string? PrimaryCtaUrl,
     string? SecondaryCtaLabel,
-    string? SecondaryCtaUrl);
+    string? SecondaryCtaUrl,
+    string? MobileImageUrl = null);
 
 public sealed record SectionResponse(
     string Key,
@@ -84,7 +86,8 @@ public sealed record UpsertHeroRequest(
     bool IsActive,
     int SortOrder,
     DateTimeOffset? StartsAt,
-    DateTimeOffset? EndsAt);
+    DateTimeOffset? EndsAt,
+    [MaxLength(1000)] string? MobileImageUrl = null);
 
 public sealed record UpdateSectionRequest(
     [Required, MaxLength(160)] string Title,

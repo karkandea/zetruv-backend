@@ -154,6 +154,63 @@ curl -fsS "$CATALOG_URL" -o /tmp/zetruv-catalog-download.webp
 CODE=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE "http://127.0.0.1:$API/api/v1/cms/media/$CATALOG_ID" -H "Authorization: Bearer $TOKEN")
 [[ "$CODE" == 204 ]]
 
+echo '=== RESPONSIVE MEDIA PROFILES AND PERSISTENCE ==='
+python3 - "$API" "$TOKEN" <<'PY'
+import sys,json,struct,zlib,tempfile,subprocess,urllib.request,urllib.error
+from pathlib import Path
+base='http://127.0.0.1:'+sys.argv[1]+'/api/v1'
+token=sys.argv[2]
+def req(path,method='GET',body=None,expected=200):
+    r=urllib.request.Request(base+path,data=json.dumps(body).encode() if body is not None else None,headers={'Authorization':'Bearer '+token,'Content-Type':'application/json'},method=method)
+    try:
+        with urllib.request.urlopen(r) as resp:
+            data=resp.read();assert resp.status==expected,(resp.status,data)
+            return json.loads(data) if data else None
+    except urllib.error.HTTPError as e:
+        assert e.code==expected,(path,e.code,e.read())
+def upload(folder,profile,w,h,expected):
+    def chunk(kind,data):return struct.pack('>I',len(data))+kind+data+struct.pack('>I',zlib.crc32(kind+data)&0xffffffff)
+    raw=b''.join(b'\0'+bytes([32,63,90])*w for _ in range(h))
+    png=b'\x89PNG\r\n\x1a\n'+chunk(b'IHDR',struct.pack('>2I5B',w,h,8,2,0,0,0))+chunk(b'IDAT',zlib.compress(raw,9))+chunk(b'IEND',b'')
+    with tempfile.TemporaryDirectory() as d:
+        f=Path(d)/'test.png';f.write_bytes(png)
+        output=subprocess.check_output(['curl','-sS','-w','\n%{http_code}','-H','Authorization: Bearer '+token,'-F','profile='+profile,'-F','file=@'+str(f)+';type=image/png',base+'/cms/media/'+folder])
+    data,code=output.rsplit(b'\n',1);assert int(code)==expected,(profile,data,code)
+    return json.loads(data)
+upload('catalog/variant-icon','variant',128,128,422)
+upload('catalog','bannerDesktop',2400,600,400)
+icon=upload('catalog/variant-icon','variant',256,256,201)
+assert icon['sizeBytes']<=100*1024
+desktop=upload('banner','bannerDesktop',2400,600,201)
+mobile=upload('banner','bannerMobile',1080,1080,201)
+hero=dict(title='Responsive QA',subtitle='Mobile art',imageUrl=desktop['url'],mobileImageUrl=mobile['url'],isActive=True,sortOrder=0)
+h=req('/cms/homepage/heroes','POST',hero,201);hid=h['id']
+public=req('/homepage')
+assert any(x['id']==hid and x['mobileImageUrl']==mobile['url'] for x in public['heroes'])
+req('/cms/media/'+mobile['id'],'DELETE',expected=409)
+hero.pop('mobileImageUrl');req('/cms/homepage/heroes/'+hid,'PUT',hero,200)
+assert any(x['id']==hid and x['mobileImageUrl']==mobile['url'] for x in req('/homepage')['heroes'])
+hero['mobileImageUrl']='';req('/cms/homepage/heroes/'+hid,'PUT',hero,200)
+req('/cms/media/'+mobile['id'],'DELETE',expected=204)
+req('/cms/homepage/heroes/'+hid,'DELETE',expected=204)
+req('/cms/media/'+desktop['id'],'DELETE',expected=204)
+for p in [icon]:req('/cms/media/'+p['id'],'DELETE',expected=204)
+d=upload('catalog','desktop',1920,480,201);m=upload('catalog','mobile',1080,600,201)
+cat=req('/cms/catalog/categories','POST',dict(key='responsive-media-qa',name='Responsive media QA',slug='responsive-media-qa',kind='Merchandise',isActive=True,sortOrder=0),201)
+cid=cat['id'] if isinstance(cat,dict) else cat
+draft=dict(categoryId=cid,name='Responsive QA',slug='responsive-media-qa',kind='Merchandise',fulfillmentMethod='MANUAL',requiresGameAccountValidation=False,isActive=True,isFeatured=False,sortOrder=0,heroDesktopUrl=d['url'],heroMobileUrl=m['url'])
+product=req('/cms/catalog/products','POST',draft,201);pid=product['id'] if isinstance(product,dict) else product
+detail=req('/cms/catalog/products/'+pid);assert detail['heroDesktopUrl']==d['url'] and detail['heroMobileUrl']==m['url']
+req('/cms/catalog/products/'+pid+'/variants','POST',dict(name='QA package',sku='RESPONSIVE-QA',price=10000,weightGrams=10,stockQuantity=2,isActive=True,sortOrder=0),201)
+public=req('/catalog/products/responsive-media-qa');assert public['heroDesktopUrl']==d['url'] and public['heroMobileUrl']==m['url']
+req('/cms/media/'+m['id'],'DELETE',expected=409)
+draft.pop('heroDesktopUrl');draft.pop('heroMobileUrl');req('/cms/catalog/products/'+pid,'PUT',draft,204)
+assert req('/cms/catalog/products/'+pid)['heroMobileUrl']==m['url']
+draft.update(heroDesktopUrl='',heroMobileUrl='');req('/cms/catalog/products/'+pid,'PUT',draft,204)
+for p in [d,m]:req('/cms/media/'+p['id'],'DELETE',expected=204)
+print('PASS responsive profiles, banner/product persistence and public projection, legacy client preservation, delete guard')
+PY
+
 echo '=== DELETE ==='
 CODE=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE "http://127.0.0.1:$API/api/v1/cms/media/$ASSET_ID" -H "Authorization: Bearer $TOKEN")
 [[ "$CODE" == 204 ]]

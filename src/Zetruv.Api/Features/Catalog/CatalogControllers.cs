@@ -251,6 +251,10 @@ public sealed class CmsCatalogController(ZetruvDbContext db, CatalogService cata
                 x.Kind,
                 x.FulfillmentMethod,
                 x.ThumbnailUrl,
+                x.ShortDescription,
+                x.Description,
+                x.HeroDesktopUrl,
+                x.HeroMobileUrl,
                 x.CategoryId,
                 CategoryName = x.Category.Name,
                 x.GameId,
@@ -316,7 +320,7 @@ public sealed class CmsCatalogController(ZetruvDbContext db, CatalogService cata
                 .OrderBy(x => x.SortOrder)
                 .ThenBy(x => x.Label)
                 .Select(ProductInputFieldRules.ToResponse)
-                .ToList()));
+                .ToList(), product.HeroDesktopUrl, product.HeroMobileUrl));
     }
 
     [HttpPost("products")]
@@ -839,6 +843,9 @@ public sealed class CmsCatalogController(ZetruvDbContext db, CatalogService cata
         product.ShortDescription = request.ShortDescription?.Trim();
         product.Description = request.Description?.Trim();
         product.ThumbnailUrl = request.ThumbnailUrl?.Trim();
+        // Null means omitted by older clients; empty string explicitly removes the override.
+        if (request.HeroDesktopUrl is not null) product.HeroDesktopUrl = string.IsNullOrWhiteSpace(request.HeroDesktopUrl) ? null : request.HeroDesktopUrl.Trim();
+        if (request.HeroMobileUrl is not null) product.HeroMobileUrl = string.IsNullOrWhiteSpace(request.HeroMobileUrl) ? null : request.HeroMobileUrl.Trim();
         product.Kind = request.Kind;
         product.FulfillmentMethod = request.FulfillmentMethod;
         product.RequiresGameAccountValidation = request.RequiresGameAccountValidation;

@@ -225,7 +225,13 @@ namespace Zetruv.Api.Features.Home
         private async Task<bool> ValidHeroImage(UpsertHeroRequest request, CancellationToken cancellationToken)
         {
             if (!request.IsActive) return true; // Hidden drafts and legacy images can be repaired.
-            var imageUrl = request.ImageUrl?.Trim() ?? string.Empty;
+            return await ValidImageUrl(request.ImageUrl, cancellationToken) &&
+                (string.IsNullOrWhiteSpace(request.MobileImageUrl) || await ValidImageUrl(request.MobileImageUrl, cancellationToken));
+        }
+
+        private async Task<bool> ValidImageUrl(string? value, CancellationToken cancellationToken)
+        {
+            var imageUrl = value?.Trim() ?? string.Empty;
             const string marker = "/media/banners/";
             var markerIndex = imageUrl.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
             // Keep the existing REST contract: older banners may use valid HTTPS or
@@ -267,6 +273,7 @@ namespace Zetruv.Api.Features.Home
             hero.Title = request.Title.Trim();
             hero.Subtitle = request.Subtitle.Trim();
             hero.ImageUrl = request.ImageUrl.Trim();
+            if (request.MobileImageUrl is not null) hero.MobileImageUrl = string.IsNullOrWhiteSpace(request.MobileImageUrl) ? null : request.MobileImageUrl.Trim();
             hero.PrimaryCtaLabel = request.PrimaryCtaLabel?.Trim();
             hero.PrimaryCtaUrl = request.PrimaryCtaUrl?.Trim();
             hero.SecondaryCtaLabel = request.SecondaryCtaLabel?.Trim();

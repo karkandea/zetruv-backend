@@ -63,6 +63,8 @@ public sealed class Product
     public string? ShortDescription { get; set; }
     public string? Description { get; set; }
     public string? ThumbnailUrl { get; set; }
+    public string? HeroDesktopUrl { get; set; }
+    public string? HeroMobileUrl { get; set; }
     public ProductKind Kind { get; set; }
     public FulfillmentMethod FulfillmentMethod { get; set; } = FulfillmentMethod.MANUAL;
     public bool RequiresGameAccountValidation { get; set; }
@@ -228,7 +230,9 @@ public sealed record ProductDetailResponse(
     GameResponse? Game,
     IReadOnlyList<ProductVariantResponse> Variants,
     IReadOnlyList<ProductImageResponse> Images,
-    IReadOnlyList<ProductInputFieldResponse> InputFields)
+    IReadOnlyList<ProductInputFieldResponse> InputFields,
+    string? HeroDesktopUrl = null,
+    string? HeroMobileUrl = null)
 {
     public IReadOnlyList<GameServiceResponse> AvailableCategories { get; init; } = [];
     public int SoldQuantity { get; init; }
@@ -282,7 +286,9 @@ public sealed record CmsProductDetailResponse(
     DateTimeOffset UpdatedAt,
     IReadOnlyList<CmsProductVariantResponse> Variants,
     IReadOnlyList<ProductImageResponse> Images,
-    IReadOnlyList<ProductInputFieldResponse> InputFields);
+    IReadOnlyList<ProductInputFieldResponse> InputFields,
+    string? HeroDesktopUrl = null,
+    string? HeroMobileUrl = null);
 
 public sealed record CmsPromotionItemResponse(
     Guid Id,
@@ -354,7 +360,9 @@ public sealed record UpsertProductRequest(
     bool RequiresGameAccountValidation,
     bool IsActive,
     bool IsFeatured,
-    int SortOrder);
+    int SortOrder,
+    [MaxLength(1000)] string? HeroDesktopUrl = null,
+    [MaxLength(1000)] string? HeroMobileUrl = null);
 
 public sealed record UpsertVariantRequest(
     [Required, MaxLength(180)] string Name,
