@@ -39,8 +39,62 @@ public sealed class MidtransSnapGateway(
         ServerKey.Length > "SB-Mid-server-".Length + 8 &&
         !string.Equals(configuration["ASPNETCORE_ENVIRONMENT"], "Production", StringComparison.OrdinalIgnoreCase);
 
+    public sealed record SnapChannel(string Code, string ProviderCode, string Name, string Group);
+    private static readonly SnapChannel[] Channels =
+    [
+        new("MIDTRANS_OTHER_QRIS", "other_qris", "QRIS", "qris"),
+        new("MIDTRANS_GOPAY", "gopay", "GoPay", "wallet"),
+        new("MIDTRANS_DANA", "dana", "DANA", "wallet"),
+        new("MIDTRANS_OVO", "ovo", "OVO", "wallet"),
+        new("MIDTRANS_SHOPEEPAY", "shopeepay", "ShopeePay", "wallet"),
+        new("MIDTRANS_BCA_VA", "bca_va", "BCA Virtual Account", "bank"),
+        new("MIDTRANS_BNI_VA", "bni_va", "BNI Virtual Account", "bank"),
+        new("MIDTRANS_BRI_VA", "bri_va", "BRI Virtual Account", "bank"),
+        new("MIDTRANS_PERMATA_VA", "permata_va", "Permata Virtual Account", "bank"),
+        new("MIDTRANS_CIMB_VA", "cimb_va", "CIMB Niaga Virtual Account", "bank"),
+        new("MIDTRANS_DANAMON_VA", "danamon_va", "Danamon Virtual Account", "bank"),
+        new("MIDTRANS_BSI_VA", "bsi_va", "BSI Virtual Account", "bank"),
+        new("MIDTRANS_SEABANK_VA", "seabank_va", "SeaBank Virtual Account", "bank"),
+        new("MIDTRANS_SAQU_VA", "saqu_va", "Bank Saqu Virtual Account", "bank"),
+        new("MIDTRANS_OTHER_VA", "other_va", "Other Banks", "bank"),
+        new("MIDTRANS_ECHANNEL", "echannel", "Mandiri Bill Payment", "bank"),
+        new("MIDTRANS_ALFAMART", "alfamart", "Alfamart", "retail"),
+        new("MIDTRANS_INDOMARET", "indomaret", "Indomaret", "retail"),
+        new("MIDTRANS_CREDIT_CARD", "credit_card", "Credit / Debit Card", "card"),
+        new("MIDTRANS_AKULAKU", "akulaku", "Akulaku", "paylater"),
+        new("MIDTRANS_KREDIVO", "kredivo", "Kredivo", "paylater"),
+    ];
+    public static SnapChannel? FindChannel(string? code) =>
+        Channels.FirstOrDefault(x => string.Equals(x.Code, code, StringComparison.OrdinalIgnoreCase));
     public bool SupportsChannel(string code) =>
-        IsLiveConfigured && string.Equals(code, SnapMethod, StringComparison.OrdinalIgnoreCase);
+        IsLiveConfigured && (string.Equals(code, SnapMethod, StringComparison.OrdinalIgnoreCase) || FindChannel(code) is not null);
+
+    // Do not expose a channel solely because it is supported by the integration.
+    // The merchant's live preference response is required, with fail-closed errors.
+    public async Task<IReadOnlyList<SnapChannel>> GetEnabledChannelsAsync(CancellationToken ct)
+    {
+        if (!IsLiveConfigured) return [];
+        try
+        {
+            using var client = Client();
+            using var response = await client.GetAsync(
+                "https://app.sandbox.midtrans.com/snap/v3/merchant-preferences", ct);
+            if (!response.IsSuccessStatusCode) return [];
+            using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
+            if (!json.RootElement.TryGetProperty("payment_channels", out var rows) ||
+                rows.ValueKind != JsonValueKind.Array) return [];
+            var enabled = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var row in rows.EnumerateArray())
+                if (TryString(row, "name", out var name) &&
+                    row.TryGetProperty("enabled", out var flag) && flag.ValueKind == JsonValueKind.True)
+                    enabled.Add(name);
+            return Channels.Where(x => enabled.Contains(x.ProviderCode)).ToArray();
+        }
+        catch (HttpRequestException) { return []; }
+        catch (JsonException) { return []; }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested) { return []; }
+    }
+
 
     private HttpClient Client()
     {
@@ -89,6 +143,14 @@ public sealed class MidtransSnapGateway(
                 phone = Truncate(request.CustomerPhone, 30)
             }
         };
+        var channel = FindChannel(request.MethodCode);
+        if (channel is not null)
+        {
+            var enabled = await GetEnabledChannelsAsync(ct);
+            if (!enabled.Any(x => x.Code == channel.Code))
+                return PaymentGatewayCreateResult.Failure("The selected payment method is no longer available.");
+            body["enabled_payments"] = new[] { channel.ProviderCode };
+        }
         var finishUrl = configuration["Payments:Midtrans:FinishUrl"]?.Trim();
         if (Uri.TryCreate(finishUrl, UriKind.Absolute, out var parsedFinish) &&
             parsedFinish.Scheme == Uri.UriSchemeHttps)
