@@ -154,6 +154,10 @@ public sealed record GameResponse(
     bool IsPopular,
     int SortOrder);
 
+// Publication metadata, not a promise of available stock or successful checkout.
+public sealed record GameServiceResponse(ProductKind Kind, int ProductCount, string? ProductSlug);
+public sealed record GameServiceCard(GameResponse Game, GameServiceResponse Service);
+
 public sealed record ProductListItemResponse(
     Guid Id,
     string Name,
@@ -226,6 +230,7 @@ public sealed record ProductDetailResponse(
     IReadOnlyList<ProductImageResponse> Images,
     IReadOnlyList<ProductInputFieldResponse> InputFields)
 {
+    public IReadOnlyList<GameServiceResponse> AvailableCategories { get; init; } = [];
     public int SoldQuantity { get; init; }
     public decimal? Rating { get; init; }
     public int ReviewCount { get; init; }

@@ -66,7 +66,12 @@ public sealed record HomepageResponse(
     IReadOnlyList<ProductListItemResponse> Joki,
     IReadOnlyList<ProductListItemResponse> GameAccounts,
     IReadOnlyList<ProductListItemResponse> Merchandise,
-    IReadOnlyList<ArticleListItemResponse> LatestArticles);
+    IReadOnlyList<ArticleListItemResponse> LatestArticles)
+{
+    public IReadOnlyList<GameServiceCard> TopUpGames { get; init; } = [];
+    public IReadOnlyList<GameServiceCard> ItemGames { get; init; } = [];
+    public IReadOnlyList<GameServiceCard> TopUpLoginGames { get; init; } = [];
+}
 
 public sealed record UpsertHeroRequest(
     [Required, MaxLength(160)] string Title,
